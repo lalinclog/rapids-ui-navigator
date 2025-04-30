@@ -1,393 +1,182 @@
 
 import { useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
+import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import {
+import { 
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/components/ui/use-toast';
+import { PythonService } from '@/services/PythonService';
+import { BarChart2, Loader2 } from 'lucide-react';
 
-const formSchema = z.object({
-  jobName: z.string().min(3, { message: "Job name must be at least 3 characters." }),
-  sparkSubmitPath: z.string().min(1, { message: "Spark submit path is required." }),
-  applicationJar: z.string().min(1, { message: "Application JAR path is required." }),
-  mainClass: z.string().min(1, { message: "Main class is required." }),
-  outputPath: z.string().min(1, { message: "Output path is required." }),
-  sparkHome: z.string().optional(),
-  javaHome: z.string().optional(),
-  customArgs: z.string().optional(),
-  sparkConf: z.string().optional(),
-  enableProfiling: z.boolean().default(true),
-  collectHardwareMetrics: z.boolean().default(true),
-  collectMemoryMetrics: z.boolean().default(true),
-  generateGpuTimeline: z.boolean().default(true),
-  description: z.string().optional(),
-});
-
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = {
+  eventLogPath: string;
+  outputFormat: 'csv' | 'json' | 'html';
+  applicationName?: string;
+  generateTimeline: boolean;
+  additionalOptions?: string;
+};
 
 export function ProfilingForm() {
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+  const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
     defaultValues: {
-      jobName: "",
-      sparkSubmitPath: "spark-submit",
-      applicationJar: "",
-      mainClass: "",
-      outputPath: "./profiling-output",
-      sparkHome: "",
-      javaHome: "",
-      customArgs: "",
-      sparkConf: "",
-      enableProfiling: true,
-      collectHardwareMetrics: true,
-      collectMemoryMetrics: true,
-      generateGpuTimeline: true,
-      description: ""
+      outputFormat: 'html',
+      generateTimeline: true,
     }
   });
+  const [isRunning, setIsRunning] = useState(false);
+  const [results, setResults] = useState<any>(null);
+  const { toast } = useToast();
 
-  function onSubmit(data: FormValues) {
-    setIsSubmitting(true);
-    // Simulate API call
-    setTimeout(() => {
-      console.log("Form submitted:", data);
+  const onSubmit = async (data: FormValues) => {
+    setIsRunning(true);
+    try {
+      // Check if Python environment is ready
+      const isReady = await PythonService.checkPythonEnv();
+      
+      if (!isReady) {
+        toast({
+          variant: "destructive",
+          title: "Environment Not Ready",
+          description: "Please set up the Python environment in Settings before running tools.",
+        });
+        return;
+      }
+      
+      const result = await PythonService.runProfilingTool(data);
+      
+      if (result.success) {
+        setResults(result.data);
+        toast({
+          title: "Profiling Complete",
+          description: "Analysis successfully completed",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Analysis Failed",
+          description: "Failed to run profiling tool. Check logs for details.",
+        });
+      }
+    } catch (error) {
       toast({
-        title: "Profiling job submitted successfully",
-        description: `Profiling job "${data.jobName}" has been queued.`
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred",
       });
-      setIsSubmitting(false);
-      // We would typically navigate to job status page here
-    }, 1500);
-  }
+    } finally {
+      setIsRunning(false);
+    }
+  };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Profiling Tool Configuration</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="jobName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Job Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="My Profiling Job" {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    A unique name for this profiling run.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
+    <div className="form-container">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="eventLogPath">Spark Event Log Path</Label>
+            <Input
+              id="eventLogPath"
+              placeholder="local/path/to/event_log or s3://bucket/event_log"
+              {...register("eventLogPath", { required: true })}
             />
-
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="sparkSubmitPath"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Spark Submit Path</FormLabel>
-                    <FormControl>
-                      <Input placeholder="spark-submit" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Path to spark-submit script.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="outputPath"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Output Path</FormLabel>
-                    <FormControl>
-                      <Input placeholder="./profiling-output" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Directory where profiling results will be saved.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="applicationJar"
-                render={({ field }) => (
-                  <FormItem className="col-span-2">
-                    <FormLabel>Application JAR</FormLabel>
-                    <FormControl>
-                      <Input placeholder="/path/to/your/application.jar" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Path to your Spark application JAR file.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="mainClass"
-                render={({ field }) => (
-                  <FormItem className="col-span-2">
-                    <FormLabel>Main Class</FormLabel>
-                    <FormControl>
-                      <Input placeholder="com.example.SparkApp" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Fully qualified name of your main class.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="advanced">
-                <AccordionTrigger className="text-sm font-medium">Advanced Options</AccordionTrigger>
-                <AccordionContent>
-                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 pt-4">
-                    <FormField
-                      control={form.control}
-                      name="sparkHome"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Spark Home (Optional)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="/path/to/spark" {...field} />
-                          </FormControl>
-                          <FormDescription>
-                            Path to Spark installation directory.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="javaHome"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Java Home (Optional)</FormLabel>
-                          <FormControl>
-                            <Input placeholder="/path/to/java" {...field} />
-                          </FormControl>
-                          <FormDescription>
-                            Path to Java installation directory.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="customArgs"
-                      render={({ field }) => (
-                        <FormItem className="col-span-2">
-                          <FormLabel>Custom Arguments (Optional)</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="--arg1 value1 --arg2 value2"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            Additional arguments to pass to your application.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="sparkConf"
-                      render={({ field }) => (
-                        <FormItem className="col-span-2">
-                          <FormLabel>Spark Configuration (Optional)</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="spark.executor.memory=4g
-spark.executor.cores=2"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            Spark configuration properties, one per line.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-
-            <div className="space-y-4">
-              <h3 className="text-base font-medium leading-6">Profiling Options</h3>
-              <div className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="enableProfiling"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Enable Profiling</FormLabel>
-                        <FormDescription>
-                          Collect detailed performance metrics during execution.
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="collectHardwareMetrics"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Collect Hardware Metrics</FormLabel>
-                        <FormDescription>
-                          Track GPU utilization, temperature and power usage.
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="collectMemoryMetrics"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Collect Memory Metrics</FormLabel>
-                        <FormDescription>
-                          Monitor memory usage across the cluster.
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="generateGpuTimeline"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Generate GPU Timeline</FormLabel>
-                        <FormDescription>
-                          Create detailed timeline visualization of GPU activities.
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Job Description (Optional)</FormLabel>
-                  <FormControl>
-                    <Textarea 
-                      placeholder="Provide additional details about this job..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+            {errors.eventLogPath && (
+              <p className="text-red-500 text-sm mt-1">Event log path is required</p>
+            )}
+          </div>
+          
+          <div>
+            <Label htmlFor="outputFormat">Output Format</Label>
+            <Select defaultValue="html">
+              <SelectTrigger>
+                <SelectValue placeholder="Select output format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="html">HTML</SelectItem>
+                <SelectItem value="csv">CSV</SelectItem>
+                <SelectItem value="json">JSON</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div>
+            <Label htmlFor="applicationName">Application Name (Optional)</Label>
+            <Input
+              id="applicationName"
+              placeholder="My Spark Application"
+              {...register("applicationName")}
             />
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Checkbox id="generateTimeline" defaultChecked={true} />
+            <Label htmlFor="generateTimeline">Generate Timeline Visualization</Label>
+          </div>
+          
+          <div>
+            <Label htmlFor="additionalOptions">Additional Options (Optional)</Label>
+            <Textarea
+              id="additionalOptions"
+              placeholder="--option1 value1 --option2 value2"
+              {...register("additionalOptions")}
+              className="h-20"
+            />
+          </div>
+        </div>
+        
+        <Button type="submit" disabled={isRunning} className="w-full">
+          {isRunning ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Running Profiling...
+            </>
+          ) : (
+            <>
+              <BarChart2 className="mr-2 h-4 w-4" />
+              Run Profiling Tool
+            </>
+          )}
+        </Button>
+      </form>
 
-            <div className="flex justify-end space-x-4 pt-4">
-              <Button type="button" variant="outline">
-                Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Submitting..." : "Run Profiling Tool"}
-              </Button>
+      {results && (
+        <Card className="mt-8 p-6">
+          <h3 className="text-lg font-medium mb-4">Profiling Results</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Execution Time</p>
+              <p className="text-2xl font-bold">{results.executionTime} sec</p>
             </div>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">GPU Utilization</p>
+              <p className="text-2xl font-bold">{results.gpuUtilization}%</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Memory Usage</p>
+              <p className="text-2xl font-bold">{results.memoryUsage} GB</p>
+            </div>
+          </div>
+          
+          <div className="space-y-4">
+            <h4 className="font-medium">Performance Recommendations</h4>
+            <ul className="list-disc pl-5 space-y-1">
+              {results.recommendations.map((rec: string, index: number) => (
+                <li key={index} className="text-sm">{rec}</li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }

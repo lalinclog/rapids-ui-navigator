@@ -1,311 +1,170 @@
 
 import { useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
+import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import {
+import { 
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast';
+import { PythonService } from '@/services/PythonService';
+import { FileSearch, Loader2 } from 'lucide-react';
 
-const formSchema = z.object({
-  jobName: z.string().min(3, { message: "Job name must be at least 3 characters." }),
-  sparkEventLogPath: z.string().min(1, { message: "Event log path is required." }),
-  outputFormat: z.enum(["csv", "json", "excel", "html"]).default("html"),
-  generateVisualization: z.boolean().default(true),
-  filterString: z.string().optional(),
-  sparkVersion: z.string().min(1, { message: "Spark version is required." }),
-  storageLevel: z.enum(["disk", "memory", "diskAndMemory"]).default("memory"),
-  debug: z.boolean().default(false),
-  description: z.string().optional()
-});
-
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = {
+  eventLogPath: string;
+  outputFormat: 'csv' | 'json' | 'html';
+  applicationName?: string;
+  additionalOptions?: string;
+};
 
 export function QualificationForm() {
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+  const { register, handleSubmit, control, formState: { errors } } = useForm<FormValues>({
     defaultValues: {
-      jobName: "",
-      sparkEventLogPath: "",
-      outputFormat: "html",
-      generateVisualization: true,
-      filterString: "",
-      sparkVersion: "3.3.2",
-      storageLevel: "memory",
-      debug: false,
-      description: ""
+      outputFormat: 'html',
     }
   });
+  const [isRunning, setIsRunning] = useState(false);
+  const [results, setResults] = useState<any>(null);
+  const { toast } = useToast();
 
-  function onSubmit(data: FormValues) {
-    setIsSubmitting(true);
-    // Simulate API call
-    setTimeout(() => {
-      console.log("Form submitted:", data);
+  const onSubmit = async (data: FormValues) => {
+    setIsRunning(true);
+    try {
+      // Check if Python environment is ready
+      const isReady = await PythonService.checkPythonEnv();
+      
+      if (!isReady) {
+        toast({
+          variant: "destructive",
+          title: "Environment Not Ready",
+          description: "Please set up the Python environment in Settings before running tools.",
+        });
+        return;
+      }
+      
+      const result = await PythonService.runQualificationTool(data);
+      
+      if (result.success) {
+        setResults(result.data);
+        toast({
+          title: "Qualification Complete",
+          description: "Analysis successfully completed",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Analysis Failed",
+          description: "Failed to run qualification tool. Check logs for details.",
+        });
+      }
+    } catch (error) {
       toast({
-        title: "Job submitted successfully",
-        description: `Qualification job "${data.jobName}" has been queued.`
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred",
       });
-      setIsSubmitting(false);
-      // We would typically navigate to job status page here
-    }, 1500);
-  }
+    } finally {
+      setIsRunning(false);
+    }
+  };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Qualification Tool Configuration</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="jobName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Job Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="My Qualification Job" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      A unique name for this qualification run.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+    <div className="form-container">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="eventLogPath">Spark Event Log Path</Label>
+            <Input
+              id="eventLogPath"
+              placeholder="local/path/to/event_log or s3://bucket/event_log"
+              {...register("eventLogPath", { required: true })}
+            />
+            {errors.eventLogPath && (
+              <p className="text-red-500 text-sm mt-1">Event log path is required</p>
+            )}
+          </div>
+          
+          <div>
+            <Label htmlFor="outputFormat">Output Format</Label>
+            <Select defaultValue="html">
+              <SelectTrigger>
+                <SelectValue placeholder="Select output format" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="html">HTML</SelectItem>
+                <SelectItem value="csv">CSV</SelectItem>
+                <SelectItem value="json">JSON</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div>
+            <Label htmlFor="applicationName">Application Name (Optional)</Label>
+            <Input
+              id="applicationName"
+              placeholder="My Spark Application"
+              {...register("applicationName")}
+            />
+          </div>
+          
+          <div>
+            <Label htmlFor="additionalOptions">Additional Options (Optional)</Label>
+            <Textarea
+              id="additionalOptions"
+              placeholder="--option1 value1 --option2 value2"
+              {...register("additionalOptions")}
+              className="h-20"
+            />
+          </div>
+        </div>
+        
+        <Button type="submit" disabled={isRunning} className="w-full">
+          {isRunning ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Running Analysis...
+            </>
+          ) : (
+            <>
+              <FileSearch className="mr-2 h-4 w-4" />
+              Run Qualification Tool
+            </>
+          )}
+        </Button>
+      </form>
 
-              <FormField
-                control={form.control}
-                name="sparkVersion"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Spark Version</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Spark version" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="3.3.2">Spark 3.3.2</SelectItem>
-                        <SelectItem value="3.2.3">Spark 3.2.3</SelectItem>
-                        <SelectItem value="3.1.3">Spark 3.1.3</SelectItem>
-                        <SelectItem value="3.0.3">Spark 3.0.3</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Spark version used for analysis.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="sparkEventLogPath"
-                render={({ field }) => (
-                  <FormItem className="col-span-2">
-                    <FormLabel>Spark Event Log Path</FormLabel>
-                    <FormControl>
-                      <Input placeholder="/path/to/event/log" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Path to Spark event logs directory or file.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="outputFormat"
-                render={({ field }) => (
-                  <FormItem className="space-y-3">
-                    <FormLabel>Output Format</FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        className="flex flex-wrap gap-4"
-                      >
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="csv" />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">CSV</FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="json" />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">JSON</FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="excel" />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">Excel</FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-2 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="html" />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">HTML</FormLabel>
-                        </FormItem>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="storageLevel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Storage Level</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select storage level" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="memory">Memory</SelectItem>
-                        <SelectItem value="disk">Disk</SelectItem>
-                        <SelectItem value="diskAndMemory">Disk and Memory</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Storage level for intermediate data.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="filterString"
-                render={({ field }) => (
-                  <FormItem className="col-span-2">
-                    <FormLabel>Filter String (Optional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., package1.class1" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Analyze only events that contain this string.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="col-span-2 space-y-4">
-                <FormField
-                  control={form.control}
-                  name="generateVisualization"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Generate Visualization</FormLabel>
-                        <FormDescription>
-                          Generate detailed visualizations for analysis.
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="debug"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>Debug Mode</FormLabel>
-                        <FormDescription>
-                          Enable verbose debug output during processing.
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem className="col-span-2">
-                    <FormLabel>Job Description (Optional)</FormLabel>
-                    <FormControl>
-                      <Textarea 
-                        placeholder="Provide additional details about this job..."
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+      {results && (
+        <Card className="mt-8 p-6">
+          <h3 className="text-lg font-medium mb-4">Qualification Results</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Estimated Speedup</p>
+              <p className="text-2xl font-bold text-nvidia-green">{results.speedupFactor}x</p>
             </div>
-
-            <div className="flex justify-end space-x-4 pt-4">
-              <Button type="button" variant="outline">
-                Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Submitting..." : "Run Qualification Tool"}
-              </Button>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">GPU Acceleration Opportunities</p>
+              <p className="text-2xl font-bold">{results.gpuOpportunities}</p>
             </div>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+          </div>
+          
+          <div className="space-y-4">
+            <h4 className="font-medium">Recommended Changes</h4>
+            <ul className="list-disc pl-5 space-y-1">
+              {results.recommendedChanges.map((change: string, index: number) => (
+                <li key={index} className="text-sm">{change}</li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }
