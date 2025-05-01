@@ -23,11 +23,13 @@ interface DashboardStats {
 
 const fetchDashboardStats = async (): Promise<DashboardStats> => {
   const response = await axios.get('/api/stats/dashboard');
+  console.log('Dashboard stats API response:', response.data);
   return response.data;
 };
 
 const fetchRecentJobs = async (): Promise<Job[]> => {
   const response = await axios.get('/api/jobs');
+  console.log('Recent jobs API response:', response.data);
   return response.data.slice(0, 3); // Just get the first 3 jobs
 };
 
@@ -52,6 +54,16 @@ export default function Dashboard() {
     queryFn: fetchRecentJobs
   });
 
+  // Add useEffect for debugging purposes
+  useEffect(() => {
+    if (stats) {
+      console.log('Stats data in component:', stats);
+    }
+    if (statsError) {
+      console.error('Error fetching stats:', statsError);
+    }
+  }, [stats, statsError]);
+
   const handleViewJob = (job: Job) => {
     console.log("View job:", job);
     // Navigate to job details page
@@ -68,24 +80,24 @@ export default function Dashboard() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <StatCard 
           title="Total Jobs" 
-          value={statsLoading ? "Loading..." : statsError ? "Error" : stats?.total_jobs.toString()} 
+          value={statsLoading ? "Loading..." : statsError ? "Error" : stats?.total_jobs?.toString() || "0"} 
           icon={<Clock className="h-5 w-5" />}
           trend={stats?.job_trend}
         />
         <StatCard 
           title="Successful Jobs" 
-          value={statsLoading ? "Loading..." : statsError ? "Error" : stats?.successful_jobs.toString()}
+          value={statsLoading ? "Loading..." : statsError ? "Error" : stats?.successful_jobs?.toString() || "0"}
           icon={<CheckCircle className="h-5 w-5" />}
         />
         <StatCard 
           title="Average Speedup" 
-          value={statsLoading ? "Loading..." : statsError ? "Error" : `${stats?.avg_speedup}x`}
+          value={statsLoading ? "Loading..." : statsError ? "Error" : `${stats?.avg_speedup || 0}x`}
           description="After GPU acceleration"
           icon={<Gauge className="h-5 w-5" />}
         />
         <StatCard 
           title="Cost Savings" 
-          value={statsLoading ? "Loading..." : statsError ? "Error" : `${stats?.cost_savings}%`}
+          value={statsLoading ? "Loading..." : statsError ? "Error" : `${stats?.cost_savings || 0}%`}
           description="Estimated resource savings"
           icon={<Percent className="h-5 w-5" />}
         />
@@ -99,8 +111,8 @@ export default function Dashboard() {
           icon={<FileSearch className="h-5 w-5" />}
           path="/qualification"
           stats={[
-            { label: "Average Speedup", value: statsLoading ? "..." : `${stats?.avg_speedup}x` },
-            { label: "Analyzed Jobs", value: statsLoading ? "..." : stats?.total_jobs.toString() }
+            { label: "Average Speedup", value: statsLoading ? "..." : `${stats?.avg_speedup || 0}x` },
+            { label: "Analyzed Jobs", value: statsLoading ? "..." : `${stats?.total_jobs || 0}` }
           ]}
         />
         <ToolCard
@@ -109,8 +121,8 @@ export default function Dashboard() {
           icon={<BarChart2 className="h-5 w-5" />}
           path="/profiling"
           stats={[
-            { label: "Runs", value: statsLoading ? "..." : stats?.successful_jobs.toString() },
-            { label: "Success Rate", value: statsLoading && stats?.total_jobs > 0 ? "..." : `${Math.round((stats?.successful_jobs / stats?.total_jobs) * 100) || 0}%` }
+            { label: "Runs", value: statsLoading ? "..." : `${stats?.successful_jobs || 0}` },
+            { label: "Success Rate", value: statsLoading || !stats?.total_jobs ? "..." : `${Math.round((stats?.successful_jobs / stats?.total_jobs) * 100) || 0}%` }
           ]}
         />
       </div>
