@@ -11,7 +11,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <SideNav isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <div className={`fixed inset-y-0 z-10 ${sidebarOpen ? "md:w-64" : "md:w-16"} transition-all duration-300`}>
+        <SideNav isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      </div>
       
       <div 
         className={`flex flex-col flex-1 overflow-hidden transition-all duration-300 ${
@@ -28,4 +30,4 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       </div>
     </div>
   );
-};
+}

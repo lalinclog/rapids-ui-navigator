@@ -16,7 +16,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { PythonService } from '@/services/PythonService';
-import { BarChart2, Loader2 } from 'lucide-react';
+import { BarChart2, Loader2, Upload } from 'lucide-react';
 
 type FormValues = {
   eventLogPath: string;
@@ -27,15 +27,50 @@ type FormValues = {
 };
 
 export function ProfilingForm() {
-  const { register, handleSubmit, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormValues>({
     defaultValues: {
       outputFormat: 'html',
       generateTimeline: true,
+      eventLogPath: 's3://spark-logs/example.log'
     }
   });
   const [isRunning, setIsRunning] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [results, setResults] = useState<any>(null);
   const { toast } = useToast();
+  
+  const watchEventLogPath = watch('eventLogPath');
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingFile(true);
+    try {
+      const result = await PythonService.uploadFile(file);
+      if (result.success) {
+        setValue('eventLogPath', result.url);
+        toast({
+          title: "File Uploaded",
+          description: `${file.name} has been uploaded successfully.`,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Upload Failed",
+          description: "Failed to upload file. Please try again.",
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Upload Error",
+        description: "An unexpected error occurred during upload",
+      });
+    } finally {
+      setUploadingFile(false);
+    }
+  };
 
   const onSubmit = async (data: FormValues) => {
     setIsRunning(true);
@@ -57,8 +92,8 @@ export function ProfilingForm() {
       if (result.success) {
         setResults(result.data);
         toast({
-          title: "Profiling Complete",
-          description: "Analysis successfully completed",
+          title: "Profiling Started",
+          description: `Job #${result.jobId} has been started. Results will be available shortly.`,
         });
       } else {
         toast({
@@ -84,11 +119,38 @@ export function ProfilingForm() {
         <div className="space-y-4">
           <div>
             <Label htmlFor="eventLogPath">Spark Event Log Path</Label>
-            <Input
-              id="eventLogPath"
-              placeholder="local/path/to/event_log or s3://bucket/event_log"
-              {...register("eventLogPath", { required: true })}
-            />
+            <div className="flex mt-1">
+              <Input
+                id="eventLogPath"
+                placeholder="s3://bucket/event_log"
+                {...register("eventLogPath", { required: true })}
+                className="rounded-r-none"
+              />
+              <div className="relative">
+                <Input
+                  id="fileUploadProfiling"
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+                <Button 
+                  type="button"
+                  variant="secondary"
+                  className="h-10 rounded-l-none"
+                  onClick={() => document.getElementById('fileUploadProfiling')?.click()}
+                  disabled={uploadingFile}
+                >
+                  {uploadingFile ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Use s3://spark-logs/... for logs stored in MinIO or upload your own file
+            </p>
             {errors.eventLogPath && (
               <p className="text-red-500 text-sm mt-1">Event log path is required</p>
             )}
@@ -96,7 +158,10 @@ export function ProfilingForm() {
           
           <div>
             <Label htmlFor="outputFormat">Output Format</Label>
-            <Select defaultValue="html">
+            <Select 
+              defaultValue="html"
+              onValueChange={(value) => setValue('outputFormat', value as 'html' | 'csv' | 'json')}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select output format" />
               </SelectTrigger>
@@ -118,7 +183,13 @@ export function ProfilingForm() {
           </div>
           
           <div className="flex items-center space-x-2">
-            <Checkbox id="generateTimeline" defaultChecked={true} />
+            <Checkbox 
+              id="generateTimeline" 
+              defaultChecked={true}
+              onCheckedChange={(checked) => 
+                setValue('generateTimeline', checked === true)
+              }
+            />
             <Label htmlFor="generateTimeline">Generate Timeline Visualization</Label>
           </div>
           

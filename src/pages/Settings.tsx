@@ -82,7 +82,7 @@ export default function Settings() {
             )}
             
             {pythonStatus === 'not-setup' && (
-              <Alert variant="warning">
+              <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Python Environment Not Detected</AlertTitle>
                 <AlertDescription>
@@ -93,7 +93,7 @@ export default function Settings() {
             )}
             
             {pythonStatus === 'ready' && (
-              <Alert variant="success">
+              <Alert>
                 <CheckCircle className="h-4 w-4" />
                 <AlertTitle>Python Environment Ready</AlertTitle>
                 <AlertDescription>
@@ -119,6 +119,55 @@ export default function Settings() {
               </Button>
             )}
           </CardFooter>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Terminal className="h-5 w-5" />
+              Docker Environment
+            </CardTitle>
+            <CardDescription>
+              Information about the Docker environment
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium mb-1">Services</h4>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li className="text-sm">
+                    <span className="font-medium">MinIO:</span> Object storage for Spark event logs and outputs (Port 9000, Console: 9001)
+                  </li>
+                  <li className="text-sm">
+                    <span className="font-medium">PostgreSQL:</span> Metadata storage for jobs and results (Port 5432)
+                  </li>
+                </ul>
+              </div>
+              
+              <div>
+                <h4 className="font-medium mb-1">Connection Information</h4>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <p className="font-medium">MinIO Console</p>
+                    <p className="text-muted-foreground">http://localhost:9001</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">MinIO Credentials</p>
+                    <p className="text-muted-foreground">User: minioadmin<br/>Password: minioadmin</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">PostgreSQL Connection</p>
+                    <p className="text-muted-foreground">Host: localhost<br/>Port: 5432</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">PostgreSQL Credentials</p>
+                    <p className="text-muted-foreground">User: postgres<br/>Password: postgres<br/>Database: spark_rapids</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
     </>
