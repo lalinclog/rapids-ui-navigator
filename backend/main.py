@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +13,7 @@ import uuid
 from .services.minio_service import MinioService
 from .services.postgres_service import PostgresService
 from .services.python_service import PythonService
+from .services.stats_service import StatsService
 
 app = FastAPI()
 
@@ -35,6 +35,9 @@ def get_postgres_service():
 
 def get_python_service():
     return PythonService()
+
+def get_stats_service():
+    return StatsService()
 
 # Models
 class QualificationParams(BaseModel):
@@ -63,6 +66,14 @@ class JobBase(BaseModel):
 @app.get("/api/health")
 def health_check():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/stats/dashboard")
+async def get_dashboard_stats(stats_service: StatsService = Depends(get_stats_service)):
+    try:
+        stats = stats_service.get_dashboard_stats()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/python/check-env")
 async def check_python_env(python_service: PythonService = Depends(get_python_service)):

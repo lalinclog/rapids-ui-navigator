@@ -1,46 +1,56 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardHeader } from '@/components/layout/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { ToolCard } from '@/components/dashboard/ToolCard';
 import { JobCard, Job } from '@/components/jobs/JobCard';
-import { FileSearch, BarChart2, Clock, CheckCircle } from 'lucide-react';
+import { FileSearch, BarChart2, Clock, CheckCircle, Gauge, Percent } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
+
+interface DashboardStats {
+  total_jobs: number;
+  successful_jobs: number;
+  job_trend: {
+    value: number;
+    positive: boolean;
+  };
+  avg_speedup: number;
+  cost_savings: number;
+}
+
+const fetchDashboardStats = async (): Promise<DashboardStats> => {
+  const response = await axios.get('/api/stats/dashboard');
+  return response.data;
+};
+
+const fetchRecentJobs = async (): Promise<Job[]> => {
+  const response = await axios.get('/api/jobs');
+  return response.data.slice(0, 3); // Just get the first 3 jobs
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
   
-  // Mock data
-  const [recentJobs] = useState<Job[]>([
-    {
-      id: '1',
-      name: 'Daily ETL Pipeline',
-      type: 'qualification',
-      status: 'completed',
-      startTime: new Date(2024, 3, 25, 9, 30),
-      endTime: new Date(2024, 3, 25, 10, 15),
-      user: 'data-engineer'
-    },
-    {
-      id: '2',
-      name: 'ML Model Training',
-      type: 'profiling',
-      status: 'running',
-      progress: 67,
-      startTime: new Date(2024, 3, 29, 14, 0),
-      user: 'data-scientist'
-    },
-    {
-      id: '3',
-      name: 'Weekly Analytics',
-      type: 'qualification',
-      status: 'warning',
-      startTime: new Date(2024, 3, 28, 8, 0),
-      endTime: new Date(2024, 3, 28, 9, 35),
-      user: 'analyst'
-    }
-  ]);
+  const { 
+    data: stats, 
+    isLoading: statsLoading, 
+    error: statsError 
+  } = useQuery({
+    queryKey: ['dashboardStats'],
+    queryFn: fetchDashboardStats
+  });
+
+  const { 
+    data: recentJobs, 
+    isLoading: jobsLoading, 
+    error: jobsError 
+  } = useQuery({
+    queryKey: ['recentJobs'],
+    queryFn: fetchRecentJobs
+  });
 
   const handleViewJob = (job: Job) => {
     console.log("View job:", job);
@@ -58,25 +68,26 @@ export default function Dashboard() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <StatCard 
           title="Total Jobs" 
-          value="24" 
+          value={statsLoading ? "Loading..." : statsError ? "Error" : stats?.total_jobs.toString()} 
           icon={<Clock className="h-5 w-5" />}
-          trend={{ value: 15, positive: true }}
+          trend={stats?.job_trend}
         />
         <StatCard 
           title="Successful Jobs" 
-          value="19" 
+          value={statsLoading ? "Loading..." : statsError ? "Error" : stats?.successful_jobs.toString()}
           icon={<CheckCircle className="h-5 w-5" />}
         />
         <StatCard 
           title="Average Speedup" 
-          value="2.7x" 
+          value={statsLoading ? "Loading..." : statsError ? "Error" : `${stats?.avg_speedup}x`}
           description="After GPU acceleration"
-          trend={{ value: 12, positive: true }}
+          icon={<Gauge className="h-5 w-5" />}
         />
         <StatCard 
           title="Cost Savings" 
-          value="42%" 
+          value={statsLoading ? "Loading..." : statsError ? "Error" : `${stats?.cost_savings}%`}
           description="Estimated resource savings"
+          icon={<Percent className="h-5 w-5" />}
         />
       </div>
       
@@ -88,8 +99,8 @@ export default function Dashboard() {
           icon={<FileSearch className="h-5 w-5" />}
           path="/qualification"
           stats={[
-            { label: "Average Speedup", value: "2.5x" },
-            { label: "Analyzed Jobs", value: "14" }
+            { label: "Average Speedup", value: statsLoading ? "..." : `${stats?.avg_speedup}x` },
+            { label: "Analyzed Jobs", value: statsLoading ? "..." : stats?.total_jobs.toString() }
           ]}
         />
         <ToolCard
@@ -98,8 +109,8 @@ export default function Dashboard() {
           icon={<BarChart2 className="h-5 w-5" />}
           path="/profiling"
           stats={[
-            { label: "Runs", value: "10" },
-            { label: "Last Run", value: "2h ago" }
+            { label: "Runs", value: statsLoading ? "..." : stats?.successful_jobs.toString() },
+            { label: "Success Rate", value: statsLoading && stats?.total_jobs > 0 ? "..." : `${Math.round((stats?.successful_jobs / stats?.total_jobs) * 100) || 0}%` }
           ]}
         />
       </div>
@@ -112,9 +123,17 @@ export default function Dashboard() {
       </div>
       
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {recentJobs.map((job) => (
-          <JobCard key={job.id} job={job} onView={handleViewJob} />
-        ))}
+        {jobsLoading ? (
+          <p>Loading jobs...</p>
+        ) : jobsError ? (
+          <p>Error loading jobs</p>
+        ) : recentJobs && recentJobs.length > 0 ? (
+          recentJobs.map((job) => (
+            <JobCard key={job.id} job={job} onView={handleViewJob} />
+          ))
+        ) : (
+          <p>No jobs found</p>
+        )}
       </div>
     </>
   );
