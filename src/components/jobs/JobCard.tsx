@@ -19,9 +19,10 @@ export type Job = {
 interface JobCardProps {
   job: Job;
   onView: (job: Job) => void;
+  onDownload?: (job: Job) => void;
 }
 
-export function JobCard({ job, onView }: JobCardProps) {
+export function JobCard({ job, onView, onDownload }: JobCardProps) {
   const { name, type, status, progress, startTime, endTime, user } = job;
 
   const duration = endTime 
@@ -70,11 +71,12 @@ export function JobCard({ job, onView }: JobCardProps) {
             <Eye className="h-4 w-4 mr-2" />
             View Results
           </Button>
-          {status === 'completed' && (
+          {status === 'completed' && onDownload && (
             <Button 
               variant="outline" 
               size="sm" 
               className="text-sm"
+              onClick={() => onDownload(job)}
             >
               <DownloadCloud className="h-4 w-4 mr-2" />
               Download

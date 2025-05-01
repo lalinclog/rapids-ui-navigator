@@ -31,12 +31,21 @@ export const Header: React.FC<HeaderProps> = ({
   );
 };
 
-export const DashboardHeader: React.FC<HeaderProps> = (props) => {
+interface DashboardHeaderProps extends HeaderProps {
+  onRefresh?: () => void;
+}
+
+export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onRefresh, ...props }) => {
   return (
     <Header 
       {...props} 
       action={
-        <Button variant="outline" size="sm" className="ml-3">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="ml-3" 
+          onClick={onRefresh}
+        >
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
         </Button>

@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,7 @@ import subprocess
 import tempfile
 from datetime import datetime
 import uuid
+from fastapi.responses import FileResponse, Response
 
 from .services.minio_service import MinioService
 from .services.postgres_service import PostgresService
@@ -174,6 +176,45 @@ async def get_job(job_id: int, postgres_service: PostgresService = Depends(get_p
         if not job:
             raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found")
         return job
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/jobs/{job_id}/download")
+async def download_job_results(
+    job_id: int, 
+    postgres_service: PostgresService = Depends(get_postgres_service),
+    minio_service: MinioService = Depends(get_minio_service)
+):
+    try:
+        # Get job details
+        job = postgres_service.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found")
+        
+        if job["status"] != "completed":
+            raise HTTPException(status_code=400, detail="Only completed jobs can be downloaded")
+        
+        # For demo purposes, we'll create a simple JSON file
+        # In a real app, you would fetch the actual results from MinIO or elsewhere
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
+            job_results = {
+                "id": job_id,
+                "name": job["name"],
+                "type": job["type"],
+                "results": job.get("results", {}),
+                "timestamp": datetime.now().isoformat()
+            }
+            tmp.write(json.dumps(job_results, indent=2).encode())
+            tmp_path = tmp.name
+        
+        # Return the file as a download
+        return FileResponse(
+            path=tmp_path,
+            filename=f"{job['name']}-results.json",
+            media_type="application/json"
+        )
     except HTTPException:
         raise
     except Exception as e:
