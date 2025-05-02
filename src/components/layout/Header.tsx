@@ -2,6 +2,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface HeaderProps {
   title: string;
@@ -33,9 +34,26 @@ export const Header: React.FC<HeaderProps> = ({
 
 interface DashboardHeaderProps extends HeaderProps {
   onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
-export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onRefresh, ...props }) => {
+export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
+  onRefresh, 
+  isRefreshing = false,
+  ...props 
+}) => {
+  const { toast } = useToast();
+  
+  const handleRefresh = () => {
+    if (onRefresh) {
+      onRefresh();
+      toast({
+        title: "Refreshing data",
+        description: "Getting the latest data from the server",
+      });
+    }
+  };
+  
   return (
     <Header 
       {...props} 
@@ -44,10 +62,11 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ onRefresh, ...
           variant="outline" 
           size="sm" 
           className="ml-3" 
-          onClick={onRefresh}
+          onClick={handleRefresh}
+          disabled={isRefreshing}
         >
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </Button>
       }
     />

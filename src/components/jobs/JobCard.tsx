@@ -28,6 +28,18 @@ export function JobCard({ job, onView, onDownload }: JobCardProps) {
   const duration = endTime 
     ? formatDistanceToNow(new Date(endTime), { addSuffix: false })
     : "In progress";
+    
+  const handleViewClick = () => {
+    console.log("View button clicked for job:", job.id);
+    onView(job);
+  };
+  
+  const handleDownloadClick = () => {
+    console.log("Download button clicked for job:", job.id);
+    if (onDownload) {
+      onDownload(job);
+    }
+  };
 
   return (
     <Card className="overflow-hidden">
@@ -66,7 +78,7 @@ export function JobCard({ job, onView, onDownload }: JobCardProps) {
             variant="outline" 
             size="sm" 
             className="text-sm"
-            onClick={() => onView(job)}
+            onClick={handleViewClick}
           >
             <Eye className="h-4 w-4 mr-2" />
             View Results
@@ -76,7 +88,7 @@ export function JobCard({ job, onView, onDownload }: JobCardProps) {
               variant="outline" 
               size="sm" 
               className="text-sm"
-              onClick={() => onDownload(job)}
+              onClick={handleDownloadClick}
             >
               <DownloadCloud className="h-4 w-4 mr-2" />
               Download

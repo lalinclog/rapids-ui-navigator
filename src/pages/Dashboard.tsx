@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardHeader } from '@/components/layout/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -38,6 +37,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const { 
     data: stats, 
@@ -59,19 +59,18 @@ export default function Dashboard() {
     queryFn: fetchRecentJobs
   });
 
-  // Add useEffect for debugging purposes
-  useEffect(() => {
-    if (stats) {
-      console.log('Stats data in component:', stats);
-    }
-    if (statsError) {
-      console.error('Error fetching stats:', statsError);
-    }
-  }, [stats, statsError]);
-
   const handleRefresh = async () => {
+    console.log("Refreshing dashboard data...");
+    setIsRefreshing(true);
+    
     try {
-      await Promise.all([refetchStats(), refetchJobs()]);
+      const results = await Promise.all([
+        refetchStats(),
+        refetchJobs()
+      ]);
+      
+      console.log("Refresh results:", results);
+      
       toast({
         title: "Dashboard Refreshed",
         description: "Latest data has been loaded",
@@ -83,16 +82,20 @@ export default function Dashboard() {
         description: "Could not refresh dashboard data",
         variant: "destructive",
       });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
   const handleViewJob = (job: Job) => {
-    console.log("View job:", job);
+    console.log("Viewing job details:", job);
     // Navigate to job details page
     navigate(`/jobs/${job.id}`);
   };
 
   const handleDownloadJob = async (job: Job) => {
+    console.log("Attempting to download job:", job.id);
+    
     if (job.status !== 'completed') {
       toast({
         title: "Cannot Download",
@@ -103,10 +106,14 @@ export default function Dashboard() {
     }
     
     try {
+      console.log(`Sending download request to /api/jobs/${job.id}/download`);
+      
       // In a real implementation, this would hit an API endpoint to get a download URL
       const response = await axios.get(`/api/jobs/${job.id}/download`, {
         responseType: 'blob'
       });
+      
+      console.log("Download response received:", response);
       
       // Create a blob link to download
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -137,6 +144,7 @@ export default function Dashboard() {
         title="RAPIDS Dashboard" 
         description="Monitor and run NVIDIA RAPIDS tools for Spark acceleration"
         onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
       />
       
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
