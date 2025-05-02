@@ -25,8 +25,14 @@ interface JobCardProps {
 export function JobCard({ job, onView, onDownload }: JobCardProps) {
   const { name, type, status, progress, startTime, endTime, user } = job;
 
+  // Ensure startTime is a valid Date object
+  const startTimeDate = startTime instanceof Date ? startTime : new Date(startTime);
+  
+  // Format the duration safely
   const duration = endTime 
-    ? formatDistanceToNow(new Date(endTime), { addSuffix: false })
+    ? (endTime instanceof Date 
+        ? formatDistanceToNow(endTime, { addSuffix: false })
+        : formatDistanceToNow(new Date(endTime), { addSuffix: false }))
     : "In progress";
     
   const handleViewClick = () => {
@@ -58,7 +64,7 @@ export function JobCard({ job, onView, onDownload }: JobCardProps) {
           <div>
             <p className="text-xs text-muted-foreground">Start Time</p>
             <p className="text-sm font-medium mt-0.5">
-              {startTime.toLocaleString()}
+              {startTimeDate.toLocaleString()}
             </p>
           </div>
           <div>
