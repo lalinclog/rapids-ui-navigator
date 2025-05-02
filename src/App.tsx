@@ -11,6 +11,7 @@ import Profiling from "./pages/Profiling";
 import JobHistory from "./pages/JobHistory";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import JobDetails from "./pages/JobDetails";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,11 @@ const App = () => (
           <Route path="/history" element={
             <AppLayout>
               <JobHistory />
+            </AppLayout>
+          } />
+          <Route path="/jobs/:jobId" element={
+            <AppLayout>
+              <JobDetails />
             </AppLayout>
           } />
           <Route path="/settings" element={

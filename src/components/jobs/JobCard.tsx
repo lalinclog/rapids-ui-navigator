@@ -35,12 +35,16 @@ export function JobCard({ job, onView, onDownload }: JobCardProps) {
         : formatDistanceToNow(new Date(endTime), { addSuffix: false }))
     : "In progress";
     
-  const handleViewClick = () => {
+  const handleViewClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     console.log("View button clicked for job:", job.id);
     onView(job);
   };
   
-  const handleDownloadClick = () => {
+  const handleDownloadClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     console.log("Download button clicked for job:", job.id);
     if (onDownload) {
       onDownload(job);
@@ -48,7 +52,7 @@ export function JobCard({ job, onView, onDownload }: JobCardProps) {
   };
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer" onClick={handleViewClick}>
       <CardContent className="p-6">
         <div className="flex justify-between">
           <div>

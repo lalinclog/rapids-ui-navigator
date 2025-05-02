@@ -56,9 +56,18 @@ const mockJobs: Job[] = [
 
 const fetchDashboardStats = async (): Promise<DashboardStats> => {
   try {
+    console.log('Fetching dashboard stats...');
     const response = await axios.get('/api/stats/dashboard');
-    console.log('Dashboard stats API response:', response.data);
-    return response.data;
+    console.log('Dashboard stats API response:', response);
+    
+    // Ensure we have a valid response with data
+    if (response.data && typeof response.data === 'object') {
+      console.log('Valid dashboard stats received:', response.data);
+      return response.data;
+    } else {
+      console.error('Invalid dashboard stats response:', response.data);
+      throw new Error('Invalid response format');
+    }
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
     // Return default data when API fails
@@ -77,16 +86,23 @@ const fetchDashboardStats = async (): Promise<DashboardStats> => {
 
 const fetchRecentJobs = async (): Promise<Job[]> => {
   try {
+    console.log('Fetching recent jobs...');
     const response = await axios.get('/api/jobs');
-    console.log('Recent jobs API response:', response.data);
+    console.log('Recent jobs API response:', response);
     
     // Ensure the response is an array
-    if (Array.isArray(response.data)) {
+    if (response.data && Array.isArray(response.data)) {
+      console.log('Valid jobs array received with length:', response.data.length);
+      
       // Process each job to ensure dates are properly converted to Date objects
       return response.data.slice(0, 3).map((job: any) => ({
         ...job,
-        startTime: job.startTime ? new Date(job.startTime) : new Date(),
-        endTime: job.endTime ? new Date(job.endTime) : undefined
+        id: job.id?.toString() || String(Math.random()),
+        startTime: job.startTime ? new Date(job.startTime) : 
+                  job.start_time ? new Date(job.start_time) : new Date(),
+        endTime: job.endTime ? new Date(job.endTime) : 
+                job.end_time ? new Date(job.end_time) : undefined,
+        user: job.user || job.user_id || 'admin'
       }));
     } else {
       console.error('API response is not an array:', response.data);
@@ -105,13 +121,7 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   
   const { 
-    data: stats = {
-      total_jobs: 0,
-      successful_jobs: 0,
-      job_trend: { value: 0, positive: true },
-      avg_speedup: 0,
-      cost_savings: 0
-    }, 
+    data: stats,
     isLoading: statsLoading, 
     error: statsError,
     refetch: refetchStats
@@ -209,7 +219,20 @@ export default function Dashboard() {
     }
   };
 
-  console.log("Current recentJobs value:", recentJobs); // Debug log
+  // Ensure stats has default values if undefined
+  const safeStats = stats || {
+    total_jobs: 0,
+    successful_jobs: 0,
+    job_trend: { value: 0, positive: true },
+    avg_speedup: 0,
+    cost_savings: 0
+  };
+  
+  // Make sure recentJobs is always an array
+  const safeJobs = Array.isArray(recentJobs) ? recentJobs : mockJobs;
+  
+  console.log("Current recentJobs value:", safeJobs);
+  console.log("Current stats value:", safeStats);
 
   return (
     <>
@@ -223,24 +246,24 @@ export default function Dashboard() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <StatCard 
           title="Total Jobs" 
-          value={statsLoading ? "Loading..." : statsError ? "Error" : stats?.total_jobs?.toString() || "0"} 
+          value={statsLoading ? "Loading..." : statsError ? "Error" : safeStats.total_jobs.toString()} 
           icon={<Clock className="h-5 w-5" />}
-          trend={stats?.job_trend}
+          trend={safeStats.job_trend}
         />
         <StatCard 
           title="Successful Jobs" 
-          value={statsLoading ? "Loading..." : statsError ? "Error" : stats?.successful_jobs?.toString() || "0"}
+          value={statsLoading ? "Loading..." : statsError ? "Error" : safeStats.successful_jobs.toString()}
           icon={<CheckCircle className="h-5 w-5" />}
         />
         <StatCard 
           title="Average Speedup" 
-          value={statsLoading ? "Loading..." : statsError ? "Error" : `${stats?.avg_speedup || 0}x`}
+          value={statsLoading ? "Loading..." : statsError ? "Error" : `${safeStats.avg_speedup}x`}
           description="After GPU acceleration"
           icon={<Gauge className="h-5 w-5" />}
         />
         <StatCard 
           title="Cost Savings" 
-          value={statsLoading ? "Loading..." : statsError ? "Error" : `${stats?.cost_savings || 0}%`}
+          value={statsLoading ? "Loading..." : statsError ? "Error" : `${safeStats.cost_savings}%`}
           description="Estimated resource savings"
           icon={<Percent className="h-5 w-5" />}
         />
@@ -254,8 +277,8 @@ export default function Dashboard() {
           icon={<FileSearch className="h-5 w-5" />}
           path="/qualification"
           stats={[
-            { label: "Average Speedup", value: statsLoading ? "..." : `${stats?.avg_speedup || 0}x` },
-            { label: "Analyzed Jobs", value: statsLoading ? "..." : `${stats?.total_jobs || 0}` }
+            { label: "Average Speedup", value: statsLoading ? "..." : `${safeStats.avg_speedup}x` },
+            { label: "Analyzed Jobs", value: statsLoading ? "..." : `${safeStats.total_jobs}` }
           ]}
         />
         <ToolCard
@@ -264,8 +287,9 @@ export default function Dashboard() {
           icon={<BarChart2 className="h-5 w-5" />}
           path="/profiling"
           stats={[
-            { label: "Runs", value: statsLoading ? "..." : `${stats?.successful_jobs || 0}` },
-            { label: "Success Rate", value: statsLoading || !stats?.total_jobs ? "..." : `${Math.round((stats?.successful_jobs / stats?.total_jobs) * 100) || 0}%` }
+            { label: "Runs", value: statsLoading ? "..." : `${safeStats.successful_jobs}` },
+            { label: "Success Rate", value: statsLoading || !safeStats.total_jobs ? "..." : 
+              `${Math.round((safeStats.successful_jobs / safeStats.total_jobs) * 100) || 0}%` }
           ]}
         />
       </div>
@@ -282,8 +306,8 @@ export default function Dashboard() {
           <p>Loading jobs...</p>
         ) : jobsError ? (
           <p>Error loading jobs</p>
-        ) : recentJobs && Array.isArray(recentJobs) && recentJobs.length > 0 ? (
-          recentJobs.map((job) => (
+        ) : safeJobs.length > 0 ? (
+          safeJobs.map((job) => (
             <JobCard 
               key={job.id} 
               job={job} 
