@@ -22,31 +22,44 @@ class PostgresService:
         logger.info(f"PostgresService initialized with connection params: {self.conn_params}")
 
     def _get_connection(self):
-        return psycopg2.connect(**self.conn_params)
+        try:
+            logger.debug("Opening new database connection")
+            return psycopg2.connect(**self.conn_params)
+        except Exception as e:
+            logger.error(f"Failed to connect to database: {str(e)}", exc_info=True)
+            raise
 
     def create_job(self, job_data):
+        logger.info(f"Creating new job: {job_data['name']} (type: {job_data['type']})")
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO jobs 
-                    (name, type, status, user_id, event_log_path, application_name, 
-                     output_format, additional_options)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    job_data["name"],
-                    job_data["type"],
-                    job_data["status"],
-                    job_data["user_id"],
-                    job_data["event_log_path"],
-                    job_data["application_name"],
-                    job_data["output_format"],
-                    job_data["additional_options"]
-                ))
-                job_id = cursor.fetchone()[0]
-                return job_id
+                try:
+                    cursor.execute("""
+                        INSERT INTO jobs 
+                        (name, type, status, user_id, event_log_path, application_name, 
+                         output_format, additional_options)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        job_data["name"],
+                        job_data["type"],
+                        job_data["status"],
+                        job_data["user_id"],
+                        job_data["event_log_path"],
+                        job_data["application_name"],
+                        job_data["output_format"],
+                        job_data["additional_options"]
+                    ))
+                    job_id = cursor.fetchone()[0]
+                    logger.info(f"Successfully created job with ID: {job_id}")
+                    return job_id
+                except Exception as e:
+                    logger.error(f"Error creating job: {str(e)}", exc_info=True)
+                    conn.rollback()
+                    raise
 
     def update_job(self, job_id, update_data):
+        logger.info(f"Updating job {job_id} with data: {update_data}")
         set_clauses = []
         values = []
         
@@ -59,6 +72,7 @@ class PostgresService:
             values.append(value)
         
         if not set_clauses:
+            logger.warning(f"No valid data provided to update job {job_id}")
             return False
         
         sql = f"UPDATE jobs SET {', '.join(set_clauses)} WHERE id = %s"
@@ -66,10 +80,18 @@ class PostgresService:
         
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(sql, values)
-                return cursor.rowcount > 0
+                try:
+                    cursor.execute(sql, values)
+                    affected = cursor.rowcount > 0
+                    logger.info(f"Job {job_id} update {'successful' if affected else 'failed (no rows affected)'}")
+                    return affected
+                except Exception as e:
+                    logger.error(f"Error updating job {job_id}: {str(e)}", exc_info=True)
+                    conn.rollback()
+                    raise
 
     def get_jobs(self):
+        logger.info("Retrieving all jobs")
         try:
             with self._get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -102,6 +124,7 @@ class PostgresService:
             return []  # Return empty list on error
 
     def get_job(self, job_id):
+        logger.info(f"Retrieving job with ID: {job_id}")
         try:
             with self._get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -116,11 +139,14 @@ class PostgresService:
                     job = cursor.fetchone()
                     
                     if job:
+                        logger.info(f"Found job {job_id}: {job['name']} (status: {job['status']})")
                         # Convert datetime objects to ISO format strings
                         if job['start_time']:
                             job['start_time'] = job['start_time'].isoformat()
                         if job['end_time']:
                             job['end_time'] = job['end_time'].isoformat()
+                    else:
+                        logger.warning(f"Job with ID {job_id} not found")
                     
                     return job
         except Exception as e:

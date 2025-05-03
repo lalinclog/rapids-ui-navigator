@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardHeader } from '@/components/layout/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { ToolCard } from '@/components/dashboard/ToolCard';
-import { JobCard, Job } from '@/components/jobs/JobCard';
+import { Job } from '@/components/jobs/JobCard';
+import { JobsTable } from '@/components/jobs/JobsTable';
 import { FileSearch, BarChart2, Clock, CheckCircle, Gauge, Percent } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -55,8 +56,8 @@ const mockJobs: Job[] = [
 ];
 
 const fetchDashboardStats = async (): Promise<DashboardStats> => {
+  console.log('Fetching dashboard stats...');
   try {
-    console.log('Fetching dashboard stats...');
     const response = await axios.get('/api/stats/dashboard');
     console.log('Dashboard stats API response:', response);
     
@@ -85,8 +86,8 @@ const fetchDashboardStats = async (): Promise<DashboardStats> => {
 };
 
 const fetchRecentJobs = async (): Promise<Job[]> => {
+  console.log('Fetching recent jobs...');
   try {
-    console.log('Fetching recent jobs...');
     const response = await axios.get('/api/jobs');
     console.log('Recent jobs API response:', response);
     
@@ -95,7 +96,7 @@ const fetchRecentJobs = async (): Promise<Job[]> => {
       console.log('Valid jobs array received with length:', response.data.length);
       
       // Process each job to ensure dates are properly converted to Date objects
-      return response.data.slice(0, 3).map((job: any) => ({
+      return response.data.map((job: any) => ({
         ...job,
         id: job.id?.toString() || String(Math.random()),
         startTime: job.startTime ? new Date(job.startTime) : 
@@ -301,24 +302,12 @@ export default function Dashboard() {
         </Button>
       </div>
       
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {jobsLoading ? (
-          <p>Loading jobs...</p>
-        ) : jobsError ? (
-          <p>Error loading jobs</p>
-        ) : safeJobs.length > 0 ? (
-          safeJobs.map((job) => (
-            <JobCard 
-              key={job.id} 
-              job={job} 
-              onView={handleViewJob}
-              onDownload={handleDownloadJob}
-            />
-          ))
-        ) : (
-          <p>No jobs found</p>
-        )}
-      </div>
+      <JobsTable 
+        jobs={safeJobs} 
+        isLoading={jobsLoading} 
+        onView={handleViewJob}
+        onDownload={handleDownloadJob}
+      />
     </>
   );
 }

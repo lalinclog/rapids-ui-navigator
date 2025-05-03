@@ -11,11 +11,19 @@ import tempfile
 from datetime import datetime
 import uuid
 from fastapi.responses import FileResponse, Response
+import logging
 
 from .services.minio_service import MinioService
 from .services.postgres_service import PostgresService
 from .services.python_service import PythonService
 from .services.stats_service import StatsService
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -71,26 +79,35 @@ def health_check():
 
 @app.get("/api/stats/dashboard")
 async def get_dashboard_stats(stats_service: StatsService = Depends(get_stats_service)):
+    logger.info("Received request for dashboard stats")
     try:
         stats = stats_service.get_dashboard_stats()
+        logger.info(f"Returning dashboard stats: {stats}")
         return stats
     except Exception as e:
+        logger.error(f"Error getting dashboard stats: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/python/check-env")
 async def check_python_env(python_service: PythonService = Depends(get_python_service)):
+    logger.info("Checking Python environment")
     try:
         result = python_service.check_python_env()
+        logger.info(f"Python environment check result: {result}")
         return {"success": result}
     except Exception as e:
+        logger.error(f"Error checking Python environment: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/python/setup-env")
 async def setup_python_env(python_service: PythonService = Depends(get_python_service)):
+    logger.info("Setting up Python environment")
     try:
         result = python_service.setup_python_env()
+        logger.info(f"Python environment setup result: {result}")
         return result
     except Exception as e:
+        logger.error(f"Error setting up Python environment: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/qualification")
@@ -101,6 +118,7 @@ async def run_qualification(
     postgres_service: PostgresService = Depends(get_postgres_service),
     python_service: PythonService = Depends(get_python_service)
 ):
+    logger.info(f"Running qualification with params: {params}")
     try:
         # Create a job entry
         job_id = postgres_service.create_job({
@@ -114,6 +132,8 @@ async def run_qualification(
             "additional_options": params.additionalOptions
         })
         
+        logger.info(f"Created qualification job with ID: {job_id}")
+        
         # Run the task in background
         background_tasks.add_task(
             python_service.run_qualification_task,
@@ -125,6 +145,7 @@ async def run_qualification(
         
         return {"success": True, "jobId": job_id}
     except Exception as e:
+        logger.error(f"Error running qualification: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/profiling")
@@ -135,6 +156,7 @@ async def run_profiling(
     postgres_service: PostgresService = Depends(get_postgres_service),
     python_service: PythonService = Depends(get_python_service)
 ):
+    logger.info(f"Running profiling with params: {params}")
     try:
         # Create a job entry
         job_id = postgres_service.create_job({
@@ -148,6 +170,8 @@ async def run_profiling(
             "additional_options": params.additionalOptions
         })
         
+        logger.info(f"Created profiling job with ID: {job_id}")
+        
         # Run the task in background
         background_tasks.add_task(
             python_service.run_profiling_task,
@@ -159,26 +183,34 @@ async def run_profiling(
         
         return {"success": True, "jobId": job_id}
     except Exception as e:
+        logger.error(f"Error running profiling: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/jobs")
 async def get_jobs(postgres_service: PostgresService = Depends(get_postgres_service)):
+    logger.info("Fetching all jobs")
     try:
         jobs = postgres_service.get_jobs()
+        logger.info(f"Retrieved {len(jobs) if jobs else 0} jobs")
         return jobs
     except Exception as e:
+        logger.error(f"Error fetching jobs: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/jobs/{job_id}")
 async def get_job(job_id: int, postgres_service: PostgresService = Depends(get_postgres_service)):
+    logger.info(f"Fetching job with ID: {job_id}")
     try:
         job = postgres_service.get_job(job_id)
         if not job:
+            logger.warning(f"Job with ID {job_id} not found")
             raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found")
+        logger.info(f"Retrieved job: {job}")
         return job
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error fetching job {job_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/jobs/{job_id}/download")
@@ -187,13 +219,16 @@ async def download_job_results(
     postgres_service: PostgresService = Depends(get_postgres_service),
     minio_service: MinioService = Depends(get_minio_service)
 ):
+    logger.info(f"Download request for job with ID: {job_id}")
     try:
         # Get job details
         job = postgres_service.get_job(job_id)
         if not job:
+            logger.warning(f"Job with ID {job_id} not found")
             raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found")
         
         if job["status"] != "completed":
+            logger.warning(f"Cannot download job {job_id} as it is not completed")
             raise HTTPException(status_code=400, detail="Only completed jobs can be downloaded")
         
         # For demo purposes, we'll create a simple JSON file
@@ -209,6 +244,7 @@ async def download_job_results(
             tmp.write(json.dumps(job_results, indent=2).encode())
             tmp_path = tmp.name
         
+        logger.info(f"Prepared download file for job {job_id} at {tmp_path}")
         # Return the file as a download
         return FileResponse(
             path=tmp_path,
@@ -218,6 +254,7 @@ async def download_job_results(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error downloading job {job_id} results: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/upload")
@@ -225,6 +262,7 @@ async def upload_file(
     file: UploadFile = File(...),
     minio_service: MinioService = Depends(get_minio_service)
 ):
+    logger.info(f"Uploading file: {file.filename}")
     try:
         # Generate a unique object name
         object_name = f"uploads/{uuid.uuid4()}/{file.filename}"
@@ -232,12 +270,14 @@ async def upload_file(
         # Upload to MinIO
         result = await minio_service.upload_file(file, object_name)
         
+        logger.info(f"File uploaded successfully: {result}")
         return {
             "success": True,
             "url": f"s3://{result['bucket']}/{result['object_name']}",
             "fileName": file.filename
         }
     except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # Serve static files
