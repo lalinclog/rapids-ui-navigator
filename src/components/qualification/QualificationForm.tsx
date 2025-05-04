@@ -21,6 +21,7 @@ type FormValues = {
   eventLogPath: string;
   outputFormat: 'csv' | 'json' | 'html';
   applicationName?: string;
+  platform: string;
   additionalOptions?: string;
 };
 
@@ -28,7 +29,8 @@ export function QualificationForm() {
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormValues>({
     defaultValues: {
       outputFormat: 'html',
-      eventLogPath: 's3://spark-logs/example.log'
+      eventLogPath: 's3://spark-logs/example.log',
+      platform: 'onprem'
     }
   });
   const [isRunning, setIsRunning] = useState(false);
@@ -151,6 +153,29 @@ export function QualificationForm() {
             {errors.eventLogPath && (
               <p className="text-red-500 text-sm mt-1">Event log path is required</p>
             )}
+          </div>
+          
+          <div>
+            <Label htmlFor="platform">Platform</Label>
+            <Select 
+              defaultValue="onprem"
+              onValueChange={(value) => setValue('platform', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select platform" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="onprem">On-Premises</SelectItem>
+                <SelectItem value="emr">AWS EMR</SelectItem>
+                <SelectItem value="dataproc">Google Dataproc</SelectItem>
+                <SelectItem value="dataproc-gke">Dataproc GKE</SelectItem>
+                <SelectItem value="databricks-aws">Databricks on AWS</SelectItem>
+                <SelectItem value="databricks-azure">Databricks on Azure</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Select the platform where your Spark application was executed
+            </p>
           </div>
           
           <div>

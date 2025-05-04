@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,12 +54,14 @@ class QualificationParams(BaseModel):
     eventLogPath: str
     outputFormat: str
     applicationName: Optional[str] = None
+    platform: Optional[str] = "onprem"
     additionalOptions: Optional[str] = None
 
 class ProfilingParams(BaseModel):
     eventLogPath: str
     outputFormat: str
     applicationName: Optional[str] = None
+    platform: Optional[str] = "onprem"
     generateTimeline: bool = True
     additionalOptions: Optional[str] = None
 

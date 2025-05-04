@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Select,
   SelectContent,
@@ -13,15 +14,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { PythonService } from '@/services/PythonService';
-import { BarChart2, Loader2, Upload } from 'lucide-react';
+import { LineChart, Activity, Loader2, Upload } from 'lucide-react';
 
 type FormValues = {
   eventLogPath: string;
   outputFormat: 'csv' | 'json' | 'html';
   applicationName?: string;
+  platform: string;
   generateTimeline: boolean;
   additionalOptions?: string;
 };
@@ -30,8 +31,9 @@ export function ProfilingForm() {
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormValues>({
     defaultValues: {
       outputFormat: 'html',
-      generateTimeline: true,
-      eventLogPath: 's3://spark-logs/example.log'
+      eventLogPath: 's3://spark-logs/example.log',
+      platform: 'onprem',
+      generateTimeline: true
     }
   });
   const [isRunning, setIsRunning] = useState(false);
@@ -40,6 +42,7 @@ export function ProfilingForm() {
   const { toast } = useToast();
   
   const watchEventLogPath = watch('eventLogPath');
+  const watchGenerateTimeline = watch('generateTimeline');
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -98,7 +101,7 @@ export function ProfilingForm() {
       } else {
         toast({
           variant: "destructive",
-          title: "Analysis Failed",
+          title: "Profiling Failed",
           description: "Failed to run profiling tool. Check logs for details.",
         });
       }
@@ -128,7 +131,7 @@ export function ProfilingForm() {
               />
               <div className="relative">
                 <Input
-                  id="fileUploadProfiling"
+                  id="fileUpload"
                   type="file"
                   className="hidden"
                   onChange={handleFileUpload}
@@ -137,7 +140,7 @@ export function ProfilingForm() {
                   type="button"
                   variant="secondary"
                   className="h-10 rounded-l-none"
-                  onClick={() => document.getElementById('fileUploadProfiling')?.click()}
+                  onClick={() => document.getElementById('fileUpload')?.click()}
                   disabled={uploadingFile}
                 >
                   {uploadingFile ? (
@@ -154,6 +157,29 @@ export function ProfilingForm() {
             {errors.eventLogPath && (
               <p className="text-red-500 text-sm mt-1">Event log path is required</p>
             )}
+          </div>
+          
+          <div>
+            <Label htmlFor="platform">Platform</Label>
+            <Select 
+              defaultValue="onprem"
+              onValueChange={(value) => setValue('platform', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select platform" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="onprem">On-Premises</SelectItem>
+                <SelectItem value="emr">AWS EMR</SelectItem>
+                <SelectItem value="dataproc">Google Dataproc</SelectItem>
+                <SelectItem value="dataproc-gke">Dataproc GKE</SelectItem>
+                <SelectItem value="databricks-aws">Databricks on AWS</SelectItem>
+                <SelectItem value="databricks-azure">Databricks on Azure</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Select the platform where your Spark application was executed
+            </p>
           </div>
           
           <div>
@@ -185,12 +211,17 @@ export function ProfilingForm() {
           <div className="flex items-center space-x-2">
             <Checkbox 
               id="generateTimeline" 
-              defaultChecked={true}
-              onCheckedChange={(checked) => 
-                setValue('generateTimeline', checked === true)
-              }
+              checked={watchGenerateTimeline}
+              onCheckedChange={(checked) => {
+                setValue('generateTimeline', checked === true);
+              }} 
             />
-            <Label htmlFor="generateTimeline">Generate Timeline Visualization</Label>
+            <Label 
+              htmlFor="generateTimeline" 
+              className="text-sm font-medium leading-none cursor-pointer"
+            >
+              Generate Timeline
+            </Label>
           </div>
           
           <div>
@@ -212,7 +243,7 @@ export function ProfilingForm() {
             </>
           ) : (
             <>
-              <BarChart2 className="mr-2 h-4 w-4" />
+              <Activity className="mr-2 h-4 w-4" />
               Run Profiling Tool
             </>
           )}
@@ -226,7 +257,7 @@ export function ProfilingForm() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">Execution Time</p>
-              <p className="text-2xl font-bold">{results.executionTime} sec</p>
+              <p className="text-2xl font-bold">{results.executionTime}s</p>
             </div>
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">GPU Utilization</p>
@@ -239,13 +270,25 @@ export function ProfilingForm() {
           </div>
           
           <div className="space-y-4">
-            <h4 className="font-medium">Performance Recommendations</h4>
+            <h4 className="font-medium">Recommendations</h4>
             <ul className="list-disc pl-5 space-y-1">
-              {results.recommendations.map((rec: string, index: number) => (
-                <li key={index} className="text-sm">{rec}</li>
+              {results.recommendations.map((recommendation: string, index: number) => (
+                <li key={index} className="text-sm">{recommendation}</li>
               ))}
             </ul>
           </div>
+          
+          {results.timelineData && (
+            <div className="mt-6 pt-6 border-t">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-medium">Execution Timeline</h4>
+                <LineChart className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="h-24 bg-muted/30 rounded-md flex items-center justify-center">
+                <p className="text-sm text-muted-foreground">Timeline visualization available in detailed view</p>
+              </div>
+            </div>
+          )}
         </Card>
       )}
     </div>

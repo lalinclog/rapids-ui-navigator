@@ -15,7 +15,7 @@ class PythonService:
     def check_python_env(self):
         """Check if Python environment is properly set up"""
         # ... keep existing code
-
+            
     def setup_python_env(self):
         """Set up Python environment with required packages"""
         # ... keep existing code
@@ -50,28 +50,31 @@ class PythonService:
             # Update progress
             postgres_service.update_job(job_id, {"progress": 30})
             
-            # Create a temporary file for output
+            # Create a temporary directory for output instead of just a file
+            output_dir = tempfile.mkdtemp()
             output_format = params.outputFormat or "json"
-            output_file = tempfile.NamedTemporaryFile(
-                delete=False, 
-                suffix=f".{output_format}"
-            ).name
+            output_file = os.path.join(output_dir, f"qualification_results.{output_format}")
             
-            # Build command - updated to use the proper module format
+            # Default platform
+            platform = params.platform if hasattr(params, "platform") and params.platform else "onprem"
+            
+            # Build command using direct command-line invocation
             cmd = [
-                "python", "-c", 
-                "from spark_rapids_tools.qualification import qualification; "
-                f"qualification.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'])"
+                "spark_rapids", "qualification",
+                "--eventlogs", event_log_file,
+                "--platform", platform,
+                "-o", output_dir,
+                "--output-format", output_format
             ]
             
             # Add application name if provided
             if params.applicationName:
-                cmd[2] += f"; qualification.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}', '--name', '{params.applicationName}'])"
+                cmd.extend(["--name", params.applicationName])
             
             # Add additional options if provided
             if params.additionalOptions:
-                options_str = params.additionalOptions.replace("'", "\\'")  # Escape single quotes
-                cmd[2] += f"; qualification.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'{', --name, ' + repr(params.applicationName) if params.applicationName else ''}, {options_str}])"
+                additional_opts = params.additionalOptions.split()
+                cmd.extend(additional_opts)
             
             logger.info(f"Running command: {' '.join(cmd)}")
             
@@ -88,6 +91,11 @@ class PythonService:
             if result.returncode == 0:
                 # Update progress
                 postgres_service.update_job(job_id, {"progress": 80})
+                
+                # Find the result file in the output directory
+                result_files = list(Path(output_dir).glob(f"*.{output_format}"))
+                if result_files:
+                    output_file = str(result_files[0])
                 
                 # Upload the result to MinIO
                 output_object = f"qualification-results/{job_id}/{Path(output_file).name}"
@@ -125,8 +133,11 @@ class PythonService:
                     "results": qualification_results
                 })
                 
-                # Clean up the temporary file
-                os.unlink(output_file)
+                # Clean up the temporary directory
+                for file in Path(output_dir).glob("*"):
+                    if file.is_file():
+                        file.unlink()
+                Path(output_dir).rmdir()
                 
                 logger.info(f"Qualification job {job_id} completed successfully")
             else:
@@ -173,37 +184,35 @@ class PythonService:
             # Update progress
             postgres_service.update_job(job_id, {"progress": 30})
             
-            # Create a temporary file for output
+            # Create a temporary directory for output instead of just a file
+            output_dir = tempfile.mkdtemp()
             output_format = params.outputFormat or "json"
-            output_file = tempfile.NamedTemporaryFile(
-                delete=False, 
-                suffix=f".{output_format}"
-            ).name
+            output_file = os.path.join(output_dir, f"profiling_results.{output_format}")
             
-            # Build command - updated to use the proper module format
+            # Default platform
+            platform = params.platform if hasattr(params, "platform") and params.platform else "onprem"
+            
+            # Build command using direct command-line invocation
             cmd = [
-                "python", "-c", 
-                "from spark_rapids_tools.profiling import profiling; "
-                f"profiling.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'])"
+                "spark_rapids", "profiling",
+                "--eventlogs", event_log_file,
+                "--platform", platform,
+                "-o", output_dir,
+                "--output-format", output_format
             ]
             
             # Add application name if provided
             if params.applicationName:
-                cmd[2] += f"; profiling.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}', '--name', '{params.applicationName}'])"
+                cmd.extend(["--name", params.applicationName])
             
             # Add timeline flag if requested
             if params.generateTimeline:
-                cmd[2] += f"; profiling.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'{', --name, ' + repr(params.applicationName) if params.applicationName else ''}, '--generate-timeline'])"
+                cmd.append("--generate-timeline")
             
             # Add additional options if provided
             if params.additionalOptions:
-                options_str = params.additionalOptions.replace("'", "\\'")  # Escape single quotes
-                base_args = f"'-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'"
-                if params.applicationName:
-                    base_args += f", '--name', '{params.applicationName}'"
-                if params.generateTimeline:
-                    base_args += f", '--generate-timeline'"
-                cmd[2] += f"; profiling.main([{base_args}, {options_str}])"
+                additional_opts = params.additionalOptions.split()
+                cmd.extend(additional_opts)
             
             logger.info(f"Running command: {' '.join(cmd)}")
             
@@ -220,6 +229,11 @@ class PythonService:
             if result.returncode == 0:
                 # Update progress
                 postgres_service.update_job(job_id, {"progress": 80})
+                
+                # Find the result file in the output directory
+                result_files = list(Path(output_dir).glob(f"*.{output_format}"))
+                if result_files:
+                    output_file = str(result_files[0])
                 
                 # Upload the result to MinIO
                 output_object = f"profiling-results/{job_id}/{Path(output_file).name}"
@@ -258,8 +272,11 @@ class PythonService:
                     "results": profiling_results
                 })
                 
-                # Clean up the temporary file
-                os.unlink(output_file)
+                # Clean up the temporary directory
+                for file in Path(output_dir).glob("*"):
+                    if file.is_file():
+                        file.unlink()
+                Path(output_dir).rmdir()
                 
                 logger.info(f"Profiling job {job_id} completed successfully")
             else:
