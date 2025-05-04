@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -291,6 +290,18 @@ async def upload_file(
         }
     except Exception as e:
         logger.error(f"Error uploading file: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Add the new endpoint to check Java availability
+@app.get("/api/java/check")
+async def check_java(python_service: PythonService = Depends(get_python_service)):
+    logger.info("Checking Java availability")
+    try:
+        is_available, version_info = python_service.check_java_availability()
+        logger.info(f"Java check result: {is_available}, version: {version_info}")
+        return {"available": is_available, "version_info": version_info}
+    except Exception as e:
+        logger.error(f"Error checking Java availability: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # Serve static files

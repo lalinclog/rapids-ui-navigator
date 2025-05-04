@@ -5,6 +5,7 @@ import tempfile
 import json
 import time
 import logging
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -24,11 +25,42 @@ class PythonService:
         """Get list of installed Python packages"""
         # ... keep existing code
 
+    def check_java_availability(self):
+        """Check if Java is available and return version info"""
+        try:
+            result = subprocess.run(
+                ["java", "-version"],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            # Java version is usually sent to stderr
+            java_version = result.stderr if result.stderr else result.stdout
+            if result.returncode == 0:
+                return True, java_version
+            else:
+                return False, "Java not found or not executable"
+        except Exception as e:
+            logger.error(f"Error checking Java: {str(e)}")
+            return False, str(e)
+
     def run_qualification_task(self, job_id, params, minio_service, postgres_service):
         """Run qualification tool in the background"""
         try:
             # Update job status to running
             postgres_service.update_job(job_id, {"status": "running", "progress": 10})
+            
+            # Check if Java is available
+            java_available, java_info = self.check_java_availability()
+            if not java_available:
+                error_message = f"Java is required but not available: {java_info}"
+                logger.error(error_message)
+                postgres_service.update_job(job_id, {
+                    "status": "failed", 
+                    "end_time": datetime.now(),
+                    "results": {"error": error_message}
+                })
+                return
             
             # Get the event log file from MinIO if it's an s3:// path
             if params.eventLogPath.startswith('s3://'):
@@ -50,10 +82,9 @@ class PythonService:
             # Update progress
             postgres_service.update_job(job_id, {"progress": 30})
             
-            # Create a temporary directory for output instead of just a file
+            # Create a temporary directory for output
             output_dir = tempfile.mkdtemp()
             output_format = params.outputFormat or "json"
-            output_file = os.path.join(output_dir, f"qualification_results.{output_format}")
             
             # Default platform
             platform = params.platform if hasattr(params, "platform") and params.platform else "onprem"
@@ -93,19 +124,35 @@ class PythonService:
                 postgres_service.update_job(job_id, {"progress": 80})
                 
                 # Find the result file in the output directory
-                result_files = list(Path(output_dir).glob(f"*.{output_format}"))
+                result_files = []
+                if output_format == "html":
+                    result_files = list(Path(output_dir).glob(f"**/*.{output_format}"))
+                else:
+                    result_files = list(Path(output_dir).glob(f"*.{output_format}"))
+                    
+                if not result_files:
+                    # Look for any file with the right extension in subdirectories
+                    result_files = list(Path(output_dir).glob(f"**/*.{output_format}"))
+                
+                output_file = None
                 if result_files:
                     output_file = str(result_files[0])
+                    logger.info(f"Found result file: {output_file}")
+                else:
+                    logger.warning(f"No {output_format} files found in {output_dir}")
                 
-                # Upload the result to MinIO
-                output_object = f"qualification-results/{job_id}/{Path(output_file).name}"
-                output_path = f"s3://rapids-outputs/{output_object}"
-                
-                minio_result = minio_service.store_file(output_file, output_path)
+                # Upload the result to MinIO if we found one
+                output_path = None
+                if output_file:
+                    output_object = f"qualification-results/{job_id}/{Path(output_file).name}"
+                    output_path = f"s3://rapids-outputs/{output_object}"
+                    
+                    minio_result = minio_service.store_file(output_file, output_path)
+                    logger.info(f"Uploaded result to: {output_path}")
                 
                 # Parse results for JSON data
                 qualification_results = None
-                if output_format == "json":
+                if output_format == "json" and output_file:
                     try:
                         with open(output_file, 'r') as f:
                             qualification_results = json.load(f)
@@ -134,10 +181,10 @@ class PythonService:
                 })
                 
                 # Clean up the temporary directory
-                for file in Path(output_dir).glob("*"):
-                    if file.is_file():
-                        file.unlink()
-                Path(output_dir).rmdir()
+                try:
+                    shutil.rmtree(output_dir)
+                except Exception as e:
+                    logger.error(f"Error cleaning up directory {output_dir}: {str(e)}")
                 
                 logger.info(f"Qualification job {job_id} completed successfully")
             else:
@@ -164,6 +211,18 @@ class PythonService:
             # Update job status to running
             postgres_service.update_job(job_id, {"status": "running", "progress": 10})
             
+            # Check if Java is available
+            java_available, java_info = self.check_java_availability()
+            if not java_available:
+                error_message = f"Java is required but not available: {java_info}"
+                logger.error(error_message)
+                postgres_service.update_job(job_id, {
+                    "status": "failed", 
+                    "end_time": datetime.now(),
+                    "results": {"error": error_message}
+                })
+                return
+            
             # Get the event log file from MinIO if it's an s3:// path
             if params.eventLogPath.startswith('s3://'):
                 try:
@@ -184,10 +243,9 @@ class PythonService:
             # Update progress
             postgres_service.update_job(job_id, {"progress": 30})
             
-            # Create a temporary directory for output instead of just a file
+            # Create a temporary directory for output
             output_dir = tempfile.mkdtemp()
             output_format = params.outputFormat or "json"
-            output_file = os.path.join(output_dir, f"profiling_results.{output_format}")
             
             # Default platform
             platform = params.platform if hasattr(params, "platform") and params.platform else "onprem"
@@ -231,19 +289,35 @@ class PythonService:
                 postgres_service.update_job(job_id, {"progress": 80})
                 
                 # Find the result file in the output directory
-                result_files = list(Path(output_dir).glob(f"*.{output_format}"))
+                result_files = []
+                if output_format == "html":
+                    result_files = list(Path(output_dir).glob(f"**/*.{output_format}"))
+                else:
+                    result_files = list(Path(output_dir).glob(f"*.{output_format}"))
+                    
+                if not result_files:
+                    # Look for any file with the right extension in subdirectories
+                    result_files = list(Path(output_dir).glob(f"**/*.{output_format}"))
+                
+                output_file = None
                 if result_files:
                     output_file = str(result_files[0])
+                    logger.info(f"Found result file: {output_file}")
+                else:
+                    logger.warning(f"No {output_format} files found in {output_dir}")
                 
-                # Upload the result to MinIO
-                output_object = f"profiling-results/{job_id}/{Path(output_file).name}"
-                output_path = f"s3://rapids-outputs/{output_object}"
-                
-                minio_result = minio_service.store_file(output_file, output_path)
+                # Upload the result to MinIO if we found one
+                output_path = None
+                if output_file:
+                    output_object = f"profiling-results/{job_id}/{Path(output_file).name}"
+                    output_path = f"s3://rapids-outputs/{output_object}"
+                    
+                    minio_result = minio_service.store_file(output_file, output_path)
+                    logger.info(f"Uploaded result to: {output_path}")
                 
                 # Parse results for JSON data
                 profiling_results = None
-                if output_format == "json":
+                if output_format == "json" and output_file:
                     try:
                         with open(output_file, 'r') as f:
                             profiling_results = json.load(f)
@@ -273,10 +347,10 @@ class PythonService:
                 })
                 
                 # Clean up the temporary directory
-                for file in Path(output_dir).glob("*"):
-                    if file.is_file():
-                        file.unlink()
-                Path(output_dir).rmdir()
+                try:
+                    shutil.rmtree(output_dir)
+                except Exception as e:
+                    logger.error(f"Error cleaning up directory {output_dir}: {str(e)}")
                 
                 logger.info(f"Profiling job {job_id} completed successfully")
             else:
