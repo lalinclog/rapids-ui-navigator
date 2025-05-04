@@ -12,6 +12,8 @@ import JobHistory from "./pages/JobHistory";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import JobDetails from "./pages/JobDetails";
+import Analytics from "./pages/Analytics";
+import DashboardView from "./pages/DashboardView";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +50,9 @@ const App = () => (
               <Settings />
             </AppLayout>
           } />
+          {/* New Analytics Routes */}
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/bi/dashboards/:dashboardId" element={<DashboardView />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

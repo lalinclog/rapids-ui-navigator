@@ -3,7 +3,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, BarChart2, FileSearch, Home, Settings, Database } from 'lucide-react';
+import { BarChart2, ChartBar, ChevronLeft, ChevronRight, Database, FileSearch, Home, Settings } from 'lucide-react';
 
 interface SideNavProps {
   isOpen: boolean;
@@ -28,15 +28,21 @@ export const SideNav: React.FC<SideNavProps> = ({ isOpen, setIsOpen }) => {
     },
     { 
       name: 'Profiling Tool', 
-      icon: <BarChart2 className="h-5 w-5" />, 
+      icon: <ChartBar className="h-5 w-5" />, 
       href: '/profiling',
       active: location.pathname === '/profiling'
+    },
+    { 
+      name: 'Analytics & BI', 
+      icon: <BarChart2 className="h-5 w-5" />, 
+      href: '/analytics',
+      active: location.pathname === '/analytics' || location.pathname.startsWith('/bi/')
     },
     { 
       name: 'Job History', 
       icon: <Database className="h-5 w-5" />, 
       href: '/history',
-      active: location.pathname === '/history'
+      active: location.pathname === '/history' || location.pathname.startsWith('/jobs/')
     },
     { 
       name: 'Settings', 

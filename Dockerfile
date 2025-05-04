@@ -11,7 +11,7 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install Java 8
+# Install Java 11
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     openjdk-11-jdk \
@@ -35,7 +35,8 @@ RUN pip install --no-cache-dir \
     psycopg2-binary==2.9.7 \
     sqlalchemy==2.0.20 \
     spark-rapids-user-tools==23.10.0 \
-    pydantic==2.0.3
+    pydantic==2.0.3 \
+    pandas==1.5.3
 
 # Copy backend code
 COPY backend /app/backend

@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ from .services.minio_service import MinioService
 from .services.postgres_service import PostgresService
 from .services.python_service import PythonService
 from .services.stats_service import StatsService
+from .services.bi_service import BIService
 
 # Configure logging
 logging.basicConfig(
@@ -48,6 +50,9 @@ def get_python_service():
 def get_stats_service():
     return StatsService()
 
+def get_bi_service():
+    return BIService()
+
 # Models
 class QualificationParams(BaseModel):
     eventLogPath: str
@@ -72,6 +77,23 @@ class JobBase(BaseModel):
     applicationName: Optional[str] = None
     outputFormat: str
     additionalOptions: Optional[str] = None
+
+class DataSourceCreate(BaseModel):
+    name: str
+    type: str
+    connection_string: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    created_by: Optional[str] = "admin"
+
+class DataSourceUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    connection_string: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+class DatasetQuery(BaseModel):
+    filters: Optional[Dict[str, Any]] = None
 
 # Routes
 @app.get("/api/health")
@@ -302,6 +324,157 @@ async def check_java(python_service: PythonService = Depends(get_python_service)
         return {"available": is_available, "version_info": version_info}
     except Exception as e:
         logger.error(f"Error checking Java availability: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# BI Tool API Routes
+@app.get("/api/bi/data-sources")
+async def get_data_sources(bi_service: BIService = Depends(get_bi_service)):
+    logger.info("Retrieving all data sources")
+    try:
+        data_sources = bi_service.get_data_sources()
+        return data_sources
+    except Exception as e:
+        logger.error(f"Error getting data sources: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bi/data-sources/{source_id}")
+async def get_data_source(source_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Retrieving data source with ID: {source_id}")
+    try:
+        data_source = bi_service.get_data_source(source_id)
+        if not data_source:
+            raise HTTPException(status_code=404, detail=f"Data source with ID {source_id} not found")
+        return data_source
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting data source {source_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/bi/data-sources")
+async def create_data_source(source: DataSourceCreate, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Creating new data source: {source.name}")
+    try:
+        source_id = bi_service.create_data_source(source.dict())
+        if not source_id:
+            raise HTTPException(status_code=500, detail="Failed to create data source")
+        return {"id": source_id, "success": True}
+    except Exception as e:
+        logger.error(f"Error creating data source: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/bi/data-sources/{source_id}")
+async def update_data_source(source_id: int, source: DataSourceUpdate, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Updating data source {source_id}")
+    try:
+        success = bi_service.update_data_source(source_id, source.dict(exclude_unset=True))
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Data source with ID {source_id} not found or no changes made")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating data source {source_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/bi/data-sources/{source_id}")
+async def delete_data_source(source_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Deleting data source {source_id}")
+    try:
+        success = bi_service.delete_data_source(source_id)
+        if not success:
+            raise HTTPException(status_code=400, detail=f"Data source with ID {source_id} cannot be deleted or not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting data source {source_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bi/datasets")
+async def get_datasets(bi_service: BIService = Depends(get_bi_service)):
+    logger.info("Retrieving all datasets")
+    try:
+        datasets = bi_service.get_datasets()
+        return datasets
+    except Exception as e:
+        logger.error(f"Error getting datasets: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bi/datasets/{dataset_id}")
+async def get_dataset(dataset_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Retrieving dataset with ID: {dataset_id}")
+    try:
+        dataset = bi_service.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset with ID {dataset_id} not found")
+        return dataset
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting dataset {dataset_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/bi/datasets/{dataset_id}/query")
+async def query_dataset(dataset_id: int, query: DatasetQuery, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Executing query for dataset {dataset_id}")
+    try:
+        result = bi_service.execute_dataset_query(dataset_id, query.filters)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error querying dataset {dataset_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bi/charts")
+async def get_charts(bi_service: BIService = Depends(get_bi_service)):
+    logger.info("Retrieving all charts")
+    try:
+        charts = bi_service.get_charts()
+        return charts
+    except Exception as e:
+        logger.error(f"Error getting charts: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bi/charts/{chart_id}")
+async def get_chart(chart_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Retrieving chart with ID: {chart_id}")
+    try:
+        chart = bi_service.get_chart(chart_id)
+        if not chart:
+            raise HTTPException(status_code=404, detail=f"Chart with ID {chart_id} not found")
+        return chart
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting chart {chart_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bi/dashboards")
+async def get_dashboards(bi_service: BIService = Depends(get_bi_service)):
+    logger.info("Retrieving all dashboards")
+    try:
+        dashboards = bi_service.get_dashboards()
+        return dashboards
+    except Exception as e:
+        logger.error(f"Error getting dashboards: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/bi/dashboards/{dashboard_id}")
+async def get_dashboard(dashboard_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Retrieving dashboard with ID: {dashboard_id}")
+    try:
+        dashboard = bi_service.get_dashboard(dashboard_id)
+        if not dashboard:
+            raise HTTPException(status_code=404, detail=f"Dashboard with ID {dashboard_id} not found")
+        return dashboard
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting dashboard {dashboard_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # Serve static files
