@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir \
     psycopg2-binary==2.9.7 \
     sqlalchemy==2.0.20 \
     spark-rapids-user-tools==23.10.0 \
-    pydantic==2.3.0
+    pydantic==2.0.3
 
 # Copy backend code
 COPY backend /app/backend

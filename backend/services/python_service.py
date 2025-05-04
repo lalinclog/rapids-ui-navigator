@@ -14,35 +14,15 @@ logger = logging.getLogger(__name__)
 class PythonService:
     def check_python_env(self):
         """Check if Python environment is properly set up"""
-        try:
-            # Check if spark-rapids-tools is installed
-            result = subprocess.run(
-                ["python", "-c", "import spark_rapids_tools; print('OK')"],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            return "OK" in result.stdout
-        except Exception as e:
-            logger.error(f"Error checking Python environment: {str(e)}")
-            # In Docker, this should always succeed as we install in the Dockerfile
-            return False
+        # ... keep existing code
 
     def setup_python_env(self):
         """Set up Python environment with required packages"""
-        try:
-            # In Docker, this is already done in the Dockerfile
-            # But we'll simulate it to provide a consistent response
-            return {
-                "success": True,
-                "message": "Python environment with spark-rapids-user-tools is already set up"
-            }
-        except Exception as e:
-            logger.error(f"Error setting up Python environment: {str(e)}")
-            return {
-                "success": False,
-                "message": str(e)
-            }
+        # ... keep existing code
+            
+    def get_installed_packages(self):
+        """Get list of installed Python packages"""
+        # ... keep existing code
 
     def run_qualification_task(self, job_id, params, minio_service, postgres_service):
         """Run qualification tool in the background"""
@@ -77,21 +57,21 @@ class PythonService:
                 suffix=f".{output_format}"
             ).name
             
-            # Build command
+            # Build command - updated to use the proper module format
             cmd = [
-                "python", "-m", "spark_rapids_tools", "qualification",
-                "-s", event_log_file,
-                "-o", output_file,
-                "--output-format", output_format
+                "python", "-c", 
+                "from spark_rapids_tools.qualification import qualification; "
+                f"qualification.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'])"
             ]
             
             # Add application name if provided
             if params.applicationName:
-                cmd.extend(["--name", params.applicationName])
+                cmd[2] += f"; qualification.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}', '--name', '{params.applicationName}'])"
             
             # Add additional options if provided
             if params.additionalOptions:
-                cmd.extend(params.additionalOptions.split())
+                options_str = params.additionalOptions.replace("'", "\\'")  # Escape single quotes
+                cmd[2] += f"; qualification.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'{', --name, ' + repr(params.applicationName) if params.applicationName else ''}, {options_str}])"
             
             logger.info(f"Running command: {' '.join(cmd)}")
             
@@ -200,25 +180,30 @@ class PythonService:
                 suffix=f".{output_format}"
             ).name
             
-            # Build command
+            # Build command - updated to use the proper module format
             cmd = [
-                "python", "-m", "spark_rapids_tools", "profiling",
-                "-s", event_log_file,
-                "-o", output_file,
-                "--output-format", output_format
+                "python", "-c", 
+                "from spark_rapids_tools.profiling import profiling; "
+                f"profiling.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'])"
             ]
             
             # Add application name if provided
             if params.applicationName:
-                cmd.extend(["--name", params.applicationName])
+                cmd[2] += f"; profiling.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}', '--name', '{params.applicationName}'])"
             
             # Add timeline flag if requested
             if params.generateTimeline:
-                cmd.append("--generate-timeline")
+                cmd[2] += f"; profiling.main(['-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'{', --name, ' + repr(params.applicationName) if params.applicationName else ''}, '--generate-timeline'])"
             
             # Add additional options if provided
             if params.additionalOptions:
-                cmd.extend(params.additionalOptions.split())
+                options_str = params.additionalOptions.replace("'", "\\'")  # Escape single quotes
+                base_args = f"'-s', '{event_log_file}', '-o', '{output_file}', '--output-format', '{output_format}'"
+                if params.applicationName:
+                    base_args += f", '--name', '{params.applicationName}'"
+                if params.generateTimeline:
+                    base_args += f", '--generate-timeline'"
+                cmd[2] += f"; profiling.main([{base_args}, {options_str}])"
             
             logger.info(f"Running command: {' '.join(cmd)}")
             

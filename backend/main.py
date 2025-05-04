@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -108,6 +107,17 @@ async def setup_python_env(python_service: PythonService = Depends(get_python_se
         return result
     except Exception as e:
         logger.error(f"Error setting up Python environment: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/python/packages")
+async def get_python_packages(python_service: PythonService = Depends(get_python_service)):
+    logger.info("Getting installed Python packages")
+    try:
+        result = python_service.get_installed_packages()
+        logger.info(f"Retrieved {len(result.get('packages', [])) if result.get('success') else 0} installed packages")
+        return result
+    except Exception as e:
+        logger.error(f"Error getting installed packages: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/qualification")

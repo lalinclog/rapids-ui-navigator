@@ -8,6 +8,7 @@ services:
       - "8080:8080"
     volumes:
       - ./backend:/app/backend
+      - ./sample-data:/app/sample-data
     depends_on:
       - minio
       - postgres
@@ -21,6 +22,8 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=spark_rapids
+      - PYTHONPATH=/app
+    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
 
   minio:
     image: minio/minio
@@ -29,6 +32,7 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+      - ./sample-data:/sample-data
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
