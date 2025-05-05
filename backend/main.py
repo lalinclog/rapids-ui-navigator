@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -349,6 +348,18 @@ async def get_data_source(source_id: int, bi_service: BIService = Depends(get_bi
         raise
     except Exception as e:
         logger.error(f"Error getting data source {source_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/bi/data-sources/{source_id}/test-connection")
+async def test_data_source_connection(source_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Testing connection to data source {source_id}")
+    try:
+        result = bi_service.test_data_source_connection(source_id)
+        if not result["success"]:
+            return {"success": False, "error": result.get("error", "Unknown error")}
+        return {"success": True, "message": result.get("message", "Connection successful")}
+    except Exception as e:
+        logger.error(f"Error testing connection to data source {source_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/bi/data-sources")

@@ -1,4 +1,3 @@
-
 import os
 import logging
 import json
@@ -148,6 +147,31 @@ class BIService:
         except Exception as e:
             logger.error(f"Error deleting data source {source_id}: {str(e)}", exc_info=True)
             return False
+
+    def test_data_source_connection(self, source_id: int) -> Dict[str, Any]:
+        """Test connection to a data source"""
+        logger.info(f"Testing connection to data source {source_id}")
+        try:
+            data_source = self.get_data_source(source_id)
+            if not data_source:
+                return {"success": False, "error": f"Data source with ID {source_id} not found"}
+
+            # Currently only supporting PostgreSQL
+            if data_source["type"].lower() in ["postgresql", "postgres"]:
+                try:
+                    engine = create_engine(data_source["connection_string"])
+                    with engine.connect() as connection:
+                        # Try a simple query to test connection
+                        connection.execute(text("SELECT 1"))
+                    return {"success": True, "message": "Connection successful"}
+                except Exception as e:
+                    logger.error(f"Connection test failed: {str(e)}", exc_info=True)
+                    return {"success": False, "error": str(e)}
+            else:
+                return {"success": False, "error": f"Unsupported data source type: {data_source['type']}"}
+        except Exception as e:
+            logger.error(f"Error testing connection to data source {source_id}: {str(e)}", exc_info=True)
+            return {"success": False, "error": str(e)}
 
     def get_datasets(self) -> List[Dict]:
         """Get all datasets"""

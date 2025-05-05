@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Database, Plus } from 'lucide-react';
+import { Database, Plus, CheckCircle2, XCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -37,7 +37,118 @@ const fetchDataSources = async (): Promise<DataSource[]> => {
   return response.json();
 };
 
-const DataSourceCard: React.FC<{ dataSource: DataSource }> = ({ dataSource }) => {
+interface DataSourceFormProps {
+  dataSource?: DataSource;
+  onSubmit: (data: any) => Promise<void>;
+  onCancel: () => void;
+  title: string;
+  submitButtonText: string;
+}
+
+const DataSourceForm: React.FC<DataSourceFormProps> = ({ 
+  dataSource, 
+  onSubmit, 
+  onCancel, 
+  title, 
+  submitButtonText 
+}) => {
+  const [formData, setFormData] = useState({
+    name: dataSource?.name || '',
+    type: dataSource?.type || '',
+    connection_string: dataSource?.connection_string || '',
+    config: dataSource?.config ? JSON.stringify(dataSource.config) : '{}'
+  });
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleSubmit = async () => {
+    await onSubmit(formData);
+  };
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>
+          Fill in the details to connect to a data source.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-4 py-4">
+        <div className="grid grid-cols-4 items-center gap-4">
+          <Label htmlFor="name" className="text-right">
+            Name
+          </Label>
+          <Input
+            id="name"
+            name="name"
+            value={formData.name}
+            onChange={handleInputChange}
+            className="col-span-3"
+          />
+        </div>
+        <div className="grid grid-cols-4 items-center gap-4">
+          <Label htmlFor="type" className="text-right">
+            Type
+          </Label>
+          <Input
+            id="type"
+            name="type"
+            value={formData.type}
+            onChange={handleInputChange}
+            className="col-span-3"
+            placeholder="e.g., postgresql, mysql, etc."
+          />
+        </div>
+        <div className="grid grid-cols-4 items-center gap-4">
+          <Label htmlFor="connection_string" className="text-right">
+            Connection String
+          </Label>
+          <Input
+            id="connection_string"
+            name="connection_string"
+            value={formData.connection_string}
+            onChange={handleInputChange}
+            className="col-span-3"
+            placeholder="e.g., postgresql://user:password@host:port/database"
+          />
+        </div>
+        <div className="grid grid-cols-4 items-center gap-4">
+          <Label htmlFor="config" className="text-right">
+            Config (JSON)
+          </Label>
+          <Input
+            id="config"
+            name="config"
+            value={formData.config}
+            onChange={handleInputChange}
+            className="col-span-3"
+            placeholder='{"key": "value"}'
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit}>
+          {submitButtonText}
+        </Button>
+      </div>
+    </>
+  );
+};
+
+const DataSourceCard: React.FC<{ 
+  dataSource: DataSource; 
+  onEditClick: (dataSource: DataSource) => void; 
+  onTestConnection: (dataSource: DataSource) => void;
+}> = ({ dataSource, onEditClick, onTestConnection }) => {
   return (
     <Card className="h-full flex flex-col">
       <CardHeader>
@@ -65,8 +176,8 @@ const DataSourceCard: React.FC<{ dataSource: DataSource }> = ({ dataSource }) =>
         </div>
       </CardContent>
       <CardFooter className="pt-2 flex justify-between">
-        <Button variant="outline" size="sm">Edit</Button>
-        <Button variant="ghost" size="sm">Test Connection</Button>
+        <Button variant="outline" size="sm" onClick={() => onEditClick(dataSource)}>Edit</Button>
+        <Button variant="ghost" size="sm" onClick={() => onTestConnection(dataSource)}>Test Connection</Button>
       </CardFooter>
     </Card>
   );
@@ -74,28 +185,28 @@ const DataSourceCard: React.FC<{ dataSource: DataSource }> = ({ dataSource }) =>
 
 const DataSources: React.FC = () => {
   const { toast } = useToast();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newDataSource, setNewDataSource] = useState({
-    name: '',
-    type: '',
-    connection_string: '',
-    config: '{}',
-    created_by: 'admin'
-  });
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [currentDataSource, setCurrentDataSource] = useState<DataSource | null>(null);
 
   const { data: dataSources, isLoading, error, refetch } = useQuery({
     queryKey: ['dataSources'],
     queryFn: fetchDataSources,
   });
 
-  const handleAddDataSource = async () => {
+  const handleAddDataSource = async (formData: any) => {
     try {
       const response = await fetch('/api/bi/data-sources', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(newDataSource),
+        body: JSON.stringify({
+          ...formData,
+          config: formData.config ? JSON.parse(formData.config) : {},
+          created_by: 'admin'
+        }),
       });
 
       if (!response.ok) {
@@ -106,7 +217,7 @@ const DataSources: React.FC = () => {
         title: 'Success',
         description: 'Data source added successfully',
       });
-      setIsDialogOpen(false);
+      setIsAddDialogOpen(false);
       refetch();
     } catch (error) {
       toast({
@@ -117,12 +228,73 @@ const DataSources: React.FC = () => {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setNewDataSource(prev => ({
-      ...prev,
-      [name]: value,
-    }));
+  const handleEditDataSource = async (formData: any) => {
+    if (!currentDataSource) return;
+    
+    try {
+      const response = await fetch(`/api/bi/data-sources/${currentDataSource.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...formData,
+          config: formData.config ? JSON.parse(formData.config) : {},
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update data source');
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Data source updated successfully',
+      });
+      setIsEditDialogOpen(false);
+      setCurrentDataSource(null);
+      refetch();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update data source',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleEditClick = (dataSource: DataSource) => {
+    setCurrentDataSource(dataSource);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleTestConnection = async (dataSource: DataSource) => {
+    setIsTestingConnection(true);
+    
+    try {
+      const response = await fetch(`/api/bi/data-sources/${dataSource.id}/test-connection`, {
+        method: 'POST',
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: 'Connection Successful',
+          description: result.message || `Successfully connected to ${dataSource.name}`,
+        });
+      } else {
+        throw new Error(result.error || "Connection failed");
+      }
+    } catch (error) {
+      toast({
+        title: 'Connection Failed',
+        description: error instanceof Error ? error.message : 'Could not connect to data source',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
   };
 
   if (isLoading) {
@@ -168,88 +340,50 @@ const DataSources: React.FC = () => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold">Data Sources</h2>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" /> Add Data Source
             </Button>
           </DialogTrigger>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Data Source</DialogTitle>
-              <DialogDescription>
-                Fill in the details to connect to a new data source.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Name
-                </Label>
-                <Input
-                  id="name"
-                  name="name"
-                  value={newDataSource.name}
-                  onChange={handleInputChange}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="type" className="text-right">
-                  Type
-                </Label>
-                <Input
-                  id="type"
-                  name="type"
-                  value={newDataSource.type}
-                  onChange={handleInputChange}
-                  className="col-span-3"
-                  placeholder="e.g., postgres, mysql, etc."
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="connection_string" className="text-right">
-                  Connection String
-                </Label>
-                <Input
-                  id="connection_string"
-                  name="connection_string"
-                  value={newDataSource.connection_string}
-                  onChange={handleInputChange}
-                  className="col-span-3"
-                  placeholder="e.g., postgresql://user:password@host:port/database"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="config" className="text-right">
-                  Config (JSON)
-                </Label>
-                <Input
-                  id="config"
-                  name="config"
-                  value={newDataSource.config || '{}'}
-                  onChange={handleInputChange}
-                  className="col-span-3"
-                  placeholder='{"key": "value"}'
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddDataSource}>
-                Add Data Source
-              </Button>
-            </div>
+            <DataSourceForm
+              onSubmit={handleAddDataSource}
+              onCancel={() => setIsAddDialogOpen(false)}
+              title="Add New Data Source"
+              submitButtonText="Add Data Source"
+            />
           </DialogContent>
         </Dialog>
       </div>
       
+      {/* Edit Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          {currentDataSource && (
+            <DataSourceForm
+              dataSource={currentDataSource}
+              onSubmit={handleEditDataSource}
+              onCancel={() => {
+                setIsEditDialogOpen(false);
+                setCurrentDataSource(null);
+              }}
+              title="Edit Data Source"
+              submitButtonText="Update Data Source"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+      
       {dataSources && dataSources.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {dataSources.map((source) => (
-            <DataSourceCard key={source.id} dataSource={source} />
+            <DataSourceCard 
+              key={source.id} 
+              dataSource={source} 
+              onEditClick={handleEditClick}
+              onTestConnection={handleTestConnection}
+            />
           ))}
         </div>
       ) : (
@@ -261,7 +395,7 @@ const DataSources: React.FC = () => {
           <p className="text-muted-foreground mb-4 max-w-md">
             Connect to your first data source to start building analytics.
           </p>
-          <Button>
+          <Button onClick={() => setIsAddDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" /> Add Your First Data Source
           </Button>
         </div>
