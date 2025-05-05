@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import os
 import json
@@ -100,7 +100,7 @@ class DatasetCreate(BaseModel):
     source_id: int
     query_type: str
     query_value: str
-    schema: Optional[Dict[str, Any]] = None
+    schema_definition: Optional[Dict[str, Any]] = Field(None, alias="schema")  # Fixed schema field name
     dimensions: Optional[Dict[str, Any]] = None
     metrics: Optional[Dict[str, Any]] = None
     filters: Optional[Dict[str, Any]] = None
@@ -113,7 +113,7 @@ class DatasetUpdate(BaseModel):
     source_id: Optional[int] = None
     query_type: Optional[str] = None
     query_value: Optional[str] = None
-    schema: Optional[Dict[str, Any]] = None
+    schema_definition: Optional[Dict[str, Any]] = Field(None, alias="schema")  # Fixed schema field name
     dimensions: Optional[Dict[str, Any]] = None
     metrics: Optional[Dict[str, Any]] = None
     filters: Optional[Dict[str, Any]] = None
@@ -465,6 +465,50 @@ async def query_dataset(dataset_id: int, query: DatasetQuery, bi_service: BIServ
         logger.error(f"Error querying dataset {dataset_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/bi/datasets")
+async def create_dataset(dataset: DatasetCreate, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Creating new dataset: {dataset.name}")
+    try:
+        # Convert model to dict, handling the schema_definition field
+        dataset_dict = dataset.dict(by_alias=True)  # This ensures the "schema" alias is used
+        dataset_id = bi_service.create_dataset(dataset_dict)
+        if not dataset_id:
+            raise HTTPException(status_code=500, detail="Failed to create dataset")
+        return {"id": dataset_id, "success": True}
+    except Exception as e:
+        logger.error(f"Error creating dataset: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/bi/datasets/{dataset_id}")
+async def update_dataset(dataset_id: int, dataset: DatasetUpdate, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Updating dataset {dataset_id}")
+    try:
+        # Convert model to dict, handling the schema_definition field
+        dataset_dict = dataset.dict(exclude_unset=True, by_alias=True)
+        success = bi_service.update_dataset(dataset_id, dataset_dict)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Dataset with ID {dataset_id} not found or no changes made")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating dataset {dataset_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/bi/datasets/{dataset_id}")
+async def delete_dataset(dataset_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Deleting dataset {dataset_id}")
+    try:
+        success = bi_service.delete_dataset(dataset_id)
+        if not success:
+            raise HTTPException(status_code=400, detail=f"Dataset with ID {dataset_id} cannot be deleted or not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting dataset {dataset_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/bi/charts")
 async def get_charts(bi_service: BIService = Depends(get_bi_service)):
     logger.info("Retrieving all charts")
@@ -511,47 +555,6 @@ async def get_dashboard(dashboard_id: int, bi_service: BIService = Depends(get_b
         raise
     except Exception as e:
         logger.error(f"Error getting dashboard {dashboard_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Dataset CRUD operations
-@app.post("/api/bi/datasets")
-async def create_dataset(dataset: DatasetCreate, bi_service: BIService = Depends(get_bi_service)):
-    logger.info(f"Creating new dataset: {dataset.name}")
-    try:
-        dataset_id = bi_service.create_dataset(dataset.dict())
-        if not dataset_id:
-            raise HTTPException(status_code=500, detail="Failed to create dataset")
-        return {"id": dataset_id, "success": True}
-    except Exception as e:
-        logger.error(f"Error creating dataset: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/api/bi/datasets/{dataset_id}")
-async def update_dataset(dataset_id: int, dataset: DatasetUpdate, bi_service: BIService = Depends(get_bi_service)):
-    logger.info(f"Updating dataset {dataset_id}")
-    try:
-        success = bi_service.update_dataset(dataset_id, dataset.dict(exclude_unset=True))
-        if not success:
-            raise HTTPException(status_code=404, detail=f"Dataset with ID {dataset_id} not found or no changes made")
-        return {"success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating dataset {dataset_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/api/bi/datasets/{dataset_id}")
-async def delete_dataset(dataset_id: int, bi_service: BIService = Depends(get_bi_service)):
-    logger.info(f"Deleting dataset {dataset_id}")
-    try:
-        success = bi_service.delete_dataset(dataset_id)
-        if not success:
-            raise HTTPException(status_code=400, detail=f"Dataset with ID {dataset_id} cannot be deleted or not found")
-        return {"success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting dataset {dataset_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # Serve static files
