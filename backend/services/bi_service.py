@@ -1,523 +1,527 @@
-import os
+
 import logging
 import json
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, Any, List, Optional
 
-from sqlalchemy import create_engine, text
-import pandas as pd
-
-from ..services.postgres_service import PostgresService
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class BIService:
+    """
+    Service for BI-related operations such as data sources, datasets,
+    charts, dashboards, and queries.
+    """
+    
     def __init__(self):
-        self.postgres_service = PostgresService()
+        """Initialize the BIService"""
+        # For demonstration purposes, we'll use in-memory data
+        # In a real application, you would connect to a database
+        self.data_sources = [
+            {
+                "id": 1,
+                "name": "Sample PostgreSQL Database",
+                "type": "postgresql",
+                "connection_string": "postgresql://user:password@localhost:5432/sample",
+                "config": {"schema": "public"},
+                "is_active": True,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "created_by": "admin"
+            },
+            {
+                "id": 2,
+                "name": "Sample MySQL Database",
+                "type": "mysql",
+                "connection_string": "mysql://user:password@localhost:3306/sample",
+                "is_active": True,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "created_by": "admin"
+            }
+        ]
         
-    def get_data_sources(self) -> List[Dict]:
+        self.datasets = [
+            {
+                "id": 1,
+                "name": "Sample User Activity",
+                "description": "User activity data from web application",
+                "source_id": 1,
+                "source_name": "Sample PostgreSQL Database",
+                "query_type": "sql",
+                "query_value": "SELECT * FROM user_activity",
+                "schema": {"fields": [
+                    {"name": "id", "type": "integer"},
+                    {"name": "user_id", "type": "integer"},
+                    {"name": "action", "type": "string"},
+                    {"name": "timestamp", "type": "datetime"}
+                ]},
+                "dimensions": {
+                    "user_id": {"display_name": "User ID"},
+                    "action": {"display_name": "Action"} 
+                },
+                "metrics": {
+                    "count": {"display_name": "Count", "aggregation": "count"}
+                },
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "last_refreshed_at": datetime.now().isoformat(),
+                "created_by": "admin"
+            },
+            {
+                "id": 2,
+                "name": "Product Sales",
+                "description": "Monthly product sales data",
+                "source_id": 2,
+                "source_name": "Sample MySQL Database",
+                "query_type": "sql",
+                "query_value": "SELECT * FROM sales",
+                "schema": {"fields": [
+                    {"name": "id", "type": "integer"},
+                    {"name": "product_id", "type": "integer"},
+                    {"name": "quantity", "type": "integer"},
+                    {"name": "price", "type": "decimal"},
+                    {"name": "sale_date", "type": "date"}
+                ]},
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "created_by": "admin"
+            }
+        ]
+        
+        self.charts = [
+            {
+                "id": 1,
+                "name": "User Activity by Action",
+                "description": "Bar chart showing user activity by action type",
+                "dataset_id": 1,
+                "dataset_name": "Sample User Activity",
+                "chart_type": "bar",
+                "config": {
+                    "x_axis": "action",
+                    "y_axis": "count",
+                    "color_by": "action"
+                },
+                "dimensions": ["action"],
+                "metrics": ["count"],
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "created_by": "admin"
+            }
+        ]
+        
+        self.dashboards = [
+            {
+                "id": 1,
+                "name": "User Analytics Dashboard",
+                "description": "Overview of user activity and engagement",
+                "is_public": True,
+                "layout": [
+                    {"id": 1, "chart_id": 1, "x": 0, "y": 0, "width": 12, "height": 6}
+                ],
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "created_by": "admin",
+                "item_count": 1
+            }
+        ]
+
+    # Data Sources methods
+    def get_data_sources(self) -> List[Dict[str, Any]]:
         """Get all data sources"""
-        logger.info("Retrieving all data sources")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                SELECT id, name, type, connection_string, config, 
-                       created_at, updated_at, created_by, is_active
-                FROM data_sources
-                ORDER BY name
-                """
-                result = self._execute_query(conn, query)
-                return result
-        except Exception as e:
-            logger.error(f"Error fetching data sources: {str(e)}", exc_info=True)
-            return []
-
-    def get_data_source(self, source_id: int) -> Optional[Dict]:
-        """Get a specific data source by ID"""
-        logger.info(f"Retrieving data source with ID: {source_id}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                SELECT id, name, type, connection_string, config, 
-                       created_at, updated_at, created_by, is_active
-                FROM data_sources
-                WHERE id = %s
-                """
-                result = self._execute_query(conn, query, (source_id,))
-                return result[0] if result else None
-        except Exception as e:
-            logger.error(f"Error fetching data source {source_id}: {str(e)}", exc_info=True)
-            return None
-
-    def create_data_source(self, data: Dict[str, Any]) -> Optional[int]:
+        return self.data_sources
+    
+    def get_data_source(self, source_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single data source by ID"""
+        for source in self.data_sources:
+            if source["id"] == source_id:
+                return source
+        return None
+    
+    def test_data_source_connection(self, source_id: int) -> Dict[str, Any]:
+        """Test the connection to a data source"""
+        source = self.get_data_source(source_id)
+        if not source:
+            return {"success": False, "error": f"Data source with ID {source_id} not found"}
+        
+        # In a real app, you would actually test the connection here
+        # For demo purposes, we'll just return success
+        return {"success": True, "message": "Connection successful"}
+    
+    def create_data_source(self, data: Dict[str, Any]) -> int:
         """Create a new data source"""
-        logger.info(f"Creating new data source: {data.get('name')}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    query = """
-                    INSERT INTO data_sources 
-                    (name, type, connection_string, config, created_by)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                    """
-                    cursor.execute(query, (
-                        data.get("name"),
-                        data.get("type"),
-                        data.get("connection_string"),
-                        json.dumps(data.get("config", {})),
-                        data.get("created_by", "admin")
-                    ))
-                    source_id = cursor.fetchone()[0]
-                    logger.info(f"Successfully created data source with ID: {source_id}")
-                    return source_id
-        except Exception as e:
-            logger.error(f"Error creating data source: {str(e)}", exc_info=True)
-            return None
-
+        # Generate new ID (in a real app, this would be done by the database)
+        new_id = max([source["id"] for source in self.data_sources], default=0) + 1
+        
+        # Create new data source
+        new_source = {
+            "id": new_id,
+            "name": data["name"],
+            "type": data["type"],
+            "connection_string": data.get("connection_string"),
+            "config": data.get("config", {}),
+            "is_active": True,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "created_by": data.get("created_by", "admin")
+        }
+        
+        self.data_sources.append(new_source)
+        return new_id
+    
     def update_data_source(self, source_id: int, data: Dict[str, Any]) -> bool:
         """Update an existing data source"""
-        logger.info(f"Updating data source {source_id}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    set_parts = []
-                    params = []
-                    
-                    if "name" in data:
-                        set_parts.append("name = %s")
-                        params.append(data["name"])
-                    
-                    if "type" in data:
-                        set_parts.append("type = %s")
-                        params.append(data["type"])
-                    
-                    if "connection_string" in data:
-                        set_parts.append("connection_string = %s")
-                        params.append(data["connection_string"])
-                    
-                    if "config" in data:
-                        set_parts.append("config = %s")
-                        params.append(json.dumps(data["config"]))
-                    
-                    if "is_active" in data:
-                        set_parts.append("is_active = %s")
-                        params.append(data["is_active"])
-                    
-                    set_parts.append("updated_at = %s")
-                    params.append(datetime.now())
-                    
-                    if not set_parts:
-                        return False
-                    
-                    params.append(source_id)
-                    query = f"UPDATE data_sources SET {', '.join(set_parts)}, updated_at = NOW() WHERE id = %s"
-                    cursor.execute(query, params)
-                    
-                    affected = cursor.rowcount > 0
-                    logger.info(f"Data source {source_id} update {'successful' if affected else 'failed'}")
-                    return affected
-        except Exception as e:
-            logger.error(f"Error updating data source {source_id}: {str(e)}", exc_info=True)
-            return False
-
+        for i, source in enumerate(self.data_sources):
+            if source["id"] == source_id:
+                # Update the source
+                for key, value in data.items():
+                    if value is not None:  # Only update non-None values
+                        source[key] = value
+                
+                source["updated_at"] = datetime.now().isoformat()
+                self.data_sources[i] = source
+                return True
+        
+        return False
+    
     def delete_data_source(self, source_id: int) -> bool:
         """Delete a data source"""
-        logger.info(f"Deleting data source {source_id}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    # Check if there are any datasets using this data source
-                    check_query = "SELECT COUNT(*) FROM datasets WHERE source_id = %s"
-                    cursor.execute(check_query, (source_id,))
-                    count = cursor.fetchone()[0]
-                    
-                    if count > 0:
-                        logger.warning(f"Cannot delete data source {source_id}: {count} datasets are using it")
-                        return False
-                    
-                    query = "DELETE FROM data_sources WHERE id = %s"
-                    cursor.execute(query, (source_id,))
-                    
-                    affected = cursor.rowcount > 0
-                    logger.info(f"Data source {source_id} deletion {'successful' if affected else 'failed'}")
-                    return affected
-        except Exception as e:
-            logger.error(f"Error deleting data source {source_id}: {str(e)}", exc_info=True)
-            return False
+        for i, source in enumerate(self.data_sources):
+            if source["id"] == source_id:
+                # Check if any datasets are using this data source
+                for dataset in self.datasets:
+                    if dataset["source_id"] == source_id:
+                        return False  # Can't delete, being used by a dataset
+                
+                del self.data_sources[i]
+                return True
+        
+        return False
 
-    def test_data_source_connection(self, source_id: int) -> Dict[str, Any]:
-        """Test connection to a data source"""
-        logger.info(f"Testing connection to data source {source_id}")
-        try:
-            data_source = self.get_data_source(source_id)
-            if not data_source:
-                return {"success": False, "error": f"Data source with ID {source_id} not found"}
-
-            # Currently only supporting PostgreSQL
-            if data_source["type"].lower() in ["postgresql", "postgres"]:
-                try:
-                    engine = create_engine(data_source["connection_string"])
-                    with engine.connect() as connection:
-                        # Try a simple query to test connection
-                        connection.execute(text("SELECT 1"))
-                    return {"success": True, "message": "Connection successful"}
-                except Exception as e:
-                    logger.error(f"Connection test failed: {str(e)}", exc_info=True)
-                    return {"success": False, "error": str(e)}
-            else:
-                return {"success": False, "error": f"Unsupported data source type: {data_source['type']}"}
-        except Exception as e:
-            logger.error(f"Error testing connection to data source {source_id}: {str(e)}", exc_info=True)
-            return {"success": False, "error": str(e)}
-
-    def get_datasets(self) -> List[Dict]:
+    # Datasets methods
+    def get_datasets(self) -> List[Dict[str, Any]]:
         """Get all datasets"""
-        logger.info("Retrieving all datasets")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                SELECT d.id, d.name, d.description, d.source_id, ds.name as source_name,
-                       d.query_type, d.query_value, d.dimensions, d.metrics,
-                       d.created_at, d.updated_at, d.created_by, d.last_refreshed_at
-                FROM datasets d
-                JOIN data_sources ds ON d.source_id = ds.id
-                ORDER BY d.name
-                """
-                result = self._execute_query(conn, query)
-                return result
-        except Exception as e:
-            logger.error(f"Error fetching datasets: {str(e)}", exc_info=True)
-            return []
-
-    def get_dataset(self, dataset_id: int) -> Optional[Dict]:
-        """Get a specific dataset by ID"""
-        logger.info(f"Retrieving dataset with ID: {dataset_id}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                SELECT d.id, d.name, d.description, d.source_id, ds.name as source_name,
-                       d.query_type, d.query_value, d.schema, d.dimensions, d.metrics,
-                       d.filters, d.cache_policy, 
-                       d.created_at, d.updated_at, d.created_by, d.last_refreshed_at
-                FROM datasets d
-                JOIN data_sources ds ON d.source_id = ds.id
-                WHERE d.id = %s
-                """
-                result = self._execute_query(conn, query, (dataset_id,))
-                return result[0] if result else None
-        except Exception as e:
-            logger.error(f"Error fetching dataset {dataset_id}: {str(e)}", exc_info=True)
-            return None
-
-    def get_charts(self) -> List[Dict]:
-        """Get all charts"""
-        logger.info("Retrieving all charts")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                SELECT c.id, c.name, c.description, c.dataset_id, d.name as dataset_name,
-                       c.chart_type, c.config, c.dimensions, c.metrics, c.filters,
-                       c.created_at, c.updated_at, c.created_by
-                FROM charts c
-                JOIN datasets d ON c.dataset_id = d.id
-                ORDER BY c.name
-                """
-                result = self._execute_query(conn, query)
-                return result
-        except Exception as e:
-            logger.error(f"Error fetching charts: {str(e)}", exc_info=True)
-            return []
-
-    def get_chart(self, chart_id: int) -> Optional[Dict]:
-        """Get a specific chart by ID"""
-        logger.info(f"Retrieving chart with ID: {chart_id}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                SELECT c.id, c.name, c.description, c.dataset_id, d.name as dataset_name,
-                       c.chart_type, c.config, c.dimensions, c.metrics, c.filters,
-                       c.created_at, c.updated_at, c.created_by
-                FROM charts c
-                JOIN datasets d ON c.dataset_id = d.id
-                WHERE c.id = %s
-                """
-                result = self._execute_query(conn, query, (chart_id,))
-                return result[0] if result else None
-        except Exception as e:
-            logger.error(f"Error fetching chart {chart_id}: {str(e)}", exc_info=True)
-            return None
-
-    def get_dashboards(self) -> List[Dict]:
-        """Get all dashboards"""
-        logger.info("Retrieving all dashboards")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                SELECT d.id, d.name, d.description, d.layout, d.global_filters,
-                       d.created_at, d.updated_at, d.created_by, d.is_public,
-                       COUNT(di.id) as item_count
-                FROM dashboards d
-                LEFT JOIN dashboard_items di ON d.id = di.dashboard_id
-                GROUP BY d.id
-                ORDER BY d.name
-                """
-                result = self._execute_query(conn, query)
-                return result
-        except Exception as e:
-            logger.error(f"Error fetching dashboards: {str(e)}", exc_info=True)
-            return []
-
-    def get_dashboard(self, dashboard_id: int) -> Optional[Dict]:
-        """Get a specific dashboard by ID with its items"""
-        logger.info(f"Retrieving dashboard with ID: {dashboard_id}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                # Get dashboard details
-                query = """
-                SELECT id, name, description, layout, global_filters,
-                       created_at, updated_at, created_by, is_public
-                FROM dashboards
-                WHERE id = %s
-                """
-                dashboard = self._execute_query(conn, query, (dashboard_id,))
-                if not dashboard:
-                    return None
-                
-                dashboard = dashboard[0]
-                
-                # Get dashboard items
-                items_query = """
-                SELECT di.id, di.chart_id, c.name as chart_name, c.chart_type,
-                       di.position_x, di.position_y, di.width, di.height, di.config
-                FROM dashboard_items di
-                JOIN charts c ON di.chart_id = c.id
-                WHERE di.dashboard_id = %s
-                ORDER BY di.position_y, di.position_x
-                """
-                items = self._execute_query(conn, items_query, (dashboard_id,))
-                dashboard["items"] = items
-                
-                return dashboard
-        except Exception as e:
-            logger.error(f"Error fetching dashboard {dashboard_id}: {str(e)}", exc_info=True)
-            return None
-
-    def create_dataset(self, data: Dict[str, Any]) -> Optional[int]:
+        # Add source name to each dataset
+        for dataset in self.datasets:
+            for source in self.data_sources:
+                if source["id"] == dataset["source_id"]:
+                    dataset["source_name"] = source["name"]
+                    break
+        
+        return self.datasets
+    
+    def get_dataset(self, dataset_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single dataset by ID"""
+        for dataset in self.datasets:
+            if dataset["id"] == dataset_id:
+                # Add source name
+                for source in self.data_sources:
+                    if source["id"] == dataset["source_id"]:
+                        dataset["source_name"] = source["name"]
+                        break
+                return dataset
+        return None
+    
+    def create_dataset(self, data: Dict[str, Any]) -> int:
         """Create a new dataset"""
-        logger.info(f"Creating new dataset: {data.get('name')}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    query = """
-                    INSERT INTO datasets 
-                    (name, description, source_id, query_type, query_value, 
-                     schema, dimensions, metrics, filters, cache_policy, created_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """
-                    cursor.execute(query, (
-                        data.get("name"),
-                        data.get("description"),
-                        data.get("source_id"),
-                        data.get("query_type"),
-                        data.get("query_value"),
-                        json.dumps(data.get("schema", {})) if data.get("schema") else None,
-                        json.dumps(data.get("dimensions", {})) if data.get("dimensions") else None,
-                        json.dumps(data.get("metrics", {})) if data.get("metrics") else None,
-                        json.dumps(data.get("filters", {})) if data.get("filters") else None,
-                        json.dumps(data.get("cache_policy", {})) if data.get("cache_policy") else None,
-                        data.get("created_by", "admin")
-                    ))
-                    dataset_id = cursor.fetchone()[0]
-                    logger.info(f"Successfully created dataset with ID: {dataset_id}")
-                    return dataset_id
-        except Exception as e:
-            logger.error(f"Error creating dataset: {str(e)}", exc_info=True)
-            return None
-
+        # Generate new ID
+        new_id = max([dataset["id"] for dataset in self.datasets], default=0) + 1
+        
+        # Create new dataset
+        new_dataset = {
+            "id": new_id,
+            "name": data["name"],
+            "description": data.get("description"),
+            "source_id": data["source_id"],
+            "query_type": data["query_type"],
+            "query_value": data["query_value"],
+            "schema": data.get("schema") or data.get("schema_definition", {}),  # Support both naming conventions
+            "dimensions": data.get("dimensions", {}),
+            "metrics": data.get("metrics", {}),
+            "filters": data.get("filters", {}),
+            "cache_policy": data.get("cache_policy", {}),
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "created_by": data.get("created_by", "admin")
+        }
+        
+        # Add source name
+        for source in self.data_sources:
+            if source["id"] == new_dataset["source_id"]:
+                new_dataset["source_name"] = source["name"]
+                break
+        
+        self.datasets.append(new_dataset)
+        return new_id
+    
     def update_dataset(self, dataset_id: int, data: Dict[str, Any]) -> bool:
         """Update an existing dataset"""
-        logger.info(f"Updating dataset {dataset_id}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    set_parts = []
-                    params = []
-                    
-                    if "name" in data:
-                        set_parts.append("name = %s")
-                        params.append(data["name"])
-                    
-                    if "description" in data:
-                        set_parts.append("description = %s")
-                        params.append(data["description"])
-                    
-                    if "source_id" in data:
-                        set_parts.append("source_id = %s")
-                        params.append(data["source_id"])
-                    
-                    if "query_type" in data:
-                        set_parts.append("query_type = %s")
-                        params.append(data["query_type"])
-                    
-                    if "query_value" in data:
-                        set_parts.append("query_value = %s")
-                        params.append(data["query_value"])
-                    
-                    if "schema" in data:
-                        set_parts.append("schema = %s")
-                        params.append(json.dumps(data["schema"]))
-                    
-                    if "dimensions" in data:
-                        set_parts.append("dimensions = %s")
-                        params.append(json.dumps(data["dimensions"]))
-                    
-                    if "metrics" in data:
-                        set_parts.append("metrics = %s")
-                        params.append(json.dumps(data["metrics"]))
-                    
-                    if "filters" in data:
-                        set_parts.append("filters = %s")
-                        params.append(json.dumps(data["filters"]))
-                    
-                    if "cache_policy" in data:
-                        set_parts.append("cache_policy = %s")
-                        params.append(json.dumps(data["cache_policy"]))
-                    
-                    if not set_parts:
-                        return False
-                    
-                    params.append(dataset_id)
-                    query = f"UPDATE datasets SET {', '.join(set_parts)}, updated_at = NOW() WHERE id = %s"
-                    cursor.execute(query, params)
-                    
-                    affected = cursor.rowcount > 0
-                    logger.info(f"Dataset {dataset_id} update {'successful' if affected else 'failed'}")
-                    return affected
-        except Exception as e:
-            logger.error(f"Error updating dataset {dataset_id}: {str(e)}", exc_info=True)
-            return False
-
+        for i, dataset in enumerate(self.datasets):
+            if dataset["id"] == dataset_id:
+                # Update the dataset
+                for key, value in data.items():
+                    if value is not None:  # Only update non-None values
+                        # Handle the schema field specially
+                        if key == "schema" or key == "schema_definition":
+                            dataset["schema"] = value
+                        else:
+                            dataset[key] = value
+                
+                dataset["updated_at"] = datetime.now().isoformat()
+                
+                # Update source name if source_id was changed
+                if "source_id" in data:
+                    for source in self.data_sources:
+                        if source["id"] == dataset["source_id"]:
+                            dataset["source_name"] = source["name"]
+                            break
+                
+                self.datasets[i] = dataset
+                return True
+        
+        return False
+    
     def delete_dataset(self, dataset_id: int) -> bool:
         """Delete a dataset"""
-        logger.info(f"Deleting dataset {dataset_id}")
-        try:
-            with self.postgres_service._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    # First, check if there are any charts using this dataset
-                    check_query = "SELECT COUNT(*) FROM charts WHERE dataset_id = %s"
-                    cursor.execute(check_query, (dataset_id,))
-                    count = cursor.fetchone()[0]
-                    
-                    if count > 0:
-                        logger.warning(f"Cannot delete dataset {dataset_id}: {count} charts are using it")
-                        return False
-                    
-                    # If no dependency, proceed with deletion
-                    query = "DELETE FROM datasets WHERE id = %s"
-                    cursor.execute(query, (dataset_id,))
-                    
-                    affected = cursor.rowcount > 0
-                    logger.info(f"Dataset {dataset_id} deletion {'successful' if affected else 'failed'}")
-                    return affected
-        except Exception as e:
-            logger.error(f"Error deleting dataset {dataset_id}: {str(e)}", exc_info=True)
-            return False
-
-    def _execute_query(self, conn, query, params=None):
-        """Execute a query and return the results as a list of dictionaries"""
-        with conn.cursor() as cursor:
-            cursor.execute(query, params or ())
-            columns = [desc[0] for desc in cursor.description]
-            results = []
-            
-            for row in cursor.fetchall():
-                result_dict = dict(zip(columns, row))
+        for i, dataset in enumerate(self.datasets):
+            if dataset["id"] == dataset_id:
+                # Check if any charts are using this dataset
+                for chart in self.charts:
+                    if chart["dataset_id"] == dataset_id:
+                        return False  # Can't delete, being used by a chart
                 
-                # Convert datetime objects to ISO strings
-                for key, value in result_dict.items():
-                    if isinstance(value, datetime):
-                        result_dict[key] = value.isoformat()
-                    # Convert JSONB fields from PostgreSQL
-                    elif key in ["config", "schema", "dimensions", "metrics", "filters", 
-                                "cache_policy", "layout", "global_filters"]:
-                        if value and isinstance(value, str):
-                            try:
-                                result_dict[key] = json.loads(value)
-                            except (json.JSONDecodeError, TypeError):
-                                pass
-                
-                results.append(result_dict)
+                del self.datasets[i]
+                return True
+        
+        return False
+    
+    def execute_dataset_query(self, dataset_id: int, filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Execute a query on a dataset"""
+        dataset = self.get_dataset(dataset_id)
+        if not dataset:
+            return {"success": False, "error": f"Dataset with ID {dataset_id} not found"}
+        
+        # In a real app, you would execute the actual query here
+        # For demo purposes, we'll just return some sample data
+        sample_data = []
+        
+        # Generate different sample data based on the dataset
+        if "User Activity" in dataset["name"]:
+            sample_data = [
+                {"id": 1, "user_id": 101, "action": "login", "timestamp": "2025-05-01T08:30:00Z"},
+                {"id": 2, "user_id": 102, "action": "view_page", "timestamp": "2025-05-01T09:15:00Z"},
+                {"id": 3, "user_id": 101, "action": "click_button", "timestamp": "2025-05-01T08:35:00Z"},
+                {"id": 4, "user_id": 103, "action": "login", "timestamp": "2025-05-01T10:00:00Z"},
+                {"id": 5, "user_id": 102, "action": "logout", "timestamp": "2025-05-01T11:45:00Z"}
+            ]
+        elif "Sales" in dataset["name"]:
+            sample_data = [
+                {"id": 1, "product_id": 201, "quantity": 5, "price": 19.99, "sale_date": "2025-04-15"},
+                {"id": 2, "product_id": 202, "quantity": 2, "price": 49.99, "sale_date": "2025-04-16"},
+                {"id": 3, "product_id": 203, "quantity": 1, "price": 99.99, "sale_date": "2025-04-16"},
+                {"id": 4, "product_id": 201, "quantity": 3, "price": 19.99, "sale_date": "2025-04-17"},
+                {"id": 5, "product_id": 204, "quantity": 10, "price": 9.99, "sale_date": "2025-04-18"}
+            ]
+        else:
+            # Default sample data
+            sample_data = [
+                {"column1": "value1", "column2": 10, "column3": True},
+                {"column1": "value2", "column2": 20, "column3": False},
+                {"column1": "value3", "column2": 30, "column3": True}
+            ]
             
-            return results
-
-    def execute_dataset_query(self, dataset_id: int, filters: Optional[Dict] = None) -> Dict:
-        """Execute a query for a dataset and return the results"""
-        logger.info(f"Executing query for dataset {dataset_id}")
-        try:
-            dataset = self.get_dataset(dataset_id)
-            if not dataset:
-                return {"success": False, "error": f"Dataset with ID {dataset_id} not found"}
-            
-            data_source = self.get_data_source(dataset["source_id"])
-            if not data_source:
-                return {"success": False, "error": f"Data source for dataset {dataset_id} not found"}
-            
-            # For simplicity, now only support PostgreSQL
-            if data_source["type"] != "postgresql":
-                return {"success": False, "error": f"Only PostgreSQL data sources are currently supported"}
-            
-            # Create connection
-            engine = create_engine(data_source["connection_string"])
-            
-            # Build query based on dataset type
-            if dataset["query_type"] == "table":
-                base_query = f"SELECT * FROM {dataset['query_value']}"
-            elif dataset["query_type"] == "view":
-                base_query = f"SELECT * FROM {dataset['query_value']}"
-            elif dataset["query_type"] == "custom":
-                base_query = dataset["query_value"]
-            else:
-                return {"success": False, "error": f"Unknown query type: {dataset['query_type']}"}
-            
-            # Apply filters if provided
-            if filters:
-                # This is a simplified filter implementation
-                # In a real application, you'd want to properly sanitize and validate
-                where_clauses = []
-                for key, value in filters.items():
-                    # Simple equals filter
-                    where_clauses.append(f"{key} = '{value}'")
-                
-                if where_clauses:
-                    if "WHERE" in base_query.upper():
-                        base_query += " AND " + " AND ".join(where_clauses)
-                    else:
-                        base_query += " WHERE " + " AND ".join(where_clauses)
-            
-            # Execute query
-            with engine.connect() as connection:
-                result = connection.execute(text(base_query))
-                columns = result.keys()
-                data = [dict(zip(columns, row)) for row in result.fetchall()]
-            
-            # Update last refreshed timestamp
-            with self.postgres_service._get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        "UPDATE datasets SET last_refreshed_at = NOW() WHERE id = %s",
-                        (dataset_id,)
-                    )
-            
-            return {
-                "success": True,
-                "data": data,
-                "columns": columns,
-                "count": len(data)
+        # Convert any complex objects to JSON-serializable format
+        for item in sample_data:
+            for key, value in item.items():
+                if not isinstance(value, (str, int, float, bool, type(None))):
+                    item[key] = str(value)
+        
+        return {
+            "success": True,
+            "data": sample_data,
+            "metadata": {
+                "total_rows": len(sample_data),
+                "query_time_ms": 42  # Simulated query time
             }
-        except Exception as e:
-            logger.error(f"Error executing dataset query {dataset_id}: {str(e)}", exc_info=True)
-            return {"success": False, "error": str(e)}
+        }
+
+    # Charts methods
+    def get_charts(self) -> List[Dict[str, Any]]:
+        """Get all charts"""
+        return self.charts
+    
+    def get_chart(self, chart_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single chart by ID"""
+        for chart in self.charts:
+            if chart["id"] == chart_id:
+                return chart
+        return None
+    
+    def create_chart(self, data: Dict[str, Any]) -> int:
+        """Create a new chart"""
+        # Generate new ID
+        new_id = max([chart["id"] for chart in self.charts], default=0) + 1
+        
+        # Find dataset name
+        dataset_name = ""
+        for dataset in self.datasets:
+            if dataset["id"] == data["dataset_id"]:
+                dataset_name = dataset["name"]
+                break
+        
+        # Create new chart
+        new_chart = {
+            "id": new_id,
+            "name": data["name"],
+            "description": data.get("description"),
+            "dataset_id": data["dataset_id"],
+            "dataset_name": dataset_name,
+            "chart_type": data["chart_type"],
+            "config": data.get("config", {}),
+            "dimensions": data.get("dimensions", []),
+            "metrics": data.get("metrics", []),
+            "filters": data.get("filters", {}),
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "created_by": data.get("created_by", "admin")
+        }
+        
+        self.charts.append(new_chart)
+        return new_id
+    
+    def update_chart(self, chart_id: int, data: Dict[str, Any]) -> bool:
+        """Update an existing chart"""
+        for i, chart in enumerate(self.charts):
+            if chart["id"] == chart_id:
+                # Update the chart
+                for key, value in data.items():
+                    if value is not None:  # Only update non-None values
+                        chart[key] = value
+                
+                # If dataset_id changed, update dataset_name
+                if "dataset_id" in data:
+                    for dataset in self.datasets:
+                        if dataset["id"] == chart["dataset_id"]:
+                            chart["dataset_name"] = dataset["name"]
+                            break
+                
+                chart["updated_at"] = datetime.now().isoformat()
+                self.charts[i] = chart
+                return True
+        
+        return False
+    
+    def delete_chart(self, chart_id: int) -> bool:
+        """Delete a chart"""
+        for i, chart in enumerate(self.charts):
+            if chart["id"] == chart_id:
+                # Remove chart from any dashboards
+                for dashboard in self.dashboards:
+                    dashboard["layout"] = [item for item in dashboard["layout"] if item["chart_id"] != chart_id]
+                    dashboard["item_count"] = len(dashboard["layout"])
+                
+                del self.charts[i]
+                return True
+        
+        return False
+
+    # Dashboards methods
+    def get_dashboards(self) -> List[Dict[str, Any]]:
+        """Get all dashboards"""
+        return self.dashboards
+    
+    def get_dashboard(self, dashboard_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single dashboard by ID"""
+        for dashboard in self.dashboards:
+            if dashboard["id"] == dashboard_id:
+                return dashboard
+        return None
+    
+    def create_dashboard(self, data: Dict[str, Any]) -> int:
+        """Create a new dashboard"""
+        # Generate new ID
+        new_id = max([dashboard["id"] for dashboard in self.dashboards], default=0) + 1
+        
+        # Create new dashboard
+        new_dashboard = {
+            "id": new_id,
+            "name": data["name"],
+            "description": data.get("description"),
+            "is_public": data.get("is_public", False),
+            "layout": data.get("layout", []),
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "created_by": data.get("created_by", "admin"),
+            "item_count": len(data.get("layout", []))
+        }
+        
+        self.dashboards.append(new_dashboard)
+        return new_id
+    
+    def update_dashboard(self, dashboard_id: int, data: Dict[str, Any]) -> bool:
+        """Update an existing dashboard"""
+        for i, dashboard in enumerate(self.dashboards):
+            if dashboard["id"] == dashboard_id:
+                # Update the dashboard
+                for key, value in data.items():
+                    if value is not None:  # Only update non-None values
+                        dashboard[key] = value
+                
+                # Update item_count if layout was changed
+                if "layout" in data:
+                    dashboard["item_count"] = len(dashboard["layout"])
+                
+                dashboard["updated_at"] = datetime.now().isoformat()
+                self.dashboards[i] = dashboard
+                return True
+        
+        return False
+    
+    def delete_dashboard(self, dashboard_id: int) -> bool:
+        """Delete a dashboard"""
+        for i, dashboard in enumerate(self.dashboards):
+            if dashboard["id"] == dashboard_id:
+                del self.dashboards[i]
+                return True
+        
+        return False
+    
+    def add_chart_to_dashboard(self, dashboard_id: int, chart_id: int, position: Dict[str, int]) -> bool:
+        """Add a chart to a dashboard"""
+        dashboard = self.get_dashboard(dashboard_id)
+        chart = self.get_chart(chart_id)
+        
+        if not dashboard or not chart:
+            return False
+        
+        # Create new layout item
+        new_item = {
+            "id": max([item.get("id", 0) for item in dashboard["layout"]], default=0) + 1,
+            "chart_id": chart_id,
+            "x": position.get("x", 0),
+            "y": position.get("y", 0),
+            "width": position.get("width", 12),
+            "height": position.get("height", 6)
+        }
+        
+        dashboard["layout"].append(new_item)
+        dashboard["item_count"] = len(dashboard["layout"])
+        dashboard["updated_at"] = datetime.now().isoformat()
+        
+        return True
+    
+    def remove_chart_from_dashboard(self, dashboard_id: int, item_id: int) -> bool:
+        """Remove a chart from a dashboard"""
+        dashboard = self.get_dashboard(dashboard_id)
+        
+        if not dashboard:
+            return False
+        
+        original_length = len(dashboard["layout"])
+        dashboard["layout"] = [item for item in dashboard["layout"] if item["id"] != item_id]
+        
+        if len(dashboard["layout"]) < original_length:
+            dashboard["item_count"] = len(dashboard["layout"])
+            dashboard["updated_at"] = datetime.now().isoformat()
+            return True
+        
+        return False

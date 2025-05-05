@@ -458,6 +458,32 @@ async def query_dataset(dataset_id: int, query: DatasetQuery, bi_service: BIServ
         result = bi_service.execute_dataset_query(dataset_id, query.filters)
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+            
+        # Ensure the data is JSON serializable
+        serializable_data = []
+        if "data" in result and isinstance(result["data"], list):
+            for item in result["data"]:
+                if isinstance(item, dict):
+                    # Convert any non-serializable values to strings
+                    serializable_item = {}
+                    for k, v in item.items():
+                        if isinstance(v, (str, int, float, bool, type(None))):
+                            serializable_item[k] = v
+                        elif isinstance(v, (list, dict)):
+                            try:
+                                # Try to convert complex objects to JSON and back to ensure serializability
+                                serializable_item[k] = json.loads(json.dumps(v))
+                            except:
+                                serializable_item[k] = str(v)
+                        else:
+                            serializable_item[k] = str(v)
+                    serializable_data.append(serializable_item)
+                else:
+                    # If item is not a dict, convert it to string
+                    serializable_data.append({"value": str(item)})
+                    
+            result["data"] = serializable_data
+            
         return result
     except HTTPException:
         raise
