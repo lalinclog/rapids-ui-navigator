@@ -1,11 +1,23 @@
 
-import React from 'react';
+import React, { useState }  from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Database, Plus } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+
 
 interface DataSource {
   id: number;
@@ -61,10 +73,57 @@ const DataSourceCard: React.FC<{ dataSource: DataSource }> = ({ dataSource }) =>
 };
 
 const DataSources: React.FC = () => {
-  const { data: dataSources, isLoading, error } = useQuery({
+  const { toast } = useToast();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [newDataSource, setNewDataSource] = useState({
+    name: '',
+    type: '',
+    connection_string: '',
+    config: '{}',
+    created_by: 'admin'
+  });
+
+  const { data: dataSources, isLoading, error, refetch } = useQuery({
     queryKey: ['dataSources'],
     queryFn: fetchDataSources,
   });
+
+  const handleAddDataSource = async () => {
+    try {
+      const response = await fetch('/api/bi/data-sources', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newDataSource),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add data source');
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Data source added successfully',
+      });
+      setIsDialogOpen(false);
+      refetch();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to add data source',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setNewDataSource(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
 
   if (isLoading) {
     return (
@@ -109,9 +168,82 @@ const DataSources: React.FC = () => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold">Data Sources</h2>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" /> Add Data Source
-        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" /> Add Data Source
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Data Source</DialogTitle>
+              <DialogDescription>
+                Fill in the details to connect to a new data source.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">
+                  Name
+                </Label>
+                <Input
+                  id="name"
+                  name="name"
+                  value={newDataSource.name}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="type" className="text-right">
+                  Type
+                </Label>
+                <Input
+                  id="type"
+                  name="type"
+                  value={newDataSource.type}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                  placeholder="e.g., postgres, mysql, etc."
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="connection_string" className="text-right">
+                  Connection String
+                </Label>
+                <Input
+                  id="connection_string"
+                  name="connection_string"
+                  value={newDataSource.connection_string}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                  placeholder="e.g., postgresql://user:password@host:port/database"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="config" className="text-right">
+                  Config (JSON)
+                </Label>
+                <Input
+                  id="config"
+                  name="config"
+                  value={newDataSource.config || '{}'}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                  placeholder='{"key": "value"}'
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddDataSource}>
+                Add Data Source
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
       
       {dataSources && dataSources.length > 0 ? (
