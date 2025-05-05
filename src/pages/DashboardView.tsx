@@ -1,15 +1,19 @@
-
-import React from 'react';
-import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+// src/pages/DashboardView.tsx
+import React, { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { BarChart, LineChart, PieChart } from 'recharts';
-import { AlertCircle, Calendar, Download, Share2 } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
+import { BarChart2, LineChart, PieChart, Share2, Download, Calendar, Edit, Save, Plus, X, Eye } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import DraggableDashboardItem from '@/components/dashboard/DraggableDashboardItem';
 
 interface DashboardItem {
   id: number;
@@ -36,22 +40,108 @@ interface Dashboard {
   items: DashboardItem[];
 }
 
+interface Chart {
+  id: number;
+  name: string;
+  chart_type: string;
+}
+
 const fetchDashboard = async (id: string): Promise<Dashboard> => {
   const response = await fetch(`/api/bi/dashboards/${id}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch dashboard: ${response.status}`);
-  }
+  if (!response.ok) throw new Error(`Failed to fetch dashboard: ${response.status}`);
+  return response.json();
+};
+
+const fetchAvailableCharts = async (): Promise<Chart[]> => {
+  const response = await fetch('/api/bi/charts');
+  if (!response.ok) throw new Error('Failed to fetch charts');
+  return response.json();
+};
+
+const updateDashboardLayout = async (id: string, items: DashboardItem[]) => {
+  const response = await fetch(`/api/bi/dashboards/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  });
+  if (!response.ok) throw new Error('Failed to update dashboard');
   return response.json();
 };
 
 const DashboardView: React.FC = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>();
-  
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [showChartSelector, setShowChartSelector] = useState(false);
+  const [localItems, setLocalItems] = useState<DashboardItem[]>([]);
+
   const { data: dashboard, isLoading, error } = useQuery({
     queryKey: ['dashboard', dashboardId],
     queryFn: () => fetchDashboard(dashboardId || ''),
     enabled: !!dashboardId,
+    onSuccess: (data) => setLocalItems(data.items),
   });
+
+  const { data: availableCharts } = useQuery({
+    queryKey: ['availableCharts'],
+    queryFn: fetchAvailableCharts,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (items: DashboardItem[]) => updateDashboardLayout(dashboardId || '', items),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['dashboard', dashboardId]);
+      toast({
+        title: 'Dashboard saved',
+        description: 'Your changes have been saved successfully',
+      });
+      setIsEditing(false);
+    },
+    onError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Error saving dashboard',
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+      });
+    },
+  });
+
+  const handleSave = () => {
+    updateMutation.mutate(localItems);
+  };
+
+  const handleAddChart = (chart: Chart) => {
+    const newItem: DashboardItem = {
+      id: Date.now(),
+      chart_id: chart.id,
+      chart_name: chart.name,
+      chart_type: chart.chart_type,
+      position_x: 0,
+      position_y: Math.max(...localItems.map(i => i.position_y + i.height), 0),
+      width: 4,
+      height: 3,
+      config: {},
+    };
+    setLocalItems([...localItems, newItem]);
+    setShowChartSelector(false);
+  };
+
+  const handleRemoveItem = (id: number) => {
+    setLocalItems(localItems.filter(item => item.id !== id));
+  };
+
+  const handleMoveItem = (id: number, x: number, y: number) => {
+    setLocalItems(localItems.map(item => 
+      item.id === id ? { ...item, position_x: x, position_y: y } : item
+    ));
+  };
+
+  const handleResizeItem = (id: number, width: number, height: number) => {
+    setLocalItems(localItems.map(item => 
+      item.id === id ? { ...item, width, height } : item
+    ));
+  };
 
   if (isLoading) {
     return (
@@ -66,14 +156,6 @@ const DashboardView: React.FC = () => {
             <Skeleton className="h-10 w-24" />
           </div>
         </div>
-        
-        <div className="bg-muted/20 p-6 rounded-lg mb-6">
-          <div className="flex gap-4 mb-4">
-            <Skeleton className="h-10 w-36" />
-            <Skeleton className="h-10 w-36" />
-          </div>
-        </div>
-        
         <div className="grid grid-cols-12 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <Card key={i} className={`col-span-${i === 0 ? '6' : '3'} row-span-${i === 0 ? '2' : '1'} p-4`}>
@@ -90,87 +172,146 @@ const DashboardView: React.FC = () => {
     return (
       <AppLayout>
         <Alert variant="destructive" className="mb-6">
-          <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             {error instanceof Error ? error.message : 'Failed to load dashboard'}
           </AlertDescription>
         </Alert>
-        <Button variant="default" onClick={() => window.history.back()}>
+        <Button variant="default" onClick={() => navigate(-1)}>
           Go Back
         </Button>
       </AppLayout>
     );
   }
 
-  // We would normally render the actual charts here
-  // For now, we'll just show a placeholder representation
   return (
-    <AppLayout>
-      <Header
-        title={dashboard.name}
-        description={dashboard.description || ''}
-        action={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Share2 className="mr-2 h-4 w-4" /> Share
+    <DndProvider backend={HTML5Backend}>
+      <AppLayout>
+        <Header
+          title={dashboard.name}
+          description={dashboard.description || ''}
+          action={
+            <div className="flex gap-2">
+              {isEditing ? (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setShowChartSelector(true)}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Chart
+                  </Button>
+                  <Button variant="default" size="sm" onClick={handleSave}>
+                    <Save className="mr-2 h-4 w-4" /> Save
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
+                    <Edit className="mr-2 h-4 w-4" /> Edit
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    <Share2 className="mr-2 h-4 w-4" /> Share
+                  </Button>
+                  <Button variant="default" size="sm">
+                    <Download className="mr-2 h-4 w-4" /> Export
+                  </Button>
+                </>
+              )}
+            </div>
+          }
+        />
+
+        <div className="bg-muted/20 p-4 rounded-lg mb-6 flex items-center flex-wrap gap-4">
+          {dashboard.global_filters?.map((filter, index) => (
+            <Button key={index} variant="outline">
+              {filter.name}: {filter.defaultValue?.toString() || 'All'}
             </Button>
-            <Button variant="default" size="sm">
-              <Download className="mr-2 h-4 w-4" /> Export
-            </Button>
-          </div>
-        }
-      />
-      
-      <div className="bg-muted/20 p-4 rounded-lg mb-6 flex items-center flex-wrap gap-4">
-        <Button variant="outline" className="flex items-center">
-          <Calendar className="mr-2 h-4 w-4" /> Last 7 Days
-        </Button>
-        {/* Render any global filters defined in the dashboard */}
-        {dashboard.global_filters?.map((filter: any, index: number) => (
-          <Button key={index} variant="outline">
-            {filter.name}: {filter.defaultValue?.toString() || 'All'}
-          </Button>
-        ))}
-      </div>
-      
-      {dashboard.items.length > 0 ? (
-        <div 
-          className="grid grid-cols-12 gap-4"
-          style={{
-            gridTemplateRows: `repeat(${Math.max(...dashboard.items.map(item => item.position_y + item.height))}, minmax(100px, auto))`
-          }}
-        >
-          {dashboard.items.map((item) => (
-            <Card
-              key={item.id}
-              className="p-4 overflow-hidden"
-              style={{
-                gridColumnStart: item.position_x + 1,
-                gridColumnEnd: item.position_x + item.width + 1,
-                gridRowStart: item.position_y + 1, 
-                gridRowEnd: item.position_y + item.height + 1
-              }}
-            >
-              <h3 className="font-medium mb-2">{item.chart_name}</h3>
-              <div className="h-full w-full min-h-[120px] bg-muted/30 rounded flex items-center justify-center">
-                {/* This would be replaced with actual chart components */}
-                <div className="text-muted-foreground text-sm">
-                  {item.chart_type.toUpperCase()} Chart Placeholder
-                </div>
-              </div>
-            </Card>
           ))}
         </div>
-      ) : (
-        <Card className="p-8 text-center">
-          <h3 className="text-lg font-medium mb-2">No charts in this dashboard</h3>
-          <p className="text-muted-foreground mb-4">
-            This dashboard doesn't have any charts yet.
-          </p>
-          <Button>Edit Dashboard</Button>
-        </Card>
-      )}
-    </AppLayout>
+
+        {localItems.length > 0 ? (
+          <div className="grid grid-cols-12 gap-4 auto-rows-min">
+            {localItems.map((item) => (
+              <DraggableDashboardItem
+                key={item.id}
+                id={item.id}
+                x={item.position_x}
+                y={item.position_y}
+                width={item.width}
+                height={item.height}
+                onMove={handleMoveItem}
+                onResize={handleResizeItem}
+                onRemove={handleRemoveItem}
+                isEditing={isEditing}
+              >
+                <Card className="h-full p-4 overflow-hidden">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-medium">{item.chart_name}</h3>
+                    {isEditing && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleRemoveItem(item.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="h-full w-full min-h-[120px] bg-muted/30 rounded flex items-center justify-center">
+                    {item.chart_type === 'bar' && <BarChart2 className="h-8 w-8 text-muted-foreground" />}
+                    {item.chart_type === 'line' && <LineChart className="h-8 w-8 text-muted-foreground" />}
+                    {item.chart_type === 'pie' && <PieChart className="h-8 w-8 text-muted-foreground" />}
+                  </div>
+                </Card>
+              </DraggableDashboardItem>
+            ))}
+          </div>
+        ) : (
+          <Card className="p-8 text-center">
+            <h3 className="text-lg font-medium mb-2">No charts in this dashboard</h3>
+            <p className="text-muted-foreground mb-4">
+              {isEditing ? 'Add your first chart to get started' : 'This dashboard is empty'}
+            </p>
+            {isEditing ? (
+              <Button onClick={() => setShowChartSelector(true)}>
+                <Plus className="mr-2 h-4 w-4" /> Add Chart
+              </Button>
+            ) : (
+              <Button onClick={() => setIsEditing(true)}>
+                <Edit className="mr-2 h-4 w-4" /> Edit Dashboard
+              </Button>
+            )}
+          </Card>
+        )}
+
+        <Dialog open={showChartSelector} onOpenChange={setShowChartSelector}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Add Chart to Dashboard</DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {availableCharts?.map((chart) => (
+                <Card
+                  key={chart.id}
+                  className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => handleAddChart(chart)}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    {chart.chart_type === 'bar' && <BarChart2 className="h-4 w-4" />}
+                    {chart.chart_type === 'line' && <LineChart className="h-4 w-4" />}
+                    {chart.chart_type === 'pie' && <PieChart className="h-4 w-4" />}
+                    <span className="font-medium">{chart.name}</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground capitalize">
+                    {chart.chart_type} chart
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </AppLayout>
+    </DndProvider>
   );
 };
 
