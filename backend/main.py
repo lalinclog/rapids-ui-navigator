@@ -94,6 +94,31 @@ class DataSourceUpdate(BaseModel):
 class DatasetQuery(BaseModel):
     filters: Optional[Dict[str, Any]] = None
 
+class DatasetCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    source_id: int
+    query_type: str
+    query_value: str
+    schema: Optional[Dict[str, Any]] = None
+    dimensions: Optional[Dict[str, Any]] = None
+    metrics: Optional[Dict[str, Any]] = None
+    filters: Optional[Dict[str, Any]] = None
+    cache_policy: Optional[Dict[str, Any]] = None
+    created_by: Optional[str] = "admin"
+
+class DatasetUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    source_id: Optional[int] = None
+    query_type: Optional[str] = None
+    query_value: Optional[str] = None
+    schema: Optional[Dict[str, Any]] = None
+    dimensions: Optional[Dict[str, Any]] = None
+    metrics: Optional[Dict[str, Any]] = None
+    filters: Optional[Dict[str, Any]] = None
+    cache_policy: Optional[Dict[str, Any]] = None
+
 # Routes
 @app.get("/api/health")
 def health_check():
@@ -486,6 +511,47 @@ async def get_dashboard(dashboard_id: int, bi_service: BIService = Depends(get_b
         raise
     except Exception as e:
         logger.error(f"Error getting dashboard {dashboard_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Dataset CRUD operations
+@app.post("/api/bi/datasets")
+async def create_dataset(dataset: DatasetCreate, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Creating new dataset: {dataset.name}")
+    try:
+        dataset_id = bi_service.create_dataset(dataset.dict())
+        if not dataset_id:
+            raise HTTPException(status_code=500, detail="Failed to create dataset")
+        return {"id": dataset_id, "success": True}
+    except Exception as e:
+        logger.error(f"Error creating dataset: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/bi/datasets/{dataset_id}")
+async def update_dataset(dataset_id: int, dataset: DatasetUpdate, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Updating dataset {dataset_id}")
+    try:
+        success = bi_service.update_dataset(dataset_id, dataset.dict(exclude_unset=True))
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Dataset with ID {dataset_id} not found or no changes made")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating dataset {dataset_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/bi/datasets/{dataset_id}")
+async def delete_dataset(dataset_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Deleting dataset {dataset_id}")
+    try:
+        success = bi_service.delete_dataset(dataset_id)
+        if not success:
+            raise HTTPException(status_code=400, detail=f"Dataset with ID {dataset_id} cannot be deleted or not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting dataset {dataset_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # Serve static files

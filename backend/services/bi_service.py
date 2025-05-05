@@ -305,6 +305,128 @@ class BIService:
             logger.error(f"Error fetching dashboard {dashboard_id}: {str(e)}", exc_info=True)
             return None
 
+    def create_dataset(self, data: Dict[str, Any]) -> Optional[int]:
+        """Create a new dataset"""
+        logger.info(f"Creating new dataset: {data.get('name')}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    query = """
+                    INSERT INTO datasets 
+                    (name, description, source_id, query_type, query_value, 
+                     schema, dimensions, metrics, filters, cache_policy, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """
+                    cursor.execute(query, (
+                        data.get("name"),
+                        data.get("description"),
+                        data.get("source_id"),
+                        data.get("query_type"),
+                        data.get("query_value"),
+                        json.dumps(data.get("schema", {})) if data.get("schema") else None,
+                        json.dumps(data.get("dimensions", {})) if data.get("dimensions") else None,
+                        json.dumps(data.get("metrics", {})) if data.get("metrics") else None,
+                        json.dumps(data.get("filters", {})) if data.get("filters") else None,
+                        json.dumps(data.get("cache_policy", {})) if data.get("cache_policy") else None,
+                        data.get("created_by", "admin")
+                    ))
+                    dataset_id = cursor.fetchone()[0]
+                    logger.info(f"Successfully created dataset with ID: {dataset_id}")
+                    return dataset_id
+        except Exception as e:
+            logger.error(f"Error creating dataset: {str(e)}", exc_info=True)
+            return None
+
+    def update_dataset(self, dataset_id: int, data: Dict[str, Any]) -> bool:
+        """Update an existing dataset"""
+        logger.info(f"Updating dataset {dataset_id}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    set_parts = []
+                    params = []
+                    
+                    if "name" in data:
+                        set_parts.append("name = %s")
+                        params.append(data["name"])
+                    
+                    if "description" in data:
+                        set_parts.append("description = %s")
+                        params.append(data["description"])
+                    
+                    if "source_id" in data:
+                        set_parts.append("source_id = %s")
+                        params.append(data["source_id"])
+                    
+                    if "query_type" in data:
+                        set_parts.append("query_type = %s")
+                        params.append(data["query_type"])
+                    
+                    if "query_value" in data:
+                        set_parts.append("query_value = %s")
+                        params.append(data["query_value"])
+                    
+                    if "schema" in data:
+                        set_parts.append("schema = %s")
+                        params.append(json.dumps(data["schema"]))
+                    
+                    if "dimensions" in data:
+                        set_parts.append("dimensions = %s")
+                        params.append(json.dumps(data["dimensions"]))
+                    
+                    if "metrics" in data:
+                        set_parts.append("metrics = %s")
+                        params.append(json.dumps(data["metrics"]))
+                    
+                    if "filters" in data:
+                        set_parts.append("filters = %s")
+                        params.append(json.dumps(data["filters"]))
+                    
+                    if "cache_policy" in data:
+                        set_parts.append("cache_policy = %s")
+                        params.append(json.dumps(data["cache_policy"]))
+                    
+                    if not set_parts:
+                        return False
+                    
+                    params.append(dataset_id)
+                    query = f"UPDATE datasets SET {', '.join(set_parts)}, updated_at = NOW() WHERE id = %s"
+                    cursor.execute(query, params)
+                    
+                    affected = cursor.rowcount > 0
+                    logger.info(f"Dataset {dataset_id} update {'successful' if affected else 'failed'}")
+                    return affected
+        except Exception as e:
+            logger.error(f"Error updating dataset {dataset_id}: {str(e)}", exc_info=True)
+            return False
+
+    def delete_dataset(self, dataset_id: int) -> bool:
+        """Delete a dataset"""
+        logger.info(f"Deleting dataset {dataset_id}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # First, check if there are any charts using this dataset
+                    check_query = "SELECT COUNT(*) FROM charts WHERE dataset_id = %s"
+                    cursor.execute(check_query, (dataset_id,))
+                    count = cursor.fetchone()[0]
+                    
+                    if count > 0:
+                        logger.warning(f"Cannot delete dataset {dataset_id}: {count} charts are using it")
+                        return False
+                    
+                    # If no dependency, proceed with deletion
+                    query = "DELETE FROM datasets WHERE id = %s"
+                    cursor.execute(query, (dataset_id,))
+                    
+                    affected = cursor.rowcount > 0
+                    logger.info(f"Dataset {dataset_id} deletion {'successful' if affected else 'failed'}")
+                    return affected
+        except Exception as e:
+            logger.error(f"Error deleting dataset {dataset_id}: {str(e)}", exc_info=True)
+            return False
+
     def _execute_query(self, conn, query, params=None):
         """Execute a query and return the results as a list of dictionaries"""
         with conn.cursor() as cursor:
