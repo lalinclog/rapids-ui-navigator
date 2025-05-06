@@ -583,5 +583,67 @@ async def get_dashboard(dashboard_id: int, bi_service: BIService = Depends(get_b
         logger.error(f"Error getting dashboard {dashboard_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/bi/dashboards")
+async def create_dashboard(data: dict, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Creating new dashboard: {data.get('name')}")
+    try:
+        dashboard_id = bi_service.create_dashboard(data)
+        if not dashboard_id:
+            raise HTTPException(status_code=500, detail="Failed to create dashboard")
+        return {"id": dashboard_id, "success": True}
+    except Exception as e:
+        logger.error(f"Error creating dashboard: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/bi/dashboards/{dashboard_id}")
+async def update_dashboard(dashboard_id: int, data: dict, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Updating dashboard {dashboard_id}")
+    try:
+        success = bi_service.update_dashboard(dashboard_id, data)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Dashboard with ID {dashboard_id} not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating dashboard {dashboard_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/api/bi/dashboards/{dashboard_id}")
+async def update_dashboard_partial(dashboard_id: int, data: dict, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Partially updating dashboard {dashboard_id} with {data}")
+    try:
+        # For layout updates, extract the items array if provided
+        items = data.get('items', None)
+        if items is not None:
+            # Update just the layout
+            success = bi_service.update_dashboard_layout(dashboard_id, items)
+        else:
+            # Regular update for other fields
+            success = bi_service.update_dashboard(dashboard_id, data)
+            
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Dashboard with ID {dashboard_id} not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating dashboard {dashboard_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/bi/dashboards/{dashboard_id}")
+async def delete_dashboard(dashboard_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Deleting dashboard {dashboard_id}")
+    try:
+        success = bi_service.delete_dashboard(dashboard_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Dashboard with ID {dashboard_id} not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting dashboard {dashboard_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Serve static files
 app.mount("/", StaticFiles(directory="dist", html=True), name="static")

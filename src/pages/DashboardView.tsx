@@ -1,5 +1,6 @@
+
 // src/pages/DashboardView.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DndProvider } from 'react-dnd';
@@ -59,12 +60,16 @@ const fetchAvailableCharts = async (): Promise<Chart[]> => {
 };
 
 const updateDashboardLayout = async (id: string, items: DashboardItem[]) => {
+  console.log('Updating dashboard layout:', items);
   const response = await fetch(`/api/bi/dashboards/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ items }),
   });
-  if (!response.ok) throw new Error('Failed to update dashboard');
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to update dashboard: ${response.status} ${errorText}`);
+  }
   return response.json();
 };
 
@@ -80,7 +85,23 @@ const DashboardView: React.FC = () => {
     queryKey: ['dashboard', dashboardId],
     queryFn: () => fetchDashboard(dashboardId || ''),
     enabled: !!dashboardId,
-    onSuccess: (data) => setLocalItems(data.items),
+    onSuccess: (data) => {
+      // Convert layout to items if needed
+      const items = data.items || 
+        (data.layout ? data.layout.map((item: any) => ({
+          id: item.id,
+          chart_id: item.chart_id,
+          chart_name: item.chart_name || `Chart ${item.chart_id}`,
+          chart_type: item.chart_type || 'bar',
+          position_x: item.x || item.position_x || 0,
+          position_y: item.y || item.position_y || 0,
+          width: item.width || 4,
+          height: item.height || 3,
+          config: item.config || {},
+        })) : []);
+      
+      setLocalItems(items);
+    },
   });
 
   const { data: availableCharts } = useQuery({
@@ -91,7 +112,7 @@ const DashboardView: React.FC = () => {
   const updateMutation = useMutation({
     mutationFn: (items: DashboardItem[]) => updateDashboardLayout(dashboardId || '', items),
     onSuccess: () => {
-      queryClient.invalidateQueries(['dashboard', dashboardId]);
+      queryClient.invalidateQueries({ queryKey: ['dashboard', dashboardId] });
       toast({
         title: 'Dashboard saved',
         description: 'Your changes have been saved successfully',
@@ -99,6 +120,7 @@ const DashboardView: React.FC = () => {
       setIsEditing(false);
     },
     onError: (error) => {
+      console.error('Error saving dashboard:', error);
       toast({
         variant: 'destructive',
         title: 'Error saving dashboard',
@@ -199,7 +221,11 @@ const DashboardView: React.FC = () => {
                   <Button variant="default" size="sm" onClick={handleSave}>
                     <Save className="mr-2 h-4 w-4" /> Save
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    // Reset to original dashboard items
+                    setLocalItems(dashboard.items || []);
+                    setIsEditing(false);
+                  }}>
                     Cancel
                   </Button>
                 </>
@@ -226,6 +252,9 @@ const DashboardView: React.FC = () => {
               {filter.name}: {filter.defaultValue?.toString() || 'All'}
             </Button>
           ))}
+          {(!dashboard.global_filters || dashboard.global_filters.length === 0) && (
+            <span className="text-sm text-muted-foreground">No filters applied</span>
+          )}
         </div>
 
         {localItems.length > 0 ? (
@@ -242,6 +271,7 @@ const DashboardView: React.FC = () => {
                 onResize={handleResizeItem}
                 onRemove={handleRemoveItem}
                 isEditing={isEditing}
+                chartType={item.chart_type}
               >
                 <Card className="h-full p-4 overflow-hidden">
                   <div className="flex justify-between items-center mb-2">
@@ -257,10 +287,16 @@ const DashboardView: React.FC = () => {
                       </Button>
                     )}
                   </div>
-                  <div className="h-full w-full min-h-[120px] bg-muted/30 rounded flex items-center justify-center">
-                    {item.chart_type === 'bar' && <BarChart2 className="h-8 w-8 text-muted-foreground" />}
-                    {item.chart_type === 'line' && <LineChart className="h-8 w-8 text-muted-foreground" />}
-                    {item.chart_type === 'pie' && <PieChart className="h-8 w-8 text-muted-foreground" />}
+                  <div className="h-full w-full min-h-[120px] rounded flex items-center justify-center">
+                    {item.chart_type === 'bar' && (
+                      <BarChart2 className="h-8 w-8 text-muted-foreground opacity-0" />
+                    )}
+                    {item.chart_type === 'line' && (
+                      <LineChart className="h-8 w-8 text-muted-foreground opacity-0" />
+                    )}
+                    {item.chart_type === 'pie' && (
+                      <PieChart className="h-8 w-8 text-muted-foreground opacity-0" />
+                    )}
                   </div>
                 </Card>
               </DraggableDashboardItem>
@@ -307,6 +343,11 @@ const DashboardView: React.FC = () => {
                   </div>
                 </Card>
               ))}
+              {(!availableCharts || availableCharts.length === 0) && (
+                <div className="col-span-3 p-8 text-center">
+                  <p className="text-muted-foreground">No charts available. Create charts first.</p>
+                </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>

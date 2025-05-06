@@ -1,7 +1,12 @@
+
 // src/components/dashboard/DraggableDashboardItem.tsx
 import React from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { Resizable } from 'react-resizable';
+import { Bar, Line, Pie } from 'recharts';
+import { BarChart, LineChart, PieChart } from 'recharts';
+import { BarChart2, LineChart as LineIcon, PieChart as PieIcon, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import 'react-resizable/css/styles.css';
 
 interface DraggableDashboardItemProps {
@@ -15,7 +20,25 @@ interface DraggableDashboardItemProps {
   onResize: (id: number, width: number, height: number) => void;
   onRemove: (id: number) => void;
   isEditing: boolean;
+  chartType?: string;
+  chartData?: any[];
 }
+
+const sampleData = [
+  { name: 'Jan', value: 400 },
+  { name: 'Feb', value: 300 },
+  { name: 'Mar', value: 600 },
+  { name: 'Apr', value: 200 },
+  { name: 'May', value: 500 },
+  { name: 'Jun', value: 350 },
+];
+
+const pieData = [
+  { name: 'Group A', value: 400 },
+  { name: 'Group B', value: 300 },
+  { name: 'Group C', value: 300 },
+  { name: 'Group D', value: 200 },
+];
 
 const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   id,
@@ -28,6 +51,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   onResize,
   onRemove,
   isEditing,
+  chartType,
 }) => {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'DASHBOARD_ITEM',
@@ -53,6 +77,48 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     onResize(id, Math.max(2, Math.round(size.width / 32)), Math.max(2, Math.round(size.height / 32)));
   };
 
+  const renderChart = () => {
+    const chartWidth = width * 32 - 32; // Adjust for padding
+    const chartHeight = height * 32 - 60; // Adjust for header and padding
+    
+    if (!chartType || chartHeight < 50) {
+      return (
+        <div className="flex items-center justify-center h-full w-full">
+          <span className="text-muted-foreground text-sm">No chart data</span>
+        </div>
+      );
+    }
+
+    switch (chartType.toLowerCase()) {
+      case 'bar':
+        return (
+          <BarChart width={chartWidth} height={chartHeight} data={sampleData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <Bar dataKey="value" fill="#8884d8" />
+          </BarChart>
+        );
+      case 'line':
+        return (
+          <LineChart width={chartWidth} height={chartHeight} data={sampleData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <Line type="monotone" dataKey="value" stroke="#8884d8" />
+          </LineChart>
+        );
+      case 'pie':
+        return (
+          <PieChart width={chartWidth} height={chartHeight}>
+            <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" fill="#8884d8" label />
+          </PieChart>
+        );
+      default:
+        return (
+          <div className="h-full w-full flex items-center justify-center">
+            {chartType === 'bar' && <BarChart2 className="h-8 w-8 text-muted-foreground" />}
+            {chartType === 'line' && <LineIcon className="h-8 w-8 text-muted-foreground" />}
+            {chartType === 'pie' && <PieIcon className="h-8 w-8 text-muted-foreground" />}
+          </div>
+        );
+    }
+  };
+
   return (
     <div
       ref={(node) => drag(drop(node))}
@@ -73,7 +139,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
           onResize={handleResize}
           resizeHandles={['se']}
           minConstraints={[64, 64]}
-          maxConstraints={[256, 256]}
+          maxConstraints={[512, 512]} // Increased max size
         >
           <div style={{ width: '100%', height: '100%' }}>
             {children}

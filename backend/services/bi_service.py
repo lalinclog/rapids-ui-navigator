@@ -1,4 +1,3 @@
-
 import logging
 import json
 from datetime import datetime
@@ -118,6 +117,20 @@ class BIService:
                 "layout": [
                     {"id": 1, "chart_id": 1, "x": 0, "y": 0, "width": 12, "height": 6}
                 ],
+                "items": [
+                    {
+                        "id": 1,
+                        "chart_id": 1,
+                        "chart_name": "User Activity by Action",
+                        "chart_type": "bar",
+                        "position_x": 0,
+                        "position_y": 0,
+                        "width": 12,
+                        "height": 6,
+                        "config": {}
+                    }
+                ],
+                "global_filters": [],
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "created_by": "admin",
@@ -329,17 +342,22 @@ class BIService:
                 {"column1": "value3", "column2": 30, "column3": True}
             ]
             
-        # Convert any complex objects to JSON-serializable format
+        # Ensure data is JSON serializable
+        serializable_data = []
         for item in sample_data:
+            serializable_item = {}
             for key, value in item.items():
-                if not isinstance(value, (str, int, float, bool, type(None))):
-                    item[key] = str(value)
+                if isinstance(value, (str, int, float, bool, type(None))):
+                    serializable_item[key] = value
+                else:
+                    serializable_item[key] = str(value)
+            serializable_data.append(serializable_item)
         
         return {
             "success": True,
-            "data": sample_data,
+            "data": serializable_data,
             "metadata": {
-                "total_rows": len(sample_data),
+                "total_rows": len(serializable_data),
                 "query_time_ms": 42  # Simulated query time
             }
         }
@@ -433,6 +451,30 @@ class BIService:
         """Get a single dashboard by ID"""
         for dashboard in self.dashboards:
             if dashboard["id"] == dashboard_id:
+                # Ensure items is present and populated from layout if needed
+                if "items" not in dashboard or not dashboard["items"]:
+                    dashboard["items"] = []
+                    for item in dashboard.get("layout", []):
+                        # Try to find chart name and type
+                        chart_name = "Unknown Chart"
+                        chart_type = "bar"
+                        for chart in self.charts:
+                            if chart["id"] == item.get("chart_id"):
+                                chart_name = chart["name"]
+                                chart_type = chart["chart_type"]
+                                break
+                                
+                        dashboard["items"].append({
+                            "id": item.get("id", 0),
+                            "chart_id": item.get("chart_id", 0),
+                            "chart_name": chart_name,
+                            "chart_type": chart_type,
+                            "position_x": item.get("x", 0),
+                            "position_y": item.get("y", 0),
+                            "width": item.get("width", 4),
+                            "height": item.get("height", 3),
+                            "config": item.get("config", {})
+                        })
                 return dashboard
         return None
     
@@ -441,17 +483,33 @@ class BIService:
         # Generate new ID
         new_id = max([dashboard["id"] for dashboard in self.dashboards], default=0) + 1
         
+        # Process items if present
+        items = data.get("items", [])
+        layout = []
+        
+        for item in items:
+            layout.append({
+                "id": item.get("id", len(layout) + 1),
+                "chart_id": item.get("chart_id", 0),
+                "x": item.get("position_x", 0),
+                "y": item.get("position_y", 0),
+                "width": item.get("width", 4),
+                "height": item.get("height", 3)
+            })
+        
         # Create new dashboard
         new_dashboard = {
             "id": new_id,
-            "name": data["name"],
-            "description": data.get("description"),
+            "name": data.get("name", f"Dashboard {new_id}"),
+            "description": data.get("description", ""),
             "is_public": data.get("is_public", False),
-            "layout": data.get("layout", []),
+            "layout": layout,
+            "items": items,
+            "global_filters": data.get("global_filters", []),
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "created_by": data.get("created_by", "admin"),
-            "item_count": len(data.get("layout", []))
+            "item_count": len(items)
         }
         
         self.dashboards.append(new_dashboard)
@@ -461,16 +519,44 @@ class BIService:
         """Update an existing dashboard"""
         for i, dashboard in enumerate(self.dashboards):
             if dashboard["id"] == dashboard_id:
-                # Update the dashboard
+                # Update fields
                 for key, value in data.items():
-                    if value is not None:  # Only update non-None values
+                    if key != "id" and value is not None:
                         dashboard[key] = value
                 
-                # Update item_count if layout was changed
-                if "layout" in data:
-                    dashboard["item_count"] = len(dashboard["layout"])
-                
+                # Update timestamp
                 dashboard["updated_at"] = datetime.now().isoformat()
+                
+                # If items were provided, update the layout
+                if "items" in data:
+                    self.update_dashboard_layout(dashboard_id, data["items"])
+                
+                self.dashboards[i] = dashboard
+                return True
+        
+        return False
+    
+    def update_dashboard_layout(self, dashboard_id: int, items: List[Dict[str, Any]]) -> bool:
+        """Update just the layout of a dashboard"""
+        for i, dashboard in enumerate(self.dashboards):
+            if dashboard["id"] == dashboard_id:
+                # Convert items to layout format
+                layout = []
+                for item in items:
+                    layout.append({
+                        "id": item.get("id", 0),
+                        "chart_id": item.get("chart_id", 0),
+                        "x": item.get("position_x", 0),
+                        "y": item.get("position_y", 0),
+                        "width": item.get("width", 4),
+                        "height": item.get("height", 3)
+                    })
+                
+                dashboard["layout"] = layout
+                dashboard["items"] = items
+                dashboard["item_count"] = len(items)
+                dashboard["updated_at"] = datetime.now().isoformat()
+                
                 self.dashboards[i] = dashboard
                 return True
         
@@ -493,18 +579,43 @@ class BIService:
         if not dashboard or not chart:
             return False
         
-        # Create new layout item
+        # Find a unique item ID
+        item_ids = [item.get("id", 0) for item in dashboard.get("items", [])]
+        new_item_id = max(item_ids, default=0) + 1
+        
+        # Create new item
         new_item = {
-            "id": max([item.get("id", 0) for item in dashboard["layout"]], default=0) + 1,
+            "id": new_item_id,
+            "chart_id": chart_id,
+            "chart_name": chart["name"],
+            "chart_type": chart["chart_type"],
+            "position_x": position.get("x", 0),
+            "position_y": position.get("y", 0),
+            "width": position.get("width", 4),
+            "height": position.get("height", 3),
+            "config": {}
+        }
+        
+        # Add to items
+        if "items" not in dashboard:
+            dashboard["items"] = []
+        dashboard["items"].append(new_item)
+        
+        # Also add to layout for backward compatibility
+        layout_item = {
+            "id": new_item_id,
             "chart_id": chart_id,
             "x": position.get("x", 0),
             "y": position.get("y", 0),
-            "width": position.get("width", 12),
-            "height": position.get("height", 6)
+            "width": position.get("width", 4),
+            "height": position.get("height", 3)
         }
         
-        dashboard["layout"].append(new_item)
-        dashboard["item_count"] = len(dashboard["layout"])
+        if "layout" not in dashboard:
+            dashboard["layout"] = []
+        dashboard["layout"].append(layout_item)
+        
+        dashboard["item_count"] = len(dashboard["items"])
         dashboard["updated_at"] = datetime.now().isoformat()
         
         return True
@@ -516,12 +627,18 @@ class BIService:
         if not dashboard:
             return False
         
-        original_length = len(dashboard["layout"])
-        dashboard["layout"] = [item for item in dashboard["layout"] if item["id"] != item_id]
-        
-        if len(dashboard["layout"]) < original_length:
-            dashboard["item_count"] = len(dashboard["layout"])
+        # Remove from items
+        if "items" in dashboard:
+            original_items_length = len(dashboard["items"])
+            dashboard["items"] = [item for item in dashboard["items"] if item.get("id") != item_id]
+            
+            # Also remove from layout for backward compatibility
+            if "layout" in dashboard:
+                dashboard["layout"] = [item for item in dashboard["layout"] if item.get("id") != item_id]
+            
+            dashboard["item_count"] = len(dashboard["items"])
             dashboard["updated_at"] = datetime.now().isoformat()
-            return True
+            
+            return len(dashboard["items"]) < original_items_length
         
         return False
