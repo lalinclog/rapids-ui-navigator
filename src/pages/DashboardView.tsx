@@ -1,5 +1,4 @@
 
-// src/pages/DashboardView.tsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -73,6 +72,15 @@ const updateDashboardLayout = async (id: string, items: DashboardItem[]) => {
   return response.json();
 };
 
+const fetchChartData = async (chartId: number): Promise<any[]> => {
+  const response = await fetch(`/api/bi/charts/${chartId}/data`);
+  if (!response.ok) {
+    console.error(`Failed to fetch data for chart ${chartId}: ${response.status}`);
+    return [];
+  }
+  return response.json();
+};
+
 const DashboardView: React.FC = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>();
   const navigate = useNavigate();
@@ -85,10 +93,14 @@ const DashboardView: React.FC = () => {
     queryKey: ['dashboard', dashboardId],
     queryFn: () => fetchDashboard(dashboardId || ''),
     enabled: !!dashboardId,
-    onSuccess: (data) => {
+  });
+
+  // Effect to initialize localItems when dashboard data is loaded
+  useEffect(() => {
+    if (dashboard) {
       // Convert layout to items if needed
-      const items = data.items || 
-        (data.layout ? data.layout.map((item: any) => ({
+      const items = dashboard.items || 
+        (dashboard.layout ? dashboard.layout.map((item: any) => ({
           id: item.id,
           chart_id: item.chart_id,
           chart_name: item.chart_name || `Chart ${item.chart_id}`,
@@ -101,8 +113,8 @@ const DashboardView: React.FC = () => {
         })) : []);
       
       setLocalItems(items);
-    },
-  });
+    }
+  }, [dashboard]);
 
   const { data: availableCharts } = useQuery({
     queryKey: ['availableCharts'],
@@ -209,8 +221,8 @@ const DashboardView: React.FC = () => {
     <DndProvider backend={HTML5Backend}>
       <AppLayout>
         <Header
-          title={dashboard.name}
-          description={dashboard.description || ''}
+          title={dashboard?.name || 'Dashboard'}
+          description={dashboard?.description || ''}
           action={
             <div className="flex gap-2">
               {isEditing ? (
@@ -223,7 +235,7 @@ const DashboardView: React.FC = () => {
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => {
                     // Reset to original dashboard items
-                    setLocalItems(dashboard.items || []);
+                    if (dashboard) setLocalItems(dashboard.items || []);
                     setIsEditing(false);
                   }}>
                     Cancel
@@ -247,12 +259,12 @@ const DashboardView: React.FC = () => {
         />
 
         <div className="bg-muted/20 p-4 rounded-lg mb-6 flex items-center flex-wrap gap-4">
-          {dashboard.global_filters?.map((filter, index) => (
+          {dashboard?.global_filters?.map((filter, index) => (
             <Button key={index} variant="outline">
               {filter.name}: {filter.defaultValue?.toString() || 'All'}
             </Button>
           ))}
-          {(!dashboard.global_filters || dashboard.global_filters.length === 0) && (
+          {(!dashboard?.global_filters || dashboard?.global_filters.length === 0) && (
             <span className="text-sm text-muted-foreground">No filters applied</span>
           )}
         </div>
@@ -272,6 +284,7 @@ const DashboardView: React.FC = () => {
                 onRemove={handleRemoveItem}
                 isEditing={isEditing}
                 chartType={item.chart_type}
+                chartId={item.chart_id}
               >
                 <Card className="h-full p-4 overflow-hidden">
                   <div className="flex justify-between items-center mb-2">
@@ -288,15 +301,7 @@ const DashboardView: React.FC = () => {
                     )}
                   </div>
                   <div className="h-full w-full min-h-[120px] rounded flex items-center justify-center">
-                    {item.chart_type === 'bar' && (
-                      <BarChart2 className="h-8 w-8 text-muted-foreground opacity-0" />
-                    )}
-                    {item.chart_type === 'line' && (
-                      <LineChart className="h-8 w-8 text-muted-foreground opacity-0" />
-                    )}
-                    {item.chart_type === 'pie' && (
-                      <PieChart className="h-8 w-8 text-muted-foreground opacity-0" />
-                    )}
+                    {/* Chart will be rendered by DraggableDashboardItem */}
                   </div>
                 </Card>
               </DraggableDashboardItem>

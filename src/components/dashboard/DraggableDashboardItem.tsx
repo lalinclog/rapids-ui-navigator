@@ -1,12 +1,13 @@
 
-// src/components/dashboard/DraggableDashboardItem.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { Resizable } from 'react-resizable';
-import { Bar, Line, Pie } from 'recharts';
 import { BarChart, LineChart, PieChart } from 'recharts';
+import { Bar, Line, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { BarChart2, LineChart as LineIcon, PieChart as PieIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useQuery } from '@tanstack/react-query';
 import 'react-resizable/css/styles.css';
 
 interface DraggableDashboardItemProps {
@@ -21,9 +22,10 @@ interface DraggableDashboardItemProps {
   onRemove: (id: number) => void;
   isEditing: boolean;
   chartType?: string;
-  chartData?: any[];
+  chartId?: number;
 }
 
+// Fallback sample data for when API requests fail
 const sampleData = [
   { name: 'Jan', value: 400 },
   { name: 'Feb', value: 300 },
@@ -40,6 +42,22 @@ const pieData = [
   { name: 'Group D', value: 200 },
 ];
 
+const fetchChartData = async (chartId: number): Promise<any[]> => {
+  if (!chartId) return [];
+  
+  try {
+    const response = await fetch(`/api/bi/charts/${chartId}/data`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch data for chart ${chartId}: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('Error fetching chart data:', error);
+    return [];
+  }
+};
+
 const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   id,
   x,
@@ -52,6 +70,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   onRemove,
   isEditing,
   chartType,
+  chartId,
 }) => {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'DASHBOARD_ITEM',
@@ -77,6 +96,24 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     onResize(id, Math.max(2, Math.round(size.width / 32)), Math.max(2, Math.round(size.height / 32)));
   };
 
+  // Fetch real chart data from the API if a chartId is provided
+  const { data: chartData, isLoading: isLoadingData } = useQuery({
+    queryKey: ['chartData', chartId],
+    queryFn: () => fetchChartData(chartId || 0),
+    enabled: !!chartId,
+  });
+
+  // Format the data for rendering based on the structure
+  const formattedData = React.useMemo(() => {
+    if (!chartData || chartData.length === 0) {
+      return chartType?.toLowerCase() === 'pie' ? pieData : sampleData;
+    }
+
+    // Here we'd ideally adapt the API data to the format required by recharts
+    // For simplicity, we assume the API returns properly formatted data
+    return chartData;
+  }, [chartData, chartType]);
+
   const renderChart = () => {
     const chartWidth = width * 32 - 32; // Adjust for padding
     const chartHeight = height * 32 - 60; // Adjust for header and padding
@@ -89,24 +126,46 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
       );
     }
 
+    if (isLoadingData) {
+      return <Skeleton className="h-full w-full" />;
+    }
+
     switch (chartType.toLowerCase()) {
       case 'bar':
         return (
-          <BarChart width={chartWidth} height={chartHeight} data={sampleData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <Bar dataKey="value" fill="#8884d8" />
-          </BarChart>
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <BarChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="value" fill="#8884d8" />
+            </BarChart>
+          </ResponsiveContainer>
         );
       case 'line':
         return (
-          <LineChart width={chartWidth} height={chartHeight} data={sampleData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <Line type="monotone" dataKey="value" stroke="#8884d8" />
-          </LineChart>
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <LineChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="value" stroke="#8884d8" />
+            </LineChart>
+          </ResponsiveContainer>
         );
       case 'pie':
         return (
-          <PieChart width={chartWidth} height={chartHeight}>
-            <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" fill="#8884d8" label />
-          </PieChart>
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <PieChart>
+              <Pie data={formattedData} dataKey="value" nameKey="name" cx="50%" cy="50%" fill="#8884d8" label />
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
         );
       default:
         return (
@@ -139,15 +198,15 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
           onResize={handleResize}
           resizeHandles={['se']}
           minConstraints={[64, 64]}
-          maxConstraints={[512, 512]} // Increased max size
+          maxConstraints={[512, 512]}
         >
           <div style={{ width: '100%', height: '100%' }}>
-            {children}
+            {React.cloneElement(children as React.ReactElement, {}, renderChart())}
             <div className="absolute bottom-1 right-1 w-3 h-3 bg-primary rounded-sm cursor-se-resize" />
           </div>
         </Resizable>
       ) : (
-        children
+        React.cloneElement(children as React.ReactElement, {}, renderChart())
       )}
     </div>
   );
