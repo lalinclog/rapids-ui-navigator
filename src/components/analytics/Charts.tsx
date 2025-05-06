@@ -140,7 +140,7 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
     // For simplicity, we'll use the first column as the name/category 
     // and a selected metric as the value
     const nameColumn = columns[0];
-    
+
     // If dimensions are defined, use the first dimension as the name
     const nameKey = chart.dimensions && chart.dimensions.length > 0 
       ? chart.dimensions[0] 
@@ -182,64 +182,144 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
   }
 
   const renderChart = () => {
+      // Get chart config with defaults
+      const chartConfig = {
+        colors: ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE'],
+        barSize: 30,
+        lineWidth: 2,
+        pieInnerRadius: 0,
+        pieOuterRadius: 80,
+        areaOpacity: 0.4,
+        area: {
+          strokeWidth: 2,
+          opacity: 0.4,
+          stack: 'expand',
+          fillType: 'gradient',
+        },
+        showGrid: true,
+        showLegend: true,
+        showTooltip: true,
+        xAxis: { label: chart.dimensions[0] || '' },
+        yAxis: { label: '' },
+        ...(chart.config || {})
+      };
+
     switch (chart.chart_type.toLowerCase()) {
       case CHART_TYPES.BAR:
         return (
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="value" fill="#8884d8" />
+            <BarChart 
+              data={formattedData} 
+              margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+            >
+              {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis 
+                dataKey="name" 
+                label={{ value: chartConfig.xAxis.label, position: 'bottom' }} 
+              />
+              <YAxis 
+                label={{ value: chartConfig.yAxis.label, angle: -90, position: 'left' }} 
+              />
+              {chartConfig.showTooltip && <Tooltip />}
+              {chartConfig.showLegend && <Legend />}
+              {chart.metrics.map((metric, index) => (
+                <Bar 
+                  key={metric}
+                  dataKey={metric}
+                  fill={chartConfig.colors[index % chartConfig.colors.length]}
+                  radius={[4, 4, 0, 0]}
+                  barSize={chartConfig.barSize}
+                />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         );
-      case CHART_TYPES.LINE:
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <RechartsLineChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="value" stroke="#8884d8" />
-            </RechartsLineChart>
-          </ResponsiveContainer>
-        );
-      case CHART_TYPES.PIE:
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <RechartsPieChart margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-              <Pie 
+        case CHART_TYPES.LINE:
+          return (
+            <ResponsiveContainer width="100%" height={300}>
+              <RechartsLineChart 
                 data={formattedData} 
-                dataKey="value" 
-                nameKey="name" 
-                cx="50%" 
-                cy="50%" 
-                fill="#8884d8" 
-                label 
-              />
-              <Tooltip />
-              <Legend />
-            </RechartsPieChart>
-          </ResponsiveContainer>
-        );
-      case CHART_TYPES.AREA:
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <RechartsAreaChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
-            </RechartsAreaChart>
-          </ResponsiveContainer>
-        );
+                margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+              >
+                {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+                <XAxis 
+                  dataKey="name" 
+                  label={{ value: chartConfig.xAxis.label, position: 'bottom' }} 
+                />
+                <YAxis 
+                  label={{ value: chartConfig.yAxis.label, angle: -90, position: 'left' }} 
+                />
+                {chartConfig.showTooltip && <Tooltip />}
+                {chartConfig.showLegend && <Legend />}
+                {chart.metrics.map((metric, index) => (
+                  <Line 
+                    key={metric}
+                    type="monotone"
+                    dataKey={metric}
+                    stroke={chartConfig.colors[index % chartConfig.colors.length]}
+                    strokeWidth={chartConfig.lineWidth}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                ))}
+              </RechartsLineChart>
+            </ResponsiveContainer>
+          );
+        case CHART_TYPES.AREA:
+          return (
+            <ResponsiveContainer width="100%" height={300}>
+              <RechartsAreaChart 
+                data={formattedData} 
+                margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
+                stackOffset={chartConfig.area?.stack ? 'expand' : 'none'}
+              >
+                {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+                <XAxis 
+                  dataKey="name" 
+                  label={{ value: chartConfig.xAxis.label, position: 'bottom' }} 
+                />
+                <YAxis 
+                  label={{ value: chartConfig.yAxis.label, angle: -90, position: 'left' }} 
+                />
+                {chartConfig.showTooltip && <Tooltip />}
+                {chartConfig.showLegend && <Legend />}
+                {chart.metrics.map((metric, index) => (
+                  <Area
+                    key={metric}
+                    type="monotone"
+                    dataKey={metric}
+                    stroke={chartConfig.colors[index % chartConfig.colors.length]}
+                    strokeWidth={chartConfig.area?.strokeWidth || 2}
+                    fillOpacity={chartConfig.area?.opacity || 0.4}
+                    fill={
+                      chartConfig.area?.fillType === 'gradient' 
+                        ? `url(#areaGradient${index})` 
+                        : chartConfig.colors[index % chartConfig.colors.length]
+                    }
+                    stackId={chartConfig.area?.stack ? '1' : undefined}
+                  />
+                ))}
+                {/* Gradient definitions for area charts */}
+                {chartConfig.area?.fillType === 'gradient' && (
+                  <defs>
+                    {chart.metrics.map((metric, index) => (
+                      <linearGradient
+                        key={index}
+                        id={`areaGradient${index}`}
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop offset="5%" stopColor={chartConfig.colors[index]} stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor={chartConfig.colors[index]} stopOpacity={0}/>
+                      </linearGradient>
+                    ))}
+                  </defs>
+                )}
+              </RechartsAreaChart>
+            </ResponsiveContainer>
+          );
       default:
         return (
           <div className="flex items-center justify-center h-[300px] bg-muted/50 rounded-md">
