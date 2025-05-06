@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -120,6 +121,27 @@ class DatasetUpdate(BaseModel):
     metrics: Optional[Dict[str, Any]] = None
     filters: Optional[Dict[str, Any]] = None
     cache_policy: Optional[Dict[str, Any]] = None
+
+class ColumnType(BaseModel):
+    name: str
+    type: str
+
+class DatasetWithColumns(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    source_id: Optional[int] = None
+    query_type: Optional[str] = None
+    query_value: Optional[str] = None
+    schema_definition: Optional[Dict[str, Any]] = Field(None, alias="schema")  # Fixed schema field name
+    dimensions: Optional[Dict[str, Any]] = None
+    metrics: Optional[Dict[str, Any]] = None
+    filters: Optional[Dict[str, Any]] = None
+    cache_policy: Optional[Dict[str, Any]] = None
+    created_at: str
+    updated_at: str
+    created_by: Optional[str] = None
+    last_refreshed_at: Optional[str] = None
+    column_types: Optional[Dict[str, str]] = None
 
 # Routes
 @app.get("/api/health")
@@ -439,7 +461,7 @@ async def get_datasets(bi_service: BIService = Depends(get_bi_service)):
         logger.error(f"Error getting datasets: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/bi/datasets/{dataset_id}")
+@app.get("/api/bi/datasets/{dataset_id}", response_model=DatasetWithColumns)
 async def get_dataset(dataset_id: int, bi_service: BIService = Depends(get_bi_service)):
     logger.info(f"Retrieving dataset with ID: {dataset_id}")
     try:
@@ -539,6 +561,14 @@ async def delete_dataset(dataset_id: int, bi_service: BIService = Depends(get_bi
     except Exception as e:
         logger.error(f"Error deleting dataset {dataset_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+    
+# PUT endpoint to update column types
+@app.put("api/bi/datasets/{dataset_id}/columns")
+async def update_dataset_columns(dataset_id: int, columns: List[ColumnType], bi_service: BIService = Depends(get_bi_service)):
+    success = bi_service.save_dataset_column_types(dataset_id, columns)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to save column types")
+    return {"status": "success"}
 
 @app.get("/api/bi/charts")
 async def get_charts(bi_service: BIService = Depends(get_bi_service)):
@@ -608,6 +638,7 @@ async def delete_chart(chart_id: int, bi_service: BIService = Depends(get_bi_ser
 def get_chart_data(chart_id: int, bi_service: BIService = Depends(get_bi_service)):
     """Get data for a specific chart"""
     try:
+        # bi_service = BIService()
         chart = bi_service.get_chart(chart_id)
         
         if not chart:
@@ -634,7 +665,7 @@ def get_chart_data(chart_id: int, bi_service: BIService = Depends(get_bi_service
         
         # Ensure data is serializable
         result["data"] = jsonable_encoder(result["data"])
-        
+
         return result
     except Exception as e:
         logger.error(f"Error fetching chart data: {str(e)}", exc_info=True)
@@ -667,8 +698,11 @@ async def get_dashboard(dashboard_id: int, bi_service: BIService = Depends(get_b
 
 @app.post("/api/bi/dashboards")
 async def create_dashboard(data: dict, bi_service: BIService = Depends(get_bi_service)):
+    # current_user: str = Depends(get_current_user)  # Add auth if needed
     logger.info(f"Creating new dashboard: {data.get('name')}")
     try:
+        # Add current user to dashboard data
+        # data['created_by'] = current_user.username  # Or similar
         dashboard_id = bi_service.create_dashboard(data)
         if not dashboard_id:
             raise HTTPException(status_code=500, detail="Failed to create dashboard")
@@ -699,7 +733,7 @@ async def update_dashboard_partial(dashboard_id: int, data: dict, bi_service: BI
         items = data.get('items', None)
         if items is not None:
             # Update just the layout
-            success = bi_service.update_dashboard_layout(dashboard_id, items)
+            success = bi_service.update_dashboard_items(dashboard_id, items)
         else:
             # Regular update for other fields
             success = bi_service.update_dashboard(dashboard_id, data)
