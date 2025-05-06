@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import { BarChart2, LineChart, PieChart, Plus, Eye, Trash2, Edit } from 'lucide-react';
+import { BarChart2, LineChart, PieChart, AreaChart as AreaChartIcon, Plus, Eye, Trash2, Edit } from 'lucide-react';
 import { 
   BarChart, LineChart as RechartsLineChart, PieChart as RechartsPieChart,
-  Bar, Line, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+  AreaChart as RechartsAreaChart, Bar, Line, Pie, Area, XAxis, YAxis, 
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import ChartForm from './ChartForm';
+import { CHART_TYPES } from '@/pages/Analytics';
 
 interface Chart {
   id: number;
@@ -24,6 +26,7 @@ interface Chart {
   config: Record<string, unknown>;
   dimensions: string[];
   metrics: string[];
+  aggregation?: string;
   filters: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -61,12 +64,14 @@ const fetchChartData = async (chartId: number): Promise<ChartData> => {
 
 const getChartIcon = (chartType: string) => {
   switch (chartType.toLowerCase()) {
-    case 'bar':
+    case CHART_TYPES.BAR:
       return <BarChart2 className="h-5 w-5" />;
-    case 'line':
+    case CHART_TYPES.LINE:
       return <LineChart className="h-5 w-5" />;
-    case 'pie':
+    case CHART_TYPES.PIE:
       return <PieChart className="h-5 w-5" />;
+    case CHART_TYPES.AREA:
+      return <AreaChartIcon className="h-5 w-5" />;
     default:
       return <BarChart2 className="h-5 w-5" />;
   }
@@ -136,20 +141,25 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
     // and a selected metric as the value
     const nameColumn = columns[0];
     
+    // If dimensions are defined, use the first dimension as the name
+    const nameKey = chart.dimensions && chart.dimensions.length > 0 
+      ? chart.dimensions[0] 
+      : nameColumn;
+      
     // If metrics are defined, use the first metric, otherwise use the second column
     const valueColumn = chart.metrics && chart.metrics.length > 0 
       ? chart.metrics[0] 
       : columns.length > 1 ? columns[1] : null;
     
-    if (!nameColumn || !valueColumn) {
+    if (!nameKey || !valueColumn) {
       return [];
     }
 
     return chartData.data.map(item => ({
-      name: String(item[nameColumn]),
+      name: String(item[nameKey]),
       value: Number(item[valueColumn])
     })) as FormattedChartDataPoint[];
-  }, [chartData, chart.metrics]);
+  }, [chartData, chart.metrics, chart.dimensions]);
 
   if (isLoading) {
     return <Skeleton className="h-[300px] w-full" />;
@@ -173,7 +183,7 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
 
   const renderChart = () => {
     switch (chart.chart_type.toLowerCase()) {
-      case 'bar':
+      case CHART_TYPES.BAR:
         return (
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
@@ -186,7 +196,7 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
             </BarChart>
           </ResponsiveContainer>
         );
-      case 'line':
+      case CHART_TYPES.LINE:
         return (
           <ResponsiveContainer width="100%" height={300}>
             <RechartsLineChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
@@ -199,7 +209,7 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
             </RechartsLineChart>
           </ResponsiveContainer>
         );
-      case 'pie':
+      case CHART_TYPES.PIE:
         return (
           <ResponsiveContainer width="100%" height={300}>
             <RechartsPieChart margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
@@ -217,6 +227,19 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
             </RechartsPieChart>
           </ResponsiveContainer>
         );
+      case CHART_TYPES.AREA:
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <RechartsAreaChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
+            </RechartsAreaChart>
+          </ResponsiveContainer>
+        );
       default:
         return (
           <div className="flex items-center justify-center h-[300px] bg-muted/50 rounded-md">
@@ -232,6 +255,7 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
       {renderChart()}
       <div className="mt-4 text-xs text-muted-foreground">
         Displaying {formattedData.length} data points
+        {chart.aggregation && <span className="ml-2">• Aggregation: {chart.aggregation}</span>}
       </div>
     </div>
   );

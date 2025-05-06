@@ -2,9 +2,9 @@
 import React, { useEffect, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { Resizable } from 'react-resizable';
-import { BarChart, LineChart, PieChart } from 'recharts';
-import { Bar, Line, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { BarChart2, LineChart as LineIcon, PieChart as PieIcon, X } from 'lucide-react';
+import { BarChart, LineChart, PieChart, AreaChart } from 'recharts';
+import { Bar, Line, Pie, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart2, LineChart as LineIcon, PieChart as PieIcon, AreaChart as AreaIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
@@ -221,12 +221,26 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
             </PieChart>
           </ResponsiveContainer>
         );
+      case 'area':
+        return (
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
+            </AreaChart>
+          </ResponsiveContainer>
+        );
       default:
         return (
           <div className="h-full w-full flex items-center justify-center">
             {chartType === 'bar' && <BarChart2 className="h-8 w-8 text-muted-foreground" />}
             {chartType === 'line' && <LineIcon className="h-8 w-8 text-muted-foreground" />}
             {chartType === 'pie' && <PieIcon className="h-8 w-8 text-muted-foreground" />}
+            {chartType === 'area' && <AreaIcon className="h-8 w-8 text-muted-foreground" />}
           </div>
         );
     }

@@ -9,6 +9,15 @@ import Datasets from '@/components/analytics/Datasets';
 import Charts from '@/components/analytics/Charts';
 import Dashboards from '@/components/analytics/Dashboards';
 
+// Define supported chart types to maintain consistency across the application
+export const CHART_TYPES = {
+  BAR: 'bar',
+  LINE: 'line',
+  PIE: 'pie',
+  AREA: 'area',
+  TABLE: 'table',
+};
+
 const Analytics = () => {
   return (
     <AppLayout>
