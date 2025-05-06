@@ -1,4 +1,5 @@
 
+// src/pages/DashboardView.tsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -6,14 +7,18 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Header } from '@/components/layout/Header';
-import { Card } from '@/components/ui/card';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { BarChart2, LineChart, PieChart, Share2, Download, Calendar, Edit, Save, Plus, X, Eye } from 'lucide-react';
+import { BarChart2, LineChart, PieChart, Share2, Download, Calendar, Edit, Save, Plus, X, Eye, Type, Image, Filter  } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import DraggableDashboardItem from '@/components/dashboard/DraggableDashboardItem';
+
+import TextBlock from '@/components/dashboard/TextBlock'
+import ImageBlock from '@/components/dashboard/ImageBlock'
+
 
 interface DashboardItem {
   id: number;
@@ -72,14 +77,29 @@ const updateDashboardLayout = async (id: string, items: DashboardItem[]) => {
   return response.json();
 };
 
-const fetchChartData = async (chartId: number): Promise<any[]> => {
-  const response = await fetch(`/api/bi/charts/${chartId}/data`);
-  if (!response.ok) {
-    console.error(`Failed to fetch data for chart ${chartId}: ${response.status}`);
-    return [];
-  }
+// Add this function to handle image uploads
+const uploadImage = async (file: File): Promise<{ url: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const response = await fetch('/api/bi/upload', {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) throw new Error('Failed to upload image');
   return response.json();
 };
+
+const fetchChartData = async (chartId: number): Promise<any[]> => {
+    const response = await fetch(`/api/bi/charts/${chartId}/data`);
+    if (!response.ok) {
+      console.error(`Failed to fetch data for chart ${chartId}: ${response.status}`);
+      return [];
+    }
+    return response.json();
+  };
+
+
 
 const DashboardView: React.FC = () => {
   const { dashboardId } = useParams<{ dashboardId: string }>();
@@ -89,11 +109,14 @@ const DashboardView: React.FC = () => {
   const [showChartSelector, setShowChartSelector] = useState(false);
   const [localItems, setLocalItems] = useState<DashboardItem[]>([]);
 
+  const [activeFilters, setActiveFilters] = useState<Record<string, any>>({});
+  const [showAddItemMenu, setShowAddItemMenu] = useState(false);
+
   const { data: dashboard, isLoading, error } = useQuery({
     queryKey: ['dashboard', dashboardId],
     queryFn: () => fetchDashboard(dashboardId || ''),
     enabled: !!dashboardId,
-  });
+    });
 
   // Effect to initialize localItems when dashboard data is loaded
   useEffect(() => {
@@ -169,6 +192,69 @@ const DashboardView: React.FC = () => {
     setLocalItems(localItems.map(item => 
       item.id === id ? { ...item, position_x: x, position_y: y } : item
     ));
+  };
+
+  // Add these new handler functions
+  const handleAddTextBlock= () => {
+    const newItem: TextBlock = {
+      id: Date.now(),
+      type: 'text',
+      position_x: 0,
+      position_y: Math.max(...localItems.map(i => i.position_y + i.height), 0),
+      width: 4,
+      height: 2,
+      config: {},
+      content: 'Enter your text here...',
+      style: {
+        fontSize: 14,
+        fontWeight: 'normal',
+        color: '#000000',
+        textAlign: 'left'
+      }
+    };
+    setLocalItems([...localItems, newItem]);
+    setShowAddItemMenu(false);
+  };
+
+  const handleAddImageBlock = () => {
+    const newItem: ImageItem = {
+      id: Date.now(),
+      type: 'image',
+      position_x: 0,
+      position_y: Math.max(...localItems.map(i => i.position_y + i.height), 0),
+      width: 4,
+      height: 4,
+      config: {},
+      url: '',
+      altText: 'Image description'
+    };
+    setLocalItems([...localItems, newItem]);
+    setShowAddItemMenu(false);
+  };
+
+  const handleAddFilterItem = () => {
+    const newItem: FilterItem = {
+      id: Date.now(),
+      type: 'filter',
+      position_x: 0,
+      position_y: Math.max(...localItems.map(i => i.position_y + i.height), 0),
+      width: 4,
+      height: 2,
+      config: {},
+      targetItemIds: [],
+      filterType: 'select',
+      options: [],
+      currentValue: null
+    };
+    setLocalItems([...localItems, newItem]);
+    setShowAddItemMenu(false);
+  };
+
+  const handleFilterChange = (filterId: number, value: any) => {
+    setActiveFilters(prev => ({
+      ...prev,
+      [filterId]: value
+    }));
   };
 
   const handleResizeItem = (id: number, width: number, height: number) => {
@@ -256,6 +342,29 @@ const DashboardView: React.FC = () => {
               )}
             </div>
           }
+
+          // Add this new Dialog for adding items
+          <Dialog open={showAddItemMenu} onOpenChange={setShowAddItemMenu}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Add Item to Dashboard</DialogTitle>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-4">
+                <Button variant="outline" onClick={() => setShowChartSelector(true)}>
+                  <BarChart2 className="mr-2 h-4 w-4" /> Chart
+                </Button>
+                <Button variant="outline" onClick={handleAddTextBlock}>
+                  <Type className="mr-2 h-4 w-4" /> Text
+                </Button>
+                <Button variant="outline" onClick={handleAddImageBlock}>
+                  <Image className="mr-2 h-4 w-4" /> Image
+                </Button>
+                <Button variant="outline" onClick={handleAddFilterItem}>
+                  <Filter className="mr-2 h-4 w-4" /> Filter
+                </Button>
+              </div>
+            </DialogContent>
+            </Dialog>
         />
 
         <div className="bg-muted/20 p-4 rounded-lg mb-6 flex items-center flex-wrap gap-4">
@@ -287,22 +396,34 @@ const DashboardView: React.FC = () => {
                 chartId={item.chart_id}
               >
                 <Card className="h-full p-4 overflow-hidden">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-medium">{item.chart_name}</h3>
-                    {isEditing && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={() => handleRemoveItem(item.id)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  <div className="h-full w-full min-h-[120px] rounded flex items-center justify-center">
-                    {/* Chart will be rendered by DraggableDashboardItem */}
-                  </div>
+                  <CardHeader className="p-3 pb-0">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-medium">{item.chart_name}</h3>
+                      {isEditing && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => handleRemoveItem(item.id)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0 h-[calc(100%-40px)]">
+                    <div className="h-full w-full min-h-[120px] rounded flex items-center justify-center">
+                      {item.chart_type === 'bar' && (
+                        <BarChart2 className="h-8 w-8 text-muted-foreground opacity-0" />
+                      )}
+                      {item.chart_type === 'line' && (
+                        <LineChart className="h-8 w-8 text-muted-foreground opacity-0" />
+                      )}
+                      {item.chart_type === 'pie' && (
+                        <PieChart className="h-8 w-8 text-muted-foreground opacity-0" />
+                      )}
+                    </div>
+                  </CardContent>
                 </Card>
               </DraggableDashboardItem>
             ))}
