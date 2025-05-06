@@ -1,4 +1,5 @@
 
+// src/components/dashboard/DraggableDashboardItem.tsx
 import React, { useEffect, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { Resizable } from 'react-resizable';
@@ -10,6 +11,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 import 'react-resizable/css/styles.css';
+import { motion } from 'framer-motion';
+
+export type DashboardItemType = 
+  | 'chart' 
+  | 'text' 
+  | 'image' 
+  | 'filter' 
+  | 'divider';
 
 interface DraggableDashboardItemProps {
   id: number;
@@ -85,6 +94,9 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
+    options: {
+      dropEffect: 'move',
+    },
   }));
 
   const [, drop] = useDrop(() => ({
@@ -97,7 +109,24 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
         onMove(item.id, newX, newY);
       }
     },
+    hover: (item, monitor) => {
+      // Add hover effect
+      const clientOffset = monitor.getClientOffset();
+      if (clientOffset) {
+        const hoverElement = document.elementFromPoint(clientOffset.x, clientOffset.y);
+        if (hoverElement) {
+          hoverElement.classList.add('drop-target');
+          setTimeout(() => hoverElement.classList.remove('drop-target'), 300);
+        }
+      }
+    },
   }));
+
+  // Add touch event handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // Prevent scrolling when dragging
+    e.preventDefault();
+  };
 
   const handleResize = (e: any, { size }: { size: { width: number; height: number } }) => {
     onResize(id, Math.max(2, Math.round(size.width / 32)), Math.max(2, Math.round(size.height / 32)));
@@ -109,23 +138,23 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     queryFn: () => fetchChartData(chartId || 0),
     enabled: !!chartId,
     meta: {
-      onError: (err: Error) => {
-        console.error('Failed to load chart data:', err);
-        toast({
-          variant: 'destructive',
-          title: 'Failed to load chart data',
-          description: err.message || 'Unknown error occurred'
-        });
-      }
+    onError: (err: Error) => {
+      console.error('Failed to load chart data:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to load chart data',
+        description: err.message || 'Unknown error occurred'
+      });
+    }
     }
   });
-
-  // Format the data for rendering based on the structure
+  
+    // Format the data for rendering based on the structure
   const formattedData = React.useMemo(() => {
     if (!chartData || chartData.length === 0) {
       return chartType?.toLowerCase() === 'pie' ? pieData : sampleData;
     }
-
+  
     // Transform API data if needed
     // Here we'd adapt the data to the format required by recharts
     const hasNameProperty = chartData.some(item => 'name' in item);
@@ -151,20 +180,69 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     return chartType?.toLowerCase() === 'pie' ? pieData : sampleData;
   }, [chartData, chartType]);
 
+  // Add keyboard controls for accessibility
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isEditing) return;
+    
+    const moveAmount = e.shiftKey ? 2 : 1;
+    
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        onMove(id, x, Math.max(0, y - moveAmount));
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        onMove(id, x, y + moveAmount);
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        onMove(id, Math.max(0, x - moveAmount), y);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        onMove(id, x + moveAmount, y);
+        break;
+      case 'Delete':
+      case 'Backspace':
+        e.preventDefault();
+        onRemove(id);
+        break;
+      default:
+        break;
+    }
+  };
+
+
   const renderChart = () => {
     const chartWidth = width * 32 - 32; // Adjust for padding
     const chartHeight = height * 32 - 60; // Adjust for header and padding
     
-    if (!chartType || chartHeight < 50) {
+    // if (!chartType || chartHeight < 50) {
+    if (!chartType) {
       return (
-        <div className="flex items-center justify-center h-full w-full">
-          <span className="text-muted-foreground text-sm">No chart data</span>
+        <div className="flex flex-col items-center justify-center h-full w-full p-4 gap-2">
+          <BarChart2 className="h-8 w-8 text-muted-foreground" />
+          <span className="text-muted-foreground text-sm text-center">
+            Select a chart type from the sidebar
+          </span>
         </div>
       );
     }
 
     if (isLoadingData) {
-      return <Skeleton className="h-full w-full" />;
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full p-4 gap-2">
+          <div className="animate-pulse flex space-x-4 w-full h-full">
+            <div className="flex-1 space-y-4">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-5/6" />
+            </div>
+          </div>
+          <span className="text-muted-foreground text-xs">Loading chart data...</span>
+        </div>
+      );
     }
 
     if (error) {
@@ -207,13 +285,13 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
             <PieChart>
-              <Pie 
-                data={formattedData} 
-                dataKey="value" 
-                nameKey="name" 
-                cx="50%" 
-                cy="50%" 
-                fill="#8884d8" 
+              <Pie
+                data={formattedData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                fill="#8884d8"
                 label 
               />
               <Tooltip />
@@ -221,19 +299,19 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
             </PieChart>
           </ResponsiveContainer>
         );
-      case 'area':
-        return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
-            </AreaChart>
-          </ResponsiveContainer>
-        );
+        case 'area':
+          return (
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
+              </AreaChart>
+            </ResponsiveContainer>
+          );
       default:
         return (
           <div className="h-full w-full flex items-center justify-center">
@@ -247,16 +325,31 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   };
 
   return (
-    <div
+    <motion.div
       ref={(node) => drag(drop(node))}
-      className="relative"
+      className="dashboard-item relative select-none"
       style={{
         gridColumnStart: x + 1,
         gridColumnEnd: x + width + 1,
         gridRowStart: y + 1,
         gridRowEnd: y + height + 1,
-        opacity: isDragging ? 0.5 : 1,
+      }}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ 
+        opacity: isDragging ? 0.8 : 1,
+        scale: isDragging ? 1.02 : 1,
         zIndex: isDragging ? 100 : 1,
+      }}
+      transition={{ duration: 0.15 }}
+      drag={isEditing}
+      dragMomentum={false}
+      onTouchStart={handleTouchStart}
+      tabIndex={isEditing ? 0 : -1}
+      onKeyDown={handleKeyDown}
+      onDragEnd={(e, info) => {
+        const newX = Math.max(0, x + Math.round(info.point.x / 32));
+        const newY = Math.max(0, y + Math.round(info.point.y / 32));
+        onMove(id, newX, newY);
       }}
     >
       {isEditing ? (
@@ -265,10 +358,23 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
           height={height * 32}
           onResize={handleResize}
           resizeHandles={['se']}
-          minConstraints={[64, 64]}
-          maxConstraints={[512, 512]}
+          minConstraints={[96, 96]}
+          maxConstraints={[640, 640]} // Increased max size
+          handle={(handleAxis, ref) => (
+            <div
+              ref={ref}
+              className="resize-handle"
+              style={{
+                cursor: 'se-resize',
+              }}
+            />
+          )}
         >
-          <div style={{ width: '100%', height: '100%' }}>
+          <div style={{ 
+            width: '100%', 
+            height: '100%',
+            cursor: isDragging ? 'grabbing' : 'grab' 
+            }}>
             {React.cloneElement(children as React.ReactElement, {}, renderChart())}
             <div className="absolute bottom-1 right-1 w-3 h-3 bg-primary rounded-sm cursor-se-resize" />
           </div>
@@ -276,7 +382,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
       ) : (
         React.cloneElement(children as React.ReactElement, {}, renderChart())
       )}
-    </div>
+    </motion.div>
   );
 };
 
