@@ -43,7 +43,13 @@ const pieData = [
   { name: 'Group D', value: 200 },
 ];
 
-const fetchChartData = async (chartId: number): Promise<any[]> => {
+interface ChartDataPoint {
+  name: string;
+  value: number;
+  [key: string]: string | number;
+}
+
+const fetchChartData = async (chartId: number): Promise<ChartDataPoint[]> => {
   if (!chartId) return [];
   
   try {
@@ -102,13 +108,15 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     queryKey: ['chartData', chartId],
     queryFn: () => fetchChartData(chartId || 0),
     enabled: !!chartId,
-    onError: (err) => {
-      console.error('Failed to load chart data:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Failed to load chart data',
-        description: err instanceof Error ? err.message : 'Unknown error occurred'
-      });
+    meta: {
+      onError: (err: Error) => {
+        console.error('Failed to load chart data:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Failed to load chart data',
+          description: err.message || 'Unknown error occurred'
+        });
+      }
     }
   });
 

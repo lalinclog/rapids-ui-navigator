@@ -21,20 +21,26 @@ interface Chart {
   dataset_id: number;
   dataset_name: string;
   chart_type: string;
-  config: any;
+  config: Record<string, unknown>;
   dimensions: string[];
   metrics: string[];
-  filters: any;
+  filters: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
 
 interface ChartData {
-  data: any[];
+  data: Array<Record<string, string | number>>;
   columns: string[];
   success: boolean;
   error?: string;
   count: number;
+}
+
+interface FormattedChartDataPoint {
+  name: string;
+  value: number;
+  [key: string]: string | number;
 }
 
 const fetchCharts = async (): Promise<Chart[]> => {
@@ -142,7 +148,7 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
     return chartData.data.map(item => ({
       name: String(item[nameColumn]),
       value: Number(item[valueColumn])
-    }));
+    })) as FormattedChartDataPoint[];
   }, [chartData, chart.metrics]);
 
   if (isLoading) {
