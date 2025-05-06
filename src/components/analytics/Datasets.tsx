@@ -10,6 +10,11 @@ import { toast } from '@/hooks/use-toast';
 import { Database, Plus, Table, Eye, Trash2 } from 'lucide-react';
 import DatasetForm from './DatasetForm';
 
+interface ColumnType {
+  name: string;
+  type: string;
+}
+
 interface Dataset {
   id: number;
   name: string;
@@ -81,6 +86,8 @@ const Datasets: React.FC = () => {
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [columnTypes, setColumnTypes] = useState<ColumnType[]>([]);
+  const [isEditingTypes, setIsEditingTypes] = useState(false);
 
   const { data: datasets, isLoading: isLoadingDatasets, error } = useQuery({
     queryKey: ['datasets'],
@@ -123,6 +130,7 @@ const Datasets: React.FC = () => {
     setIsCreateDialogOpen(true);
   };
 
+  // Modify the handlePreview function to initialize column types
   const handlePreview = async (dataset: Dataset) => {
     setSelectedDataset(dataset);
     setIsPreviewDialogOpen(true);
@@ -143,6 +151,26 @@ const Datasets: React.FC = () => {
 
       const result = await response.json();
       setPreviewData(result.data || []);
+
+      // Initialize column types based on first row of data
+      if (result.data && result.data.length > 0) {
+        const firstRow = result.data[0];
+        const initialTypes = Object.keys(firstRow).map(key => {
+          const value = firstRow[key];
+          let type = 'string';
+          
+          if (typeof value === 'number') {
+            type = Number.isInteger(value) ? 'integer' : 'float';
+          } else if (typeof value === 'boolean') {
+            type = 'boolean';
+          } else if (value instanceof Date || !isNaN(Date.parse(value))) {
+            type = 'datetime';
+          }
+          
+          return { name: key, type };
+        });
+        setColumnTypes(initialTypes);
+      }
     } catch (error) {
       console.error('Error fetching preview data:', error);
       toast({
@@ -152,6 +180,47 @@ const Datasets: React.FC = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Add this function to handle type changes
+  const handleTypeChange = (columnName: string, newType: string) => {
+    setColumnTypes(prevTypes => 
+      prevTypes.map(type => 
+        type.name === columnName ? { ...type, type: newType } : type
+      )
+    );
+  };
+
+  // Add this function to save the types back to the dataset
+  const saveColumnTypes = async () => {
+    if (!selectedDataset) return;
+    
+    try {
+      const response = await fetch(`/api/bi/datasets/${selectedDataset.id}/columns`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ columnTypes }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save column types');
+      }
+
+      toast({
+        title: 'Column types updated',
+        description: 'Column types have been successfully saved',
+      });
+      setIsEditingTypes(false);
+    } catch (error) {
+      console.error('Error saving column types:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save column types',
+      });
     }
   };
 
@@ -188,22 +257,52 @@ const Datasets: React.FC = () => {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-muted">
-              {columns.map((column) => (
-                <th key={column} className="p-2 text-left text-xs font-medium">{column}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {previewData.slice(0, 100).map((row, index) => (
-              <tr key={index} className="border-t border-muted">
+              <tr className="bg-muted">
                 {columns.map((column) => (
-                  <td key={column} className="p-2 text-xs">
-                    {typeof row[column] === 'object' 
-                      ? JSON.stringify(row[column]) 
-                      : String(row[column] ?? '')}
-                  </td>
+                  <th key={column} className="p-2 text-left text-xs font-medium">
+                    <div>{column}</div>
+                    {isEditingTypes ? (
+                      <select
+                        className="mt-1 text-xs w-full bg-background border rounded p-1"
+                        value={columnTypes.find(t => t.name === column)?.type || 'string'}
+                        onChange={(e) => handleTypeChange(column, e.target.value)}
+                      >
+                        <option value="string">String</option>
+                        <option value="integer">Integer</option>
+                        <option value="float">Float</option>
+                        <option value="boolean">Boolean</option>
+                        <option value="datetime">DateTime</option>
+                      </select>
+                    ) : (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {columnTypes.find(t => t.name === column)?.type || 'string'}
+                      </div>
+                    )}
+                  </th>
                 ))}
+              </tr>
+            </thead>
+          <tbody>
+          {previewData.slice(0, 100).map((row, index) => (
+              <tr key={index} className="border-t border-muted">
+                {columns.map((column) => {
+                  const columnType = columnTypes.find(t => t.name === column)?.type || 'string';
+                  let displayValue = row[column];
+                  
+                  if (displayValue === null || displayValue === undefined) {
+                    displayValue = '';
+                  } else if (typeof displayValue === 'object') {
+                    displayValue = JSON.stringify(displayValue);
+                  } else if (columnType === 'datetime' && !isNaN(Date.parse(displayValue))) {
+                    displayValue = new Date(displayValue).toLocaleString();
+                  }
+                  
+                  return (
+                    <td key={column} className="p-2 text-xs">
+                      {String(displayValue)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -308,7 +407,23 @@ const Datasets: React.FC = () => {
             </DialogTitle>
           </DialogHeader>
           <div className="overflow-y-auto max-h-[calc(80vh-80px)]">
-            {renderPreviewContent()}
+            {isEditingTypes ? (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => setIsEditingTypes(false)}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={saveColumnTypes}>
+                    Save Types
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setIsEditingTypes(true)}>
+                  Edit Column Types
+                </Button>
+              )}
+            </div>
+            <div className="overflow-y-auto max-h-[calc(80vh-120px)]">
+              {renderPreviewContent()}
           </div>
         </DialogContent>
       </Dialog>
