@@ -1,3 +1,4 @@
+
 import os
 import logging
 import json
@@ -203,20 +204,63 @@ class BIService:
         logger.info(f"Retrieving dataset with ID: {dataset_id}")
         try:
             with self.postgres_service._get_connection() as conn:
+                # First get the basic dataset info
                 query = """
                 SELECT d.id, d.name, d.description, d.source_id, ds.name as source_name,
-                       d.query_type, d.query_value, d.schema, d.dimensions, d.metrics,
-                       d.filters, d.cache_policy, 
-                       d.created_at, d.updated_at, d.created_by, d.last_refreshed_at
+                    d.query_type, d.query_value, d.schema, d.dimensions, d.metrics,
+                    d.filters, d.cache_policy, 
+                    d.created_at, d.updated_at, d.created_by, d.last_refreshed_at
                 FROM datasets d
                 JOIN data_sources ds ON d.source_id = ds.id
                 WHERE d.id = %s
                 """
                 result = self._execute_query(conn, query, (dataset_id,))
-                return result[0] if result else None
+                if not result:
+                    return None
+                
+                dataset = dict(result[0])
+                
+                # Get column types if they exist in the database
+                column_types_query = """
+                SELECT column_name, column_type 
+                FROM dataset_columns 
+                WHERE dataset_id = %s
+                ORDER BY column_order
+                """
+                column_types = self._execute_query(conn, column_types_query, (dataset_id,))
+                
+                if column_types:
+                    dataset['column_types'] = {col['column_name']: col['column_type'] for col in column_types}
+                
+                return dataset
         except Exception as e:
             logger.error(f"Error fetching dataset {dataset_id}: {str(e)}", exc_info=True)
             return None
+        
+    def save_dataset_column_types(self, dataset_id: int, column_types: List[Dict[str, str]]) -> bool:
+        """Save column types for a dataset"""
+        logger.info(f"Saving column types for dataset {dataset_id}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                # First delete existing column types
+                delete_query = "DELETE FROM dataset_columns WHERE dataset_id = %s"
+                self._execute_query(conn, delete_query, (dataset_id,), commit=True)
+                
+                # Insert new column types
+                insert_query = """
+                INSERT INTO dataset_columns (dataset_id, column_name, column_type, column_order)
+                VALUES (%s, %s, %s, %s)
+                """
+                params = [
+                    (dataset_id, col['name'], col['type'], idx)
+                    for idx, col in enumerate(column_types)
+                ]
+                self._execute_batch_query(conn, insert_query, params, commit=True)
+                
+                return True
+        except Exception as e:
+            logger.error(f"Error saving column types for dataset {dataset_id}: {str(e)}", exc_info=True)
+            return False
 
     def get_charts(self) -> List[Dict]:
         """Get all charts"""
@@ -635,7 +679,8 @@ class BIService:
             with engine.connect() as connection:
                 result = connection.execute(text(base_query))
                 columns = result.keys()
-                data = [dict(zip(columns, row)) for row in result.fetchall()]
+                #data = [dict(zip(columns, row)) for row in result.fetchall()]
+                data = [dict(row._mapping) for row in result.fetchall()]
             
             # Update last refreshed timestamp
             with self.postgres_service._get_connection() as conn:
@@ -648,7 +693,7 @@ class BIService:
             return {
                 "success": True,
                 "data": data,
-                "columns": list(columns),  # Convert to list for serialization
+                "columns": columns,
                 "count": len(data)
             }
         except Exception as e:
@@ -685,3 +730,31 @@ class BIService:
         except Exception as e:
             logger.error(f"Error updating dashboard items for dashboard {dashboard_id}: {str(e)}", exc_info=True)
             return False
+    
+    def create_dashboard(self, dashboard_data: dict) -> Optional[int]:
+        """Create a new dashboard in the database"""
+        logger.info(f"Creating dashboard: {dashboard_data.get('name')}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                query = """
+                INSERT INTO dashboards (
+                    name, 
+                    description, 
+                    is_public, 
+                    created_by, 
+                    created_at, 
+                    updated_at
+                ) VALUES (%s, %s, %s, %s, NOW(), NOW())
+                RETURNING id
+                """
+                params = (
+                    dashboard_data['name'],
+                    dashboard_data.get('description'),
+                    dashboard_data.get('is_public', False),
+                    dashboard_data.get('created_by', 'system')  # Or get from auth context
+                )
+                result = self._execute_query(conn, query, params)
+                return result[0]['id'] if result else None
+        except Exception as e:
+            logger.error(f"Error creating dashboard: {str(e)}", exc_info=True)
+            return None
