@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -565,11 +564,50 @@ async def get_chart(chart_id: int, bi_service: BIService = Depends(get_bi_servic
         logger.error(f"Error getting chart {chart_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/bi/charts")
+async def create_chart(data: dict, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Creating new chart: {data.get('name')}")
+    try:
+        chart_id = bi_service.create_chart(data)
+        if not chart_id:
+            raise HTTPException(status_code=500, detail="Failed to create chart")
+        return {"id": chart_id, "success": True}
+    except Exception as e:
+        logger.error(f"Error creating chart: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/bi/charts/{chart_id}")
+async def update_chart(chart_id: int, data: dict, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Updating chart {chart_id}: {data.get('name')}")
+    try:
+        success = bi_service.update_chart(chart_id, data)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Chart with ID {chart_id} not found or no changes made")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating chart {chart_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/bi/charts/{chart_id}")
+async def delete_chart(chart_id: int, bi_service: BIService = Depends(get_bi_service)):
+    logger.info(f"Deleting chart {chart_id}")
+    try:
+        success = bi_service.delete_chart(chart_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Chart with ID {chart_id} not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting chart {chart_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/bi/charts/{chart_id}/data")
-def get_chart_data(chart_id: int):
+def get_chart_data(chart_id: int, bi_service: BIService = Depends(get_bi_service)):
     """Get data for a specific chart"""
     try:
-        bi_service = BIService()
         chart = bi_service.get_chart(chart_id)
         
         if not chart:
@@ -587,11 +625,20 @@ def get_chart_data(chart_id: int):
         if not result["success"]:
             raise HTTPException(status_code=500, detail=result["error"])
         
+        # Ensure columns can be properly serialized
+        if "columns" in result:
+            try:
+                result["columns"] = list(result["columns"])
+            except Exception as e:
+                logger.warning(f"Failed to convert columns to list: {e}")
+        
+        # Ensure data is serializable
+        result["data"] = jsonable_encoder(result["data"])
+        
         return result
     except Exception as e:
         logger.error(f"Error fetching chart data: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # Dashboards API
 @app.get("/api/bi/dashboards")

@@ -8,6 +8,7 @@ import { BarChart2, LineChart as LineIcon, PieChart as PieIcon, X } from 'lucide
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from '@/hooks/use-toast';
 import 'react-resizable/css/styles.css';
 
 interface DraggableDashboardItemProps {
@@ -54,7 +55,7 @@ const fetchChartData = async (chartId: number): Promise<any[]> => {
     return data.data || [];
   } catch (error) {
     console.error('Error fetching chart data:', error);
-    return [];
+    throw error;
   }
 };
 
@@ -97,10 +98,18 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   };
 
   // Fetch real chart data from the API if a chartId is provided
-  const { data: chartData, isLoading: isLoadingData } = useQuery({
+  const { data: chartData, isLoading: isLoadingData, error } = useQuery({
     queryKey: ['chartData', chartId],
     queryFn: () => fetchChartData(chartId || 0),
     enabled: !!chartId,
+    onError: (err) => {
+      console.error('Failed to load chart data:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Failed to load chart data',
+        description: err instanceof Error ? err.message : 'Unknown error occurred'
+      });
+    }
   });
 
   // Format the data for rendering based on the structure
@@ -109,9 +118,29 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
       return chartType?.toLowerCase() === 'pie' ? pieData : sampleData;
     }
 
-    // Here we'd ideally adapt the API data to the format required by recharts
-    // For simplicity, we assume the API returns properly formatted data
-    return chartData;
+    // Transform API data if needed
+    // Here we'd adapt the data to the format required by recharts
+    const hasNameProperty = chartData.some(item => 'name' in item);
+    const hasValueProperty = chartData.some(item => 'value' in item);
+    
+    if (hasNameProperty && hasValueProperty) {
+      return chartData; // Data already in the correct format
+    }
+    
+    // If data isn't in the expected format, try to adapt it
+    const keys = Object.keys(chartData[0] || {});
+    if (keys.length >= 2) {
+      // Use first column as name and second as value
+      const nameKey = keys[0];
+      const valueKey = keys[1];
+      
+      return chartData.map(item => ({
+        name: String(item[nameKey]),
+        value: Number(item[valueKey])
+      }));
+    }
+    
+    return chartType?.toLowerCase() === 'pie' ? pieData : sampleData;
   }, [chartData, chartType]);
 
   const renderChart = () => {
@@ -128,6 +157,15 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
 
     if (isLoadingData) {
       return <Skeleton className="h-full w-full" />;
+    }
+
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full p-4">
+          <span className="text-destructive text-sm">Error loading chart data</span>
+          <span className="text-muted-foreground text-xs mt-1">Using sample data</span>
+        </div>
+      );
     }
 
     switch (chartType.toLowerCase()) {
@@ -161,7 +199,15 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
         return (
           <ResponsiveContainer width="100%" height={chartHeight}>
             <PieChart>
-              <Pie data={formattedData} dataKey="value" nameKey="name" cx="50%" cy="50%" fill="#8884d8" label />
+              <Pie 
+                data={formattedData} 
+                dataKey="value" 
+                nameKey="name" 
+                cx="50%" 
+                cy="50%" 
+                fill="#8884d8" 
+                label 
+              />
               <Tooltip />
               <Legend />
             </PieChart>

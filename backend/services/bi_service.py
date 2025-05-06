@@ -1,4 +1,3 @@
-
 import os
 import logging
 import json
@@ -257,6 +256,133 @@ class BIService:
             logger.error(f"Error fetching chart {chart_id}: {str(e)}", exc_info=True)
             return None
 
+    def create_chart(self, data: Dict[str, Any]) -> Optional[int]:
+        """Create a new chart"""
+        logger.info(f"Creating new chart: {data.get('name')}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    query = """
+                    INSERT INTO charts 
+                    (name, description, dataset_id, chart_type, config, dimensions, metrics, filters, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """
+                    
+                    # Process dimensions and metrics
+                    dimensions = data.get("dimensions", [])
+                    if isinstance(dimensions, str):
+                        dimensions = [d.strip() for d in dimensions.split(',') if d.strip()]
+                    
+                    metrics = data.get("metrics", [])
+                    if isinstance(metrics, str):
+                        metrics = [m.strip() for m in metrics.split(',') if m.strip()]
+                    
+                    cursor.execute(query, (
+                        data.get("name"),
+                        data.get("description"),
+                        data.get("dataset_id"),
+                        data.get("chart_type"),
+                        json.dumps(data.get("config", {})) if data.get("config") else "{}",
+                        json.dumps(dimensions),
+                        json.dumps(metrics),
+                        json.dumps(data.get("filters", {})) if data.get("filters") else "{}",
+                        data.get("created_by", "admin")
+                    ))
+                    chart_id = cursor.fetchone()[0]
+                    logger.info(f"Successfully created chart with ID: {chart_id}")
+                    return chart_id
+        except Exception as e:
+            logger.error(f"Error creating chart: {str(e)}", exc_info=True)
+            return None
+
+    def update_chart(self, chart_id: int, data: Dict[str, Any]) -> bool:
+        """Update an existing chart"""
+        logger.info(f"Updating chart {chart_id}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    set_parts = []
+                    params = []
+                    
+                    if "name" in data:
+                        set_parts.append("name = %s")
+                        params.append(data["name"])
+                    
+                    if "description" in data:
+                        set_parts.append("description = %s")
+                        params.append(data["description"])
+                    
+                    if "dataset_id" in data:
+                        set_parts.append("dataset_id = %s")
+                        params.append(data["dataset_id"])
+                    
+                    if "chart_type" in data:
+                        set_parts.append("chart_type = %s")
+                        params.append(data["chart_type"])
+                    
+                    if "config" in data:
+                        set_parts.append("config = %s")
+                        params.append(json.dumps(data["config"]))
+                    
+                    if "dimensions" in data:
+                        dimensions = data["dimensions"]
+                        if isinstance(dimensions, str):
+                            dimensions = [d.strip() for d in dimensions.split(',') if d.strip()]
+                        set_parts.append("dimensions = %s")
+                        params.append(json.dumps(dimensions))
+                    
+                    if "metrics" in data:
+                        metrics = data["metrics"]
+                        if isinstance(metrics, str):
+                            metrics = [m.strip() for m in metrics.split(',') if m.strip()]
+                        set_parts.append("metrics = %s")
+                        params.append(json.dumps(metrics))
+                    
+                    if "filters" in data:
+                        set_parts.append("filters = %s")
+                        params.append(json.dumps(data["filters"]))
+                    
+                    if not set_parts:
+                        return False
+                    
+                    params.append(chart_id)
+                    query = f"UPDATE charts SET {', '.join(set_parts)}, updated_at = NOW() WHERE id = %s"
+                    cursor.execute(query, params)
+                    
+                    affected = cursor.rowcount > 0
+                    logger.info(f"Chart {chart_id} update {'successful' if affected else 'failed'}")
+                    return affected
+        except Exception as e:
+            logger.error(f"Error updating chart {chart_id}: {str(e)}", exc_info=True)
+            return False
+
+    def delete_chart(self, chart_id: int) -> bool:
+        """Delete a chart"""
+        logger.info(f"Deleting chart {chart_id}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # First, check if there are any dashboard items using this chart
+                    check_query = "SELECT COUNT(*) FROM dashboard_items WHERE chart_id = %s"
+                    cursor.execute(check_query, (chart_id,))
+                    count = cursor.fetchone()[0]
+                    
+                    if count > 0:
+                        logger.warning(f"Cannot delete chart {chart_id}: {count} dashboard items are using it")
+                        return False
+                    
+                    # If no dependency, proceed with deletion
+                    query = "DELETE FROM charts WHERE id = %s"
+                    cursor.execute(query, (chart_id,))
+                    
+                    affected = cursor.rowcount > 0
+                    logger.info(f"Chart {chart_id} deletion {'successful' if affected else 'failed'}")
+                    return affected
+        except Exception as e:
+            logger.error(f"Error deleting chart {chart_id}: {str(e)}", exc_info=True)
+            return False
+
     def get_dashboards(self) -> List[Dict]:
         """Get all dashboards"""
         logger.info("Retrieving all dashboards")
@@ -474,7 +600,7 @@ class BIService:
                 return {"success": False, "error": f"Data source for dataset {dataset_id} not found"}
             
             # For simplicity, now only support PostgreSQL
-            if data_source["type"] != "postgresql":
+            if data_source["type"].lower() not in ["postgresql", "postgres"]:
                 return {"success": False, "error": f"Only PostgreSQL data sources are currently supported"}
             
             # Create connection
@@ -522,9 +648,40 @@ class BIService:
             return {
                 "success": True,
                 "data": data,
-                "columns": columns,
+                "columns": list(columns),  # Convert to list for serialization
                 "count": len(data)
             }
         except Exception as e:
             logger.error(f"Error executing dataset query {dataset_id}: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
+    
+    def update_dashboard_items(self, dashboard_id: int, items: List[Dict]) -> bool:
+        """Update dashboard items (position, size, etc.)"""
+        logger.info(f"Updating items for dashboard {dashboard_id}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # First, remove all existing items for this dashboard
+                    cursor.execute("DELETE FROM dashboard_items WHERE dashboard_id = %s", (dashboard_id,))
+                    
+                    # Then insert the new items
+                    for item in items:
+                        query = """
+                        INSERT INTO dashboard_items 
+                        (dashboard_id, chart_id, position_x, position_y, width, height, config)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """
+                        cursor.execute(query, (
+                            dashboard_id,
+                            item.get("chart_id"),
+                            item.get("position_x", 0),
+                            item.get("position_y", 0),
+                            item.get("width", 4),
+                            item.get("height", 4),
+                            json.dumps(item.get("config", {}))
+                        ))
+                    
+                    return True
+        except Exception as e:
+            logger.error(f"Error updating dashboard items for dashboard {dashboard_id}: {str(e)}", exc_info=True)
+            return False

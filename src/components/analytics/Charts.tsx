@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
 import { BarChart2, LineChart, PieChart, Plus, Eye, Trash2, Edit } from 'lucide-react';
+import { 
+  BarChart, LineChart as RechartsLineChart, PieChart as RechartsPieChart,
+  Bar, Line, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
 import ChartForm from './ChartForm';
 
 interface Chart {
@@ -25,10 +29,26 @@ interface Chart {
   updated_at: string;
 }
 
+interface ChartData {
+  data: any[];
+  columns: string[];
+  success: boolean;
+  error?: string;
+  count: number;
+}
+
 const fetchCharts = async (): Promise<Chart[]> => {
   const response = await fetch('/api/bi/charts');
   if (!response.ok) {
     throw new Error('Failed to fetch charts');
+  }
+  return response.json();
+};
+
+const fetchChartData = async (chartId: number): Promise<ChartData> => {
+  const response = await fetch(`/api/bi/charts/${chartId}/data`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch data for chart ${chartId}`);
   }
   return response.json();
 };
@@ -88,6 +108,126 @@ const ChartCard: React.FC<{ chart: Chart; onEdit: () => void; onView: () => void
         </div>
       </CardFooter>
     </Card>
+  );
+};
+
+const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
+  const { data: chartData, isLoading, error } = useQuery({
+    queryKey: ['chartPreviewData', chart.id],
+    queryFn: () => fetchChartData(chart.id),
+  });
+
+  // Format the data for recharts
+  const formattedData = React.useMemo(() => {
+    if (!chartData || !chartData.data || chartData.data.length === 0) {
+      return [];
+    }
+
+    // Get column names
+    const columns = chartData.columns || Object.keys(chartData.data[0]);
+    
+    // For simplicity, we'll use the first column as the name/category 
+    // and a selected metric as the value
+    const nameColumn = columns[0];
+    
+    // If metrics are defined, use the first metric, otherwise use the second column
+    const valueColumn = chart.metrics && chart.metrics.length > 0 
+      ? chart.metrics[0] 
+      : columns.length > 1 ? columns[1] : null;
+    
+    if (!nameColumn || !valueColumn) {
+      return [];
+    }
+
+    return chartData.data.map(item => ({
+      name: String(item[nameColumn]),
+      value: Number(item[valueColumn])
+    }));
+  }, [chartData, chart.metrics]);
+
+  if (isLoading) {
+    return <Skeleton className="h-[300px] w-full" />;
+  }
+
+  if (error || !chartData || !chartData.success) {
+    return (
+      <div className="p-4 bg-destructive/10 rounded-md text-destructive flex items-center justify-center h-[300px]">
+        <p>Failed to load chart data: {error instanceof Error ? error.message : 'Unknown error'}</p>
+      </div>
+    );
+  }
+
+  if (formattedData.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[300px] bg-muted/50 rounded-md">
+        <div className="text-muted-foreground">No data available to visualize</div>
+      </div>
+    );
+  }
+
+  const renderChart = () => {
+    switch (chart.chart_type.toLowerCase()) {
+      case 'bar':
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="value" fill="#8884d8" />
+            </BarChart>
+          </ResponsiveContainer>
+        );
+      case 'line':
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <RechartsLineChart data={formattedData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="value" stroke="#8884d8" />
+            </RechartsLineChart>
+          </ResponsiveContainer>
+        );
+      case 'pie':
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <RechartsPieChart margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
+              <Pie 
+                data={formattedData} 
+                dataKey="value" 
+                nameKey="name" 
+                cx="50%" 
+                cy="50%" 
+                fill="#8884d8" 
+                label 
+              />
+              <Tooltip />
+              <Legend />
+            </RechartsPieChart>
+          </ResponsiveContainer>
+        );
+      default:
+        return (
+          <div className="flex items-center justify-center h-[300px] bg-muted/50 rounded-md">
+            <div className="text-muted-foreground">Unsupported chart type: {chart.chart_type}</div>
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div className="p-4 bg-card rounded-md border">
+      <h3 className="font-medium mb-4">Chart Preview</h3>
+      {renderChart()}
+      <div className="mt-4 text-xs text-muted-foreground">
+        Displaying {formattedData.length} data points
+      </div>
+    </div>
   );
 };
 
@@ -249,16 +389,12 @@ const Charts: React.FC = () => {
           <DialogHeader>
             <DialogTitle>{selectedChart?.name}</DialogTitle>
           </DialogHeader>
-          <div className="p-4 bg-muted rounded-md">
+          {selectedChart && <ChartPreview chart={selectedChart} />}
+          <div className="p-4 bg-muted rounded-md mt-4">
             <p className="font-medium mb-2">Chart Configuration:</p>
-            <pre className="text-xs overflow-auto p-2 bg-background rounded border max-h-[300px]">
+            <pre className="text-xs overflow-auto p-2 bg-background rounded border max-h-[200px]">
               {selectedChart ? JSON.stringify(selectedChart, null, 2) : ''}
             </pre>
-          </div>
-          <div className="p-4 flex justify-center items-center h-[300px] bg-muted/50 rounded-md">
-            <div className="text-muted-foreground">
-              Chart visualization will be rendered here
-            </div>
           </div>
         </DialogContent>
       </Dialog>
