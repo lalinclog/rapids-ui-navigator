@@ -12,6 +12,8 @@ from datetime import datetime
 import uuid
 from fastapi.responses import FileResponse, Response
 import logging
+from fastapi.encoders import jsonable_encoder
+import pprint
 
 from .services.minio_service import MinioService
 from .services.postgres_service import PostgresService
@@ -457,36 +459,37 @@ async def query_dataset(dataset_id: int, query: DatasetQuery, bi_service: BIServ
     logger.info(f"Executing query for dataset {dataset_id}")
     try:
         result = bi_service.execute_dataset_query(dataset_id, query.filters)
+
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
         
+        # 🔧 Fix: convert RMKeyView to list before encoding
+        if "columns" in result:
+            try:
+                result["columns"] = list(result["columns"])  # Fixes RMKeyView issue
+            except Exception as e:
+                logger.warning(f"Failed to convert columns to list: {e}")
 
-        # Ensure the data is JSON serializable
-        serializable_data = []
-        if "data" in result and isinstance(result["data"], list):
-            for item in result["data"]:
-                if isinstance(item, dict):
-                    # Convert any non-serializable values to strings
-                    serializable_item = {}
-                    for k, v in item.items():
-                        if isinstance(v, (str, int, float, bool, type(None))):
-                            serializable_item[k] = v
-                        elif isinstance(v, (list, dict)):
-                            try:
-                                # Try to convert complex objects to JSON and back to ensure serializability
-                                serializable_item[k] = json.loads(json.dumps(v))
-                            except:
-                                serializable_item[k] = str(v)
-                        else:
-                            serializable_item[k] = str(v)
-                    serializable_data.append(serializable_item)
-                else:
-                    # If item is not a dict, convert it to string
-                    serializable_data.append({"value": str(item)})
-                     
-            result["data"] = serializable_data
+        #logger.info(f"Returning result: {result}")
+        
+        # STEP 1: Add detailed logging of the result and its data types
+        #logger.info("Raw result from BI service:\n%s", pprint.pformat(result))
+        #logger.info("Result types:")
+        #for key, value in result.items():
+        #    logger.info(" - %s: %s", key, type(value))
+        #    if key == "data" and isinstance(value, list):
+        #        for i, row in enumerate(value):
+        #            logger.info("   row %d: %s (%s)", i, repr(row), type(row))
+        #            if i >= 5:  # Only log a few rows to keep it readable
+        #                break
+                    # Optionally just encode 'data' if the rest is fine
+            
+        result["data"] = jsonable_encoder(result["data"])
 
         return result
+                     
+        #result["data"] = serializable_data
+        #return jsonable_encoder(result)
     except HTTPException:
         raise
     except Exception as e:
