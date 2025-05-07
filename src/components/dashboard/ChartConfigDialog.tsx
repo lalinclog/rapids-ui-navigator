@@ -12,6 +12,7 @@ import {
   ChartTooltip,
   ChartTooltipContent
 } from '@/components/ui/chart';
+import { ChartConfig } from '@/lib/types'
 
 interface ChartConfig {
   colors: string[];
@@ -26,7 +27,7 @@ interface ChartConfigDialogProps {
   onClose: () => void;
   chartId?: number;
   chartType: string;
-  config: any;
+  config: ChartConfig;
   onDelete: () => void;
   onUpdate: (config: any) => void;
 }
