@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { FontBoldIcon, FontItalicIcon } from 'lucide-react';
+import { BoldIcon as FontBoldIcon, ItalicIcon as FontItalicIcon } from 'lucide-react';
 
 export const TextBlock: React.FC<{
   content: string;
