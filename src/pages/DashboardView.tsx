@@ -342,6 +342,7 @@ const DashboardView: React.FC = () => {
               )}
             </div>
           }
+          />
 
           // Add this new Dialog for adding items
           <Dialog open={showAddItemMenu} onOpenChange={setShowAddItemMenu}>
@@ -365,7 +366,6 @@ const DashboardView: React.FC = () => {
               </div>
             </DialogContent>
             </Dialog>
-        />
 
         <div className="bg-muted/20 p-4 rounded-lg mb-6 flex items-center flex-wrap gap-4">
           {dashboard?.global_filters?.map((filter, index) => (
