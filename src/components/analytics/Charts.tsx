@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +9,7 @@ import { toast } from '@/hooks/use-toast';
 import { BarChart2, LineChart, PieChart, AreaChart as AreaChartIcon, Plus, Eye, Trash2, Edit } from 'lucide-react';
 import { 
   BarChart, LineChart as RechartsLineChart, PieChart as RechartsPieChart,
-  AreaChart as RechartsAreaChart, Bar, Line, Pie, Area, XAxis, YAxis, 
+  AreaChart as RechartsAreaChart, Bar, Line, Pie, Area, Cell, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import ChartForm from './ChartForm';

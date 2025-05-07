@@ -18,6 +18,7 @@ import DraggableDashboardItem from '@/components/dashboard/DraggableDashboardIte
 import { TextBlock } from '@/components/dashboard/TextBlock';
 import { ImageBlock } from '@/components/dashboard/ImageBlock';
 import { FilterControl } from '@/components/dashboard/FilterControl';
+import ChartConfigDialog from '@/components/dashboard/ChartConfigDialog';
 
 // Type definitions
 interface DashboardItem {
@@ -96,6 +97,8 @@ const DashboardView: React.FC = () => {
 
   const [activeFilters, setActiveFilters] = useState<Record<string, any>>({});
   const [showAddItemMenu, setShowAddItemMenu] = useState(false);
+  const [showChartConfig, setShowChartConfig] = useState(false);
+  const [selectedChartItem, setSelectedChartItem] = useState<DashboardItem | null>(null);
 
   const { data: dashboard, isLoading, error } = useQuery({
     queryKey: ['dashboard', dashboardId],
@@ -350,6 +353,19 @@ const DashboardView: React.FC = () => {
     }
   };
 
+  const handleChartClick = (item: DashboardItem) => {
+    if (item.type === 'chart' && isEditing) {
+      setSelectedChartItem(item);
+      setShowChartConfig(true);
+    }
+  };
+
+  const handleUpdateChartConfig = (id: number, config: any) => {
+    setLocalItems(localItems.map(item => 
+      item.id === id ? { ...item, config: { ...item.config, ...config } } : item
+    ));
+  };
+
   const renderItemContent = (item: DashboardItem) => {
     switch(item.type) {
       case 'text':
@@ -491,6 +507,25 @@ const DashboardView: React.FC = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Chart Configuration Dialog */}
+        {selectedChartItem && (
+          <ChartConfigDialog
+            isOpen={showChartConfig}
+            onClose={() => setShowChartConfig(false)}
+            chartId={selectedChartItem.chart_id}
+            chartType={selectedChartItem.chart_type || 'bar'}
+            config={selectedChartItem.config || {}}
+            onDelete={() => {
+              handleRemoveItem(selectedChartItem.id);
+              setShowChartConfig(false);
+            }}
+            onUpdate={(config) => {
+              handleUpdateChartConfig(selectedChartItem.id, config);
+              setShowChartConfig(false);
+            }}
+          />
+        )}
+
         <div className="bg-muted/20 p-4 rounded-lg mb-6 flex items-center flex-wrap gap-4">
           {dashboard?.global_filters?.map((filter, index) => (
             <Button key={index} variant="outline">
@@ -542,7 +577,10 @@ const DashboardView: React.FC = () => {
                       )}
                     </div>
                   </CardHeader>
-                  <CardContent className="p-3 pt-0 h-[calc(100%-40px)]">
+                  <CardContent 
+                    className="p-3 pt-0 h-[calc(100%-40px)]"
+                    onClick={() => item.type === 'chart' && handleChartClick(item)}
+                  >
                     {item.type === 'chart' ? null : renderItemContent(item)}
                   </CardContent>
                 </Card>

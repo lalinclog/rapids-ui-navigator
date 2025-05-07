@@ -1,3 +1,4 @@
+
 // src/components/dashboard/DraggableDashboardItem.tsx
 import React, { useEffect, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
@@ -11,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 import 'react-resizable/css/styles.css';
 import { motion } from 'framer-motion';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 
 export type DashboardItemType = 
   | 'chart' 
@@ -233,6 +235,22 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     }
   };
 
+  // Prepare chart config for shadcn/ui chart component
+  const chartConfig = {
+    data: formattedData,
+    value: {
+      color: '#8884d8',
+      theme: {
+        light: '#8884d8',
+        dark: '#8884d8',
+      }
+    },
+    showTooltip: true,
+    showLegend: true,
+    showGrid: true,
+    colors: COLORS,
+  };
+
   const renderChart = () => {
     const chartWidth = width * 32 - 32; // Adjust for padding
     const chartHeight = height * 32 - 60; // Adjust for header and padding
@@ -265,36 +283,37 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
       );
     }
 
+    // Use the shadcn/ui ChartContainer for consistent styling
     switch (chartType.toLowerCase()) {
       case 'bar':
         return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
+          <ChartContainer config={chartConfig} className="w-full h-full">
             <BarChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
+              {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
               <XAxis dataKey="name" />
               <YAxis />
-              <Tooltip />
-              <Legend />
+              {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
+              {chartConfig.showLegend && <Legend />}
               <Bar dataKey="value" fill="#8884d8" />
             </BarChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         );
       case 'line':
         return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
+          <ChartContainer config={chartConfig} className="w-full h-full">
             <LineChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
+              {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
               <XAxis dataKey="name" />
               <YAxis />
-              <Tooltip />
-              <Legend />
+              {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
+              {chartConfig.showLegend && <Legend />}
               <Line type="monotone" dataKey="value" stroke="#8884d8" />
             </LineChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         );
       case 'pie':
         return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
+          <ChartContainer config={chartConfig} className="w-full h-full">
             <PieChart>
               <Pie
                 data={formattedData}
@@ -309,23 +328,23 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip />
-              <Legend />
+              {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
+              {chartConfig.showLegend && <Legend />}
             </PieChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         );
       case 'area':
         return (
-          <ResponsiveContainer width="100%" height={chartHeight}>
+          <ChartContainer config={chartConfig} className="w-full h-full">
             <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
+              {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
               <XAxis dataKey="name" />
               <YAxis />
-              <Tooltip />
-              <Legend />
+              {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
+              {chartConfig.showLegend && <Legend />}
               <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
             </AreaChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         );
       default:
         return (
