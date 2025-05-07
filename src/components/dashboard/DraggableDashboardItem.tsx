@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { Resizable } from 'react-resizable';
 import { BarChart, LineChart, PieChart, AreaChart } from 'recharts';
-import { Bar, Line, Pie, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Bar, Line, Pie, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { BarChart2, LineChart as LineIcon, PieChart as PieIcon, AreaChart as AreaIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -138,18 +138,18 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     queryFn: () => fetchChartData(chartId || 0),
     enabled: !!chartId,
     meta: {
-    onError: (err: Error) => {
-      console.error('Failed to load chart data:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Failed to load chart data',
-        description: err.message || 'Unknown error occurred'
-      });
-    }
+      onError: (err: Error) => {
+        console.error('Failed to load chart data:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Failed to load chart data',
+          description: err.message || 'Unknown error occurred'
+        });
+      }
     }
   });
   
-    // Format the data for rendering based on the structure
+  // Format the data for rendering based on the structure
   const formattedData = React.useMemo(() => {
     if (!chartData || chartData.length === 0) {
       return chartType?.toLowerCase() === 'pie' ? pieData : sampleData;
@@ -212,7 +212,6 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
         break;
     }
   };
-
 
   const renderChart = () => {
     const chartWidth = width * 32 - 32; // Adjust for padding
@@ -292,26 +291,33 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
                 cx="50%"
                 cy="50%"
                 fill="#8884d8"
-                label 
-              />
+                label
+              >
+                {formattedData.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={`#${Math.floor(Math.random() * 16777215).toString(16)}`} 
+                  />
+                ))}
+              </Pie>
               <Tooltip />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
         );
-        case 'area':
-          return (
-            <ResponsiveContainer width="100%" height={chartHeight}>
-              <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
-              </AreaChart>
-            </ResponsiveContainer>
-          );
+      case 'area':
+        return (
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
+            </AreaChart>
+          </ResponsiveContainer>
+        );
       default:
         return (
           <div className="h-full w-full flex items-center justify-center">

@@ -77,7 +77,14 @@ const getChartIcon = (chartType: string) => {
   }
 };
 
-const ChartCard: React.FC<{ chart: Chart; onEdit: () => void; onView: () => void; onDelete: () => void }> = ({ 
+interface ChartCardProps {
+  chart: Chart;
+  onEdit: () => void;
+  onView: () => void; 
+  onDelete: () => void;
+}
+
+const ChartCard: React.FC<ChartCardProps> = ({ 
   chart, onEdit, onView, onDelete 
 }) => {
   return (
@@ -122,7 +129,11 @@ const ChartCard: React.FC<{ chart: Chart; onEdit: () => void; onView: () => void
   );
 };
 
-const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
+interface ChartPreviewProps {
+  chart: Chart;
+}
+
+const ChartPreview: React.FC<ChartPreviewProps> = ({ chart }) => {
   const { data: chartData, isLoading, error } = useQuery({
     queryKey: ['chartPreviewData', chart.id],
     queryFn: () => fetchChartData(chart.id),
@@ -320,6 +331,33 @@ const ChartPreview: React.FC<{ chart: Chart }> = ({ chart }) => {
               </RechartsAreaChart>
             </ResponsiveContainer>
           );
+      case CHART_TYPES.PIE:
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <RechartsPieChart>
+              <Pie
+                data={formattedData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                fill="#8884d8"
+                label
+                innerRadius={chartConfig.pieInnerRadius}
+                outerRadius={chartConfig.pieOuterRadius}
+              >
+                {formattedData.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={chartConfig.colors[index % chartConfig.colors.length]} 
+                  />
+                ))}
+              </Pie>
+              {chartConfig.showTooltip && <Tooltip />}
+              {chartConfig.showLegend && <Legend />}
+            </RechartsPieChart>
+          </ResponsiveContainer>
+        );
       default:
         return (
           <div className="flex items-center justify-center h-[300px] bg-muted/50 rounded-md">
