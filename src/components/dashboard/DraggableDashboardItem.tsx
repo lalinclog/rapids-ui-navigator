@@ -13,12 +13,13 @@ import { toast } from '@/hooks/use-toast';
 import 'react-resizable/css/styles.css';
 import { motion } from 'framer-motion';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { ChartDataPoint } from '@/lib/types'
 
-export type DashboardItemType = 
-  | 'chart' 
-  | 'text' 
-  | 'image' 
-  | 'filter' 
+export type DashboardItemType =
+  | 'chart'
+  | 'text'
+  | 'image'
+  | 'filter'
   | 'divider';
 
 interface DraggableDashboardItemProps {
@@ -56,20 +57,14 @@ const pieData = [
   { name: 'Group D', value: 200 },
 ];
 
-interface ChartDataPoint {
-  name: string;
-  value: number;
-  [key: string]: string | number;
-}
-
 const COLORS = [
-  '#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe', 
+  '#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe',
   '#00C49F', '#FFBB28', '#FF8042', '#a4de6c', '#d0ed57'
 ];
 
 const fetchChartData = async (chartId: number): Promise<ChartDataPoint[]> => {
   if (!chartId) return [];
-  
+
   try {
     const response = await fetch(`/api/bi/charts/${chartId}/data`);
     if (!response.ok) {
@@ -170,44 +165,60 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
       }
     }
   });
-  
+
   // Format the data for rendering based on the structure
   const formattedData = React.useMemo(() => {
     if (!chartData || chartData.length === 0) {
-      return chartType?.toLowerCase() === 'pie' ? pieData : sampleData;
+      return chartType?.toLowerCase() === 'pie' ?
+        pieData.map(item => ({
+          label: item.name,
+          value: item.value,
+          theme: {
+            light: COLORS[0],
+            dark: COLORS[0]
+          }
+        }))
+        : sampleData.map(item => ({
+          label: item.name,
+          value: item.value,
+          theme: {
+            light: COLORS[0],
+            dark: COLORS[0]
+          }
+        }));
     }
-  
-    // Transform API data if needed
-    // Here we'd adapt the data to the format required by recharts
-    const hasNameProperty = chartData.some(item => 'name' in item);
-    const hasValueProperty = chartData.some(item => 'value' in item);
-    
-    if (hasNameProperty && hasValueProperty) {
-      return chartData; // Data already in the correct format
-    }
-    
-    // If data isn't in the expected format, try to adapt it
-    const keys = Object.keys(chartData[0] || {});
-    if (keys.length >= 2) {
-      // Use first column as name and second as value
-      const nameKey = keys[0];
-      const valueKey = keys[1];
-      
-      return chartData.map(item => ({
-        name: String(item[nameKey]),
-        value: Number(item[valueKey])
-      }));
-    }
-    
-    return chartType?.toLowerCase() === 'pie' ? pieData : sampleData;
+
+    return chartData.map(item => ({
+      label: item.label || String(item[Object.keys(item)[0]]),
+      value: item.value || Number(item[Object.keys(item)[1]]),
+      color: COLORS[0],
+      theme: {
+        light: COLORS[0],
+        dark: COLORS[0]
+      }
+    }));
   }, [chartData, chartType]);
+
+  const chartConfig = {
+    data: formattedData,
+    value: {
+      theme: {
+        light: COLORS[0],
+        dark: COLORS[0]
+      }
+    },
+    showTooltip: true,
+    showLegend: true,
+    showGrid: true,
+    colors: COLORS
+  };
 
   // Add keyboard controls for accessibility
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isEditing) return;
-    
+
     const moveAmount = e.shiftKey ? 2 : 1;
-    
+
     switch (e.key) {
       case 'ArrowUp':
         e.preventDefault();
@@ -235,28 +246,20 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     }
   };
 
-  // Prepare chart config for shadcn/ui chart component
-  const chartConfig = {
-    data: formattedData,
-    value: {
-      color: '#8884d8',
-      theme: {
-        light: '#8884d8',
-        dark: '#8884d8',
-      }
-    },
-    showTooltip: true,
-    showLegend: true,
-    showGrid: true,
-    colors: COLORS,
-  };
-
   const renderChart = () => {
     const chartWidth = width * 32 - 32; // Adjust for padding
     const chartHeight = height * 32 - 60; // Adjust for header and padding
-    
+
+    // if (!chartType || chartHeight < 50) {
     if (!chartType || itemType !== 'chart') {
-      return null;
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full p-4 gap-2">
+          <BarChart2 className="h-8 w-8 text-muted-foreground" />
+          <span className="text-muted-foreground text-sm text-center">
+            Select a chart type from the sidebar
+          </span>
+        </div>
+      );
     }
 
     if (isLoadingData) {
@@ -294,7 +297,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
               <YAxis />
               {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
               {chartConfig.showLegend && <Legend />}
-              <Bar dataKey="value" fill="#8884d8" />
+              <Bar dataKey="value" fill={chartConfig.value.theme.light} />
             </BarChart>
           </ChartContainer>
         );
@@ -307,7 +310,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
               <YAxis />
               {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
               {chartConfig.showLegend && <Legend />}
-              <Line type="monotone" dataKey="value" stroke="#8884d8" />
+              <Line type="monotone" dataKey="value" stroke={chartConfig.value.theme.light} />
             </LineChart>
           </ChartContainer>
         );
@@ -321,7 +324,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                fill="#8884d8"
+                fill={chartConfig.value.theme.light}
                 label
               >
                 {formattedData.map((entry, index) => (
@@ -342,7 +345,12 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
               <YAxis />
               {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
               {chartConfig.showLegend && <Legend />}
-              <Area type="monotone" dataKey="value" fill="#8884d8" stroke="#8884d8" />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                fill={chartConfig.value.theme.light} 
+                stroke={chartConfig.value.theme.light} 
+              />
             </AreaChart>
           </ChartContainer>
         );
@@ -369,7 +377,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
         gridRowEnd: y + height + 1,
       }}
       initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ 
+      animate={{
         opacity: isDragging ? 0.8 : 1,
         scale: isDragging ? 1.02 : 1,
         zIndex: isDragging ? 100 : active ? 10 : 1,
@@ -405,11 +413,11 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
             />
           )}
         >
-          <div style={{ 
-            width: '100%', 
+          <div style={{
+            width: '100%',
             height: '100%',
-            cursor: isDragging ? 'grabbing' : 'grab' 
-            }}>
+            cursor: isDragging ? 'grabbing' : 'grab'
+          }}>
             {React.cloneElement(children as React.ReactElement, {}, itemType === 'chart' ? renderChart() : null)}
             <div className="absolute bottom-1 right-1 w-3 h-3 bg-primary rounded-sm cursor-se-resize" />
           </div>
