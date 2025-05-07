@@ -605,31 +605,37 @@ class BIService:
             return False
 
     def _execute_query(self, conn, query, params=None):
-        """Execute a query and return the results as a list of dictionaries"""
+        """Execute a query and return the results as a list of dictionaries or the cursor"""
         with conn.cursor() as cursor:
             cursor.execute(query, params or ())
-            columns = [desc[0] for desc in cursor.description]
-            results = []
             
-            for row in cursor.fetchall():
-                result_dict = dict(zip(columns, row))
+            # For SELECT queries that return results
+            if cursor.description is not None:
+                columns = [desc[0] for desc in cursor.description]
+                results = []
                 
-                # Convert datetime objects to ISO strings
-                for key, value in result_dict.items():
-                    if isinstance(value, datetime):
-                        result_dict[key] = value.isoformat()
-                    # Convert JSONB fields from PostgreSQL
-                    elif key in ["config", "schema", "dimensions", "metrics", "filters", 
-                                "cache_policy", "layout", "global_filters"]:
-                        if value and isinstance(value, str):
-                            try:
-                                result_dict[key] = json.loads(value)
-                            except (json.JSONDecodeError, TypeError):
-                                pass
+                for row in cursor.fetchall():
+                    result_dict = dict(zip(columns, row))
+                    
+                    # Convert datetime objects to ISO strings
+                    for key, value in result_dict.items():
+                        if isinstance(value, datetime):
+                            result_dict[key] = value.isoformat()
+                        # Convert JSONB fields from PostgreSQL
+                        elif key in ["config", "schema", "dimensions", "metrics", "filters", 
+                                    "cache_policy", "layout", "global_filters"]:
+                            if value and isinstance(value, str):
+                                try:
+                                    result_dict[key] = json.loads(value)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
+                    
+                    results.append(result_dict)
                 
-                results.append(result_dict)
-            
-            return results
+                return results
+            # For INSERT/UPDATE/DELETE queries
+            else:
+                return cursor
 
     def execute_dataset_query(self, dataset_id: int, filters: Optional[Dict] = None) -> Dict:
         """Execute a query for a dataset and return the results"""
@@ -758,19 +764,25 @@ class BIService:
         except Exception as e:
             logger.error(f"Error creating dashboard: {str(e)}", exc_info=True)
             return None
-
+    
     def delete_dashboard(self, dashboard_id: int) -> bool:
-        """Delete a dashboard from the database"""
-        logger.info(f"Deleting dashboard with ID: {dashboard_id}")
+        """Delete a dashboard and all its items from the database"""
+        logger.info(f"Deleting dashboard with ID: {dashboard_id} and its items")
         try:
             with self.postgres_service._get_connection() as conn:
-                query = """
+                # First delete all items to maintain referential integrity
+                delete_items_query = """
+                DELETE FROM dashboard_items 
+                WHERE dashboard_id = %s
+                """
+                self._execute_query(conn, delete_items_query, (dashboard_id,))
+                
+                # Then delete the dashboard
+                delete_dashboard_query = """
                 DELETE FROM dashboards 
                 WHERE id = %s
                 """
-                params = (dashboard_id,)
-                result = self._execute_query(conn, query, params)
-                # Return True if at least one row was affected, False otherwise
+                result = self._execute_query(conn, delete_dashboard_query, (dashboard_id,))
                 return result is not None and result.rowcount > 0
         except Exception as e:
             logger.error(f"Error deleting dashboard {dashboard_id}: {str(e)}", exc_info=True)
