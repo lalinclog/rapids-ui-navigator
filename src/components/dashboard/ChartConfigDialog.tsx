@@ -14,14 +14,6 @@ import {
 } from '@/components/ui/chart';
 import { ChartConfig } from '@/lib/types'
 
-interface ChartConfig {
-  colors: string[];
-  showGrid: boolean;
-  showLegend: boolean;
-  showTooltip: boolean;
-  title?: string;
-}
-
 interface ChartConfigDialogProps {
   isOpen: boolean;
   onClose: () => void;
