@@ -758,3 +758,20 @@ class BIService:
         except Exception as e:
             logger.error(f"Error creating dashboard: {str(e)}", exc_info=True)
             return None
+
+    def delete_dashboard(self, dashboard_id: int) -> bool:
+        """Delete a dashboard from the database"""
+        logger.info(f"Deleting dashboard with ID: {dashboard_id}")
+        try:
+            with self.postgres_service._get_connection() as conn:
+                query = """
+                DELETE FROM dashboards 
+                WHERE id = %s
+                """
+                params = (dashboard_id,)
+                result = self._execute_query(conn, query, params)
+                # Return True if at least one row was affected, False otherwise
+                return result is not None and result.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error deleting dashboard {dashboard_id}: {str(e)}", exc_info=True)
+            return False
