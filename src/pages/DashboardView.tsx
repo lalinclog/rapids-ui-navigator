@@ -19,6 +19,8 @@ import { TextBlock } from '@/components/dashboard/TextBlock';
 import { ImageBlock } from '@/components/dashboard/ImageBlock';
 import { FilterControl } from '@/components/dashboard/FilterControl';
 import ChartConfigDialog from '@/components/dashboard/ChartConfigDialog';
+import { ChartConfig } from '@/lib/types'
+
 
 // Type definitions
 interface DashboardItem {
@@ -31,7 +33,7 @@ interface DashboardItem {
   position_y: number;
   width: number;
   height: number;
-  config: any;
+  config: ChartConfig;
   content?: string;
   style?: React.CSSProperties;
   url?: string;
@@ -104,7 +106,7 @@ const DashboardView: React.FC = () => {
     queryKey: ['dashboard', dashboardId],
     queryFn: () => fetchDashboard(dashboardId || ''),
     enabled: !!dashboardId,
-  });
+    });
 
   // Effect to initialize localItems when dashboard data is loaded
   useEffect(() => {
@@ -167,7 +169,7 @@ const DashboardView: React.FC = () => {
   const handleAddChart = (chart: Chart) => {
     // Find the maximum Y position to place the new item at the bottom
     const maxY = Math.max(...localItems.map(i => i.position_y + i.height), 0);
-    
+
     const newItem: DashboardItem = {
       id: Date.now(),
       type: 'chart',
@@ -227,9 +229,10 @@ const DashboardView: React.FC = () => {
     }
   };
 
+  // Add these new handler functions
   const handleAddTextBlock = () => {
     const maxY = Math.max(...localItems.map(i => i.position_y + i.height), 0);
-    
+
     const newItem: DashboardItem = {
       id: Date.now(),
       type: 'text',
@@ -482,49 +485,49 @@ const DashboardView: React.FC = () => {
               )}
             </div>
           }
-        />
-
-        {/* Dialog for adding items */}
-        <Dialog open={showAddItemMenu} onOpenChange={setShowAddItemMenu}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Add Item to Dashboard</DialogTitle>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" onClick={() => setShowChartSelector(true)}>
-                <BarChart2 className="mr-2 h-4 w-4" /> Chart
-              </Button>
-              <Button variant="outline" onClick={handleAddTextBlock}>
-                <Type className="mr-2 h-4 w-4" /> Text
-              </Button>
-              <Button variant="outline" onClick={handleAddImageBlock}>
-                <Image className="mr-2 h-4 w-4" /> Image
-              </Button>
-              <Button variant="outline" onClick={handleAddFilterItem}>
-                <Filter className="mr-2 h-4 w-4" /> Filter
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Chart Configuration Dialog */}
-        {selectedChartItem && (
-          <ChartConfigDialog
-            isOpen={showChartConfig}
-            onClose={() => setShowChartConfig(false)}
-            chartId={selectedChartItem.chart_id}
-            chartType={selectedChartItem.chart_type || 'bar'}
-            config={selectedChartItem.config || {}}
-            onDelete={() => {
-              handleRemoveItem(selectedChartItem.id);
-              setShowChartConfig(false);
-            }}
-            onUpdate={(config) => {
-              handleUpdateChartConfig(selectedChartItem.id, config);
-              setShowChartConfig(false);
-            }}
           />
-        )}
+
+          {/* Dialog for adding items */}
+          <Dialog open={showAddItemMenu} onOpenChange={setShowAddItemMenu}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Add Item to Dashboard</DialogTitle>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-4">
+                <Button variant="outline" onClick={() => setShowChartSelector(true)}>
+                  <BarChart2 className="mr-2 h-4 w-4" /> Chart
+                </Button>
+                <Button variant="outline" onClick={handleAddTextBlock}>
+                  <Type className="mr-2 h-4 w-4" /> Text
+                </Button>
+                <Button variant="outline" onClick={handleAddImageBlock}>
+                  <Image className="mr-2 h-4 w-4" /> Image
+                </Button>
+                <Button variant="outline" onClick={handleAddFilterItem}>
+                  <Filter className="mr-2 h-4 w-4" /> Filter
+                </Button>
+              </div>
+            </DialogContent>
+            </Dialog>
+
+            {/* Chart Configuration Dialog */}
+            {selectedChartItem && (
+              <ChartConfigDialog
+                isOpen={showChartConfig}
+                onClose={() => setShowChartConfig(false)}
+                chartId={selectedChartItem.chart_id}
+                chartType={selectedChartItem.chart_type || 'bar'}
+                config={selectedChartItem.config || {}}
+                onDelete={() => {
+                  handleRemoveItem(selectedChartItem.id);
+                  setShowChartConfig(false);
+                }}
+                onUpdate={(config) => {
+                  handleUpdateChartConfig(selectedChartItem.id, config);
+                  setShowChartConfig(false);
+                }}
+              />
+            )}
 
         <div className="bg-muted/20 p-4 rounded-lg mb-6 flex items-center flex-wrap gap-4">
           {dashboard?.global_filters?.map((filter, index) => (
@@ -562,8 +565,8 @@ const DashboardView: React.FC = () => {
                     <div className="flex justify-between items-center mb-2">
                       <h3 className="font-medium">
                         {item.type === 'chart' ? item.chart_name : 
-                         item.type === 'text' ? 'Text Block' :
-                         item.type === 'image' ? 'Image Block' : 'Filter'}
+                          item.type === 'text' ? 'Text Block' :
+                          item.type === 'image' ? 'Image Block' : 'Filter'}
                       </h3>
                       {isEditing && (
                         <Button
@@ -580,7 +583,7 @@ const DashboardView: React.FC = () => {
                   <CardContent 
                     className="p-3 pt-0 h-[calc(100%-40px)]"
                     onClick={() => item.type === 'chart' && handleChartClick(item)}
-                  >
+                    >
                     {item.type === 'chart' ? null : renderItemContent(item)}
                   </CardContent>
                 </Card>
