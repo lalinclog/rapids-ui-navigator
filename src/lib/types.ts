@@ -1,3 +1,4 @@
+
 export type JobStatusType = 'pending' | 'running' | 'completed' | 'failed';
 
 export interface OperationStat {
@@ -108,7 +109,7 @@ export interface ApiClient {
     uploadFile(file: File): Promise<ApiResponse<UploadResponse>>;
   }
 
-  // In a shared types file
+// Chart data interface for our application
 export interface ChartDataPoint {
   label: string;
   value: number;
@@ -119,10 +120,23 @@ export interface ChartDataPoint {
   };
 }
 
+// Updated ChartConfig that matches what our dashboard uses
 export interface ChartConfig {
-  data: ChartDataPoint[];
   colors?: string[];
   showTooltip?: boolean;
   showLegend?: boolean;
   showGrid?: boolean;
+  title?: string;
+  data?: ChartDataPoint[];
+}
+
+// Type for chart configuration in ChartContainer component
+export interface ShadcnChartConfig {
+  [key: string]: {
+    label?: React.ReactNode;
+    icon?: React.ComponentType;
+  } & (
+    | { color?: string; theme?: never }
+    | { color?: never; theme: Record<"light" | "dark", string> }
+  );
 }

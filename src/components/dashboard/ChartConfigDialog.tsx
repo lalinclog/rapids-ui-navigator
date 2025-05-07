@@ -7,11 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
-import { 
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent
-} from '@/components/ui/chart';
 import { ChartConfig } from '@/lib/types'
 
 interface ChartConfigDialogProps {
@@ -21,7 +16,7 @@ interface ChartConfigDialogProps {
   chartType: string;
   config: ChartConfig;
   onDelete: () => void;
-  onUpdate: (config: any) => void;
+  onUpdate: (config: ChartConfig) => void;
 }
 
 const DEFAULT_COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE'];
@@ -44,7 +39,7 @@ const ChartConfigDialog: React.FC<ChartConfigDialogProps> = ({
   });
 
   const handleColorChange = (index: number, color: string) => {
-    const newColors = [...chartConfig.colors];
+    const newColors = [...(chartConfig.colors || DEFAULT_COLORS)];
     newColors[index] = color;
     setChartConfig({ ...chartConfig, colors: newColors });
   };
@@ -157,7 +152,7 @@ const ChartConfigDialog: React.FC<ChartConfigDialogProps> = ({
             <div className="grid gap-4">
               <Label>Chart Colors</Label>
               <div className="grid grid-cols-2 gap-4">
-                {chartConfig.colors.slice(0, 5).map((color, index) => (
+                {(chartConfig.colors || DEFAULT_COLORS).slice(0, 5).map((color, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <div
                       className="h-8 w-8 rounded-md border"

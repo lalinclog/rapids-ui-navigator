@@ -1,4 +1,3 @@
-
 // src/components/dashboard/DraggableDashboardItem.tsx
 import React, { useEffect, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
@@ -13,7 +12,7 @@ import { toast } from '@/hooks/use-toast';
 import 'react-resizable/css/styles.css';
 import { motion } from 'framer-motion';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { ChartDataPoint } from '@/lib/types'
+import { ChartDataPoint, ShadcnChartConfig } from '@/lib/types';
 
 export type DashboardItemType =
   | 'chart'
@@ -172,46 +171,47 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
       return chartType?.toLowerCase() === 'pie' ?
         pieData.map(item => ({
           label: item.name,
-          value: item.value,
-          theme: {
-            light: COLORS[0],
-            dark: COLORS[0]
-          }
+          value: item.value
         }))
         : sampleData.map(item => ({
           label: item.name,
-          value: item.value,
-          theme: {
-            light: COLORS[0],
-            dark: COLORS[0]
-          }
+          value: item.value
         }));
     }
 
     return chartData.map(item => ({
       label: item.label || String(item[Object.keys(item)[0]]),
-      value: item.value || Number(item[Object.keys(item)[1]]),
-      color: COLORS[0],
-      theme: {
-        light: COLORS[0],
-        dark: COLORS[0]
-      }
+      value: item.value || Number(item[Object.keys(item)[1]])
     }));
   }, [chartData, chartType]);
 
-  const chartConfig = {
-    data: formattedData,
-    value: {
+  // Convert our data to shadcn Chart format
+  const shadcnChartConfig: ShadcnChartConfig = React.useMemo(() => {
+    // Create a config object suitable for shadcn/ui ChartContainer
+    const config: ShadcnChartConfig = {};
+    
+    // Add each data point as a named entry in the config
+    formattedData.forEach((item, index) => {
+      const key = item.label.toString();
+      config[key] = {
+        label: item.label,
+        theme: {
+          light: COLORS[index % COLORS.length],
+          dark: COLORS[index % COLORS.length]
+        }
+      };
+    });
+    
+    // Add a 'value' property for the data series
+    config.value = {
       theme: {
         light: COLORS[0],
         dark: COLORS[0]
       }
-    },
-    showTooltip: true,
-    showLegend: true,
-    showGrid: true,
-    colors: COLORS
-  };
+    };
+    
+    return config;
+  }, [formattedData]);
 
   // Add keyboard controls for accessibility
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -250,7 +250,6 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     const chartWidth = width * 32 - 32; // Adjust for padding
     const chartHeight = height * 32 - 60; // Adjust for header and padding
 
-    // if (!chartType || chartHeight < 50) {
     if (!chartType || itemType !== 'chart') {
       return (
         <div className="flex flex-col items-center justify-center h-full w-full p-4 gap-2">
@@ -290,66 +289,70 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     switch (chartType.toLowerCase()) {
       case 'bar':
         return (
-          <ChartContainer config={chartConfig} className="w-full h-full">
+          <ChartContainer config={shadcnChartConfig} className="w-full h-full">
             <BarChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
-              <XAxis dataKey="name" />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
               <YAxis />
-              {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
-              {chartConfig.showLegend && <Legend />}
-              <Bar dataKey="value" fill={chartConfig.value.theme.light} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Bar dataKey="value" fill={COLORS[0]}>
+                {formattedData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Bar>
             </BarChart>
           </ChartContainer>
         );
       case 'line':
         return (
-          <ChartContainer config={chartConfig} className="w-full h-full">
+          <ChartContainer config={shadcnChartConfig} className="w-full h-full">
             <LineChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
-              <XAxis dataKey="name" />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
               <YAxis />
-              {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
-              {chartConfig.showLegend && <Legend />}
-              <Line type="monotone" dataKey="value" stroke={chartConfig.value.theme.light} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Line type="monotone" dataKey="value" stroke={COLORS[0]} />
             </LineChart>
           </ChartContainer>
         );
       case 'pie':
         return (
-          <ChartContainer config={chartConfig} className="w-full h-full">
+          <ChartContainer config={shadcnChartConfig} className="w-full h-full">
             <PieChart>
               <Pie
                 data={formattedData}
                 dataKey="value"
-                nameKey="name"
+                nameKey="label"
                 cx="50%"
                 cy="50%"
-                fill={chartConfig.value.theme.light}
+                fill={COLORS[0]}
                 label
               >
                 {formattedData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
-              {chartConfig.showLegend && <Legend />}
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
             </PieChart>
           </ChartContainer>
         );
       case 'area':
         return (
-          <ChartContainer config={chartConfig} className="w-full h-full">
+          <ChartContainer config={shadcnChartConfig} className="w-full h-full">
             <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              {chartConfig.showGrid && <CartesianGrid strokeDasharray="3 3" />}
-              <XAxis dataKey="name" />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
               <YAxis />
-              {chartConfig.showTooltip && <ChartTooltip content={<ChartTooltipContent />} />}
-              {chartConfig.showLegend && <Legend />}
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
               <Area 
                 type="monotone" 
                 dataKey="value" 
-                fill={chartConfig.value.theme.light} 
-                stroke={chartConfig.value.theme.light} 
+                fill={COLORS[0]} 
+                stroke={COLORS[0]} 
               />
             </AreaChart>
           </ChartContainer>
