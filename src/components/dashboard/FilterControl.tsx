@@ -13,13 +13,13 @@ export interface FilterOption {
 }
 
 export const FilterControl: React.FC<{
-  targetItemIds: string[];
+  targetItemIds: number[];
   availableFilters: string[];
   filterOptions?: Record<string, FilterOption[]>;
   currentFilters: Record<string, any>;
   isEditing?: boolean;
   onFilterChange: (filters: Record<string, any>) => void;
-  onUpdate?: (targetItemIds: string[], availableFilters: string[]) => void;
+  onUpdate?: (targetItemIds: number[], availableFilters: string[]) => void;
 }> = ({ 
   targetItemIds, 
   availableFilters, 
@@ -30,7 +30,7 @@ export const FilterControl: React.FC<{
   onUpdate 
 }) => {
   const [localFilters, setLocalFilters] = useState<Record<string, any>>(currentFilters);
-  const [localTargetIds, setLocalTargetIds] = useState<string[]>(targetItemIds);
+  const [localTargetIds, setLocalTargetIds] = useState<number[]>(targetItemIds);
   const [localAvailableFilters, setLocalAvailableFilters] = useState<string[]>(availableFilters);
   const [newFilterName, setNewFilterName] = useState<string>('');
 

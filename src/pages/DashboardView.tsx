@@ -1,4 +1,3 @@
-
 // src/pages/DashboardView.tsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -12,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { BarChart2, LineChart, PieChart, Share2, Download, Calendar, Edit, Save, Plus, X, Eye, Type, Image, Filter  } from 'lucide-react';
+import { BarChart2, LineChart, PieChart, Share2, Download, Calendar, Edit, Save, Plus, X, Eye, Type, Image, Filter } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import DraggableDashboardItem from '@/components/dashboard/DraggableDashboardItem';
 
@@ -317,7 +316,7 @@ const DashboardView: React.FC = () => {
     ));
   };
 
-  const handleFilterUpdate = (id: number, targetItemIds: string[], availableFilters: string[]) => {
+  const handleFilterUpdate = (id: number, targetItemIds: number[], availableFilters: string[]) => {
     setLocalItems(localItems.map(item => 
       item.id === id ? { ...item, targetItemIds, availableFilters } : item
     ));
@@ -504,7 +503,7 @@ const DashboardView: React.FC = () => {
         </div>
 
         {localItems.length > 0 ? (
-          <div className="grid grid-cols-12 gap-4 auto-rows-min">
+          <div className="grid grid-cols-12 gap-4 auto-rows-min overflow-y-auto max-h-[calc(100vh-200px)]">
             {localItems.map((item) => (
               <DraggableDashboardItem
                 key={item.id}

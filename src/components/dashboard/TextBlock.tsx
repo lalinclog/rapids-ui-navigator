@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { BoldIcon as FontBoldIcon, ItalicIcon as FontItalicIcon } from 'lucide-react';
+import { BoldIcon, ItalicIcon } from 'lucide-react';
 
 export const TextBlock: React.FC<{
   content: string;
@@ -35,14 +35,14 @@ export const TextBlock: React.FC<{
               size="sm"
               onClick={() => handleStyleChange('fontWeight', isBold ? 'normal' : 'bold')}
             >
-              <FontBoldIcon className={isBold ? 'text-primary' : ''} size={16} />
+              <BoldIcon className={isBold ? 'text-primary' : ''} size={16} />
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => handleStyleChange('fontStyle', isItalic ? 'normal' : 'italic')}
             >
-              <FontItalicIcon className={isItalic ? 'text-primary' : ''} size={16} />
+              <ItalicIcon className={isItalic ? 'text-primary' : ''} size={16} />
             </Button>
           </div>
           <Textarea
@@ -62,7 +62,7 @@ export const TextBlock: React.FC<{
         </div>
       ) : (
         <div 
-          className="h-full w-full overflow-auto"
+          className="h-full w-full overflow-auto whitespace-pre-wrap"
           style={{
             ...style,
             fontWeight: isBold ? 'bold' : 'normal',
