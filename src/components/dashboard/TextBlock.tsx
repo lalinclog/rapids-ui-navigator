@@ -1,36 +1,59 @@
+
 // components/dashboard/TextBlock.tsx
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { FontBoldIcon, FontItalicIcon } from '@radix-ui/react-icons';
+import { FontBoldIcon, FontItalicIcon } from 'lucide-react';
 
-const TextBlock: React.FC<{
+export const TextBlock: React.FC<{
   content: string;
   style?: React.CSSProperties;
   isEditing?: boolean;
-  onUpdate?: (content: string) => void;
-}> = ({ content, style, isEditing, onUpdate }) => {
+  onUpdate?: (content: string, style?: React.CSSProperties) => void;
+}> = ({ content, style = {}, isEditing, onUpdate }) => {
   const [text, setText] = useState(content);
-  const [isBold, setIsBold] = useState(false);
-  const [isItalic, setIsItalic] = useState(false);
+  const [isBold, setIsBold] = useState(style?.fontWeight === 'bold');
+  const [isItalic, setIsItalic] = useState(style?.fontStyle === 'italic');
+
+  const handleStyleChange = (styleProp: string, value: string) => {
+    const updatedStyle = { ...style, [styleProp]: value };
+    if (styleProp === 'fontWeight') {
+      setIsBold(value === 'bold');
+    } else if (styleProp === 'fontStyle') {
+      setIsItalic(value === 'italic');
+    }
+    onUpdate?.(text, updatedStyle);
+  };
 
   return (
     <div className="h-full w-full p-4" style={style}>
       {isEditing ? (
         <div className="flex flex-col h-full">
           <div className="flex gap-2 mb-2">
-            <Button variant="ghost" size="sm" onClick={() => setIsBold(!isBold)}>
-              <FontBoldIcon className={isBold ? 'text-primary' : ''} />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleStyleChange('fontWeight', isBold ? 'normal' : 'bold')}
+            >
+              <FontBoldIcon className={isBold ? 'text-primary' : ''} size={16} />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setIsItalic(!isItalic)}>
-              <FontItalicIcon className={isItalic ? 'text-primary' : ''} />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleStyleChange('fontStyle', isItalic ? 'normal' : 'italic')}
+            >
+              <FontItalicIcon className={isItalic ? 'text-primary' : ''} size={16} />
             </Button>
           </div>
           <Textarea
             className="flex-grow"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onBlur={() => onUpdate?.(text)}
+            onBlur={() => onUpdate?.(text, {
+              ...style,
+              fontWeight: isBold ? 'bold' : 'normal',
+              fontStyle: isItalic ? 'italic' : 'normal',
+            })}
             style={{
               fontWeight: isBold ? 'bold' : 'normal',
               fontStyle: isItalic ? 'italic' : 'normal',
@@ -39,7 +62,7 @@ const TextBlock: React.FC<{
         </div>
       ) : (
         <div 
-          className="h-full w-full"
+          className="h-full w-full overflow-auto"
           style={{
             ...style,
             fontWeight: isBold ? 'bold' : 'normal',
@@ -52,3 +75,5 @@ const TextBlock: React.FC<{
     </div>
   );
 };
+
+export default TextBlock;

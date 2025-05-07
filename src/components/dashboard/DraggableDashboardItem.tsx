@@ -33,6 +33,9 @@ interface DraggableDashboardItemProps {
   isEditing: boolean;
   chartType?: string;
   chartId?: number;
+  itemType?: DashboardItemType;
+  active?: boolean;
+  onActive?: (id: number) => void;
 }
 
 // Fallback sample data for when API requests fail
@@ -57,6 +60,11 @@ interface ChartDataPoint {
   value: number;
   [key: string]: string | number;
 }
+
+const COLORS = [
+  '#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe', 
+  '#00C49F', '#FFBB28', '#FF8042', '#a4de6c', '#d0ed57'
+];
 
 const fetchChartData = async (chartId: number): Promise<ChartDataPoint[]> => {
   if (!chartId) return [];
@@ -87,10 +95,13 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   isEditing,
   chartType,
   chartId,
+  itemType = 'chart',
+  active = false,
+  onActive,
 }) => {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'DASHBOARD_ITEM',
-    item: { id, x, y },
+    item: { id, x, y, width, height },
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
@@ -101,12 +112,14 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
 
   const [, drop] = useDrop(() => ({
     accept: 'DASHBOARD_ITEM',
-    drop: (item: { id: number; x: number; y: number }, monitor) => {
+    drop: (item: { id: number; x: number; y: number; width: number; height: number }, monitor) => {
       const delta = monitor.getDifferenceFromInitialOffset();
       if (delta) {
         const newX = Math.max(0, x + Math.round(delta.x / 32));
         const newY = Math.max(0, y + Math.round(delta.y / 32));
-        onMove(item.id, newX, newY);
+        if (newX !== x || newY !== y) {
+          onMove(item.id, newX, newY);
+        }
       }
     },
     hover: (item, monitor) => {
@@ -126,17 +139,25 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   const handleTouchStart = (e: React.TouchEvent) => {
     // Prevent scrolling when dragging
     e.preventDefault();
+    if (onActive) onActive(id);
+  };
+
+  const handleClick = () => {
+    if (onActive) onActive(id);
   };
 
   const handleResize = (e: any, { size }: { size: { width: number; height: number } }) => {
-    onResize(id, Math.max(2, Math.round(size.width / 32)), Math.max(2, Math.round(size.height / 32)));
+    // Calculate grid-aligned sizes
+    const gridWidth = Math.max(2, Math.round(size.width / 32));
+    const gridHeight = Math.max(2, Math.round(size.height / 32));
+    onResize(id, gridWidth, gridHeight);
   };
 
   // Fetch real chart data from the API if a chartId is provided
   const { data: chartData, isLoading: isLoadingData, error } = useQuery({
     queryKey: ['chartData', chartId],
     queryFn: () => fetchChartData(chartId || 0),
-    enabled: !!chartId,
+    enabled: !!chartId && itemType === 'chart',
     meta: {
       onError: (err: Error) => {
         console.error('Failed to load chart data:', err);
@@ -217,16 +238,8 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
     const chartWidth = width * 32 - 32; // Adjust for padding
     const chartHeight = height * 32 - 60; // Adjust for header and padding
     
-    // if (!chartType || chartHeight < 50) {
-    if (!chartType) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full w-full p-4 gap-2">
-          <BarChart2 className="h-8 w-8 text-muted-foreground" />
-          <span className="text-muted-foreground text-sm text-center">
-            Select a chart type from the sidebar
-          </span>
-        </div>
-      );
+    if (!chartType || itemType !== 'chart') {
+      return null;
     }
 
     if (isLoadingData) {
@@ -294,10 +307,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
                 label
               >
                 {formattedData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={`#${Math.floor(Math.random() * 16777215).toString(16)}`} 
-                  />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip />
@@ -333,7 +343,7 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
   return (
     <motion.div
       ref={(node) => drag(drop(node))}
-      className="dashboard-item relative select-none"
+      className={`dashboard-item relative select-none ${active ? 'ring-2 ring-primary' : ''}`}
       style={{
         gridColumnStart: x + 1,
         gridColumnEnd: x + width + 1,
@@ -344,12 +354,13 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
       animate={{ 
         opacity: isDragging ? 0.8 : 1,
         scale: isDragging ? 1.02 : 1,
-        zIndex: isDragging ? 100 : 1,
+        zIndex: isDragging ? 100 : active ? 10 : 1,
       }}
       transition={{ duration: 0.15 }}
       drag={isEditing}
       dragMomentum={false}
       onTouchStart={handleTouchStart}
+      onClick={handleClick}
       tabIndex={isEditing ? 0 : -1}
       onKeyDown={handleKeyDown}
       onDragEnd={(e, info) => {
@@ -381,12 +392,12 @@ const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
             height: '100%',
             cursor: isDragging ? 'grabbing' : 'grab' 
             }}>
-            {React.cloneElement(children as React.ReactElement, {}, renderChart())}
+            {React.cloneElement(children as React.ReactElement, {}, itemType === 'chart' ? renderChart() : null)}
             <div className="absolute bottom-1 right-1 w-3 h-3 bg-primary rounded-sm cursor-se-resize" />
           </div>
         </Resizable>
       ) : (
-        React.cloneElement(children as React.ReactElement, {}, renderChart())
+        React.cloneElement(children as React.ReactElement, {}, itemType === 'chart' ? renderChart() : null)
       )}
     </motion.div>
   );
