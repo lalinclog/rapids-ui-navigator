@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthState, KeycloakUserInfo } from '@/lib/types';
-import axios from 'axios';
+import AuthService from '@/services/AuthService';
 
 interface AuthContextType {
   authState: AuthState;
@@ -29,14 +29,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          const response = await axios.get('/api/auth/user', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          const user = await AuthService.getUserInfo(token);
           setAuthState({
             isAuthenticated: true,
             token,
             refreshToken: localStorage.getItem('refreshToken'),
-            user: response.data as KeycloakUserInfo,
+            user,
           });
         } catch (error) {
           // Token is invalid, clear localStorage
@@ -53,46 +51,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
-      const response = await axios.post('/api/auth/login', { username, password });
-      const { access_token, refresh_token } = response.data;
+      const tokenData = await AuthService.login(username, password);
       
-      // Store tokens
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('refreshToken', refresh_token);
+      if (!tokenData.access_token) {
+        setAuthState({
+          isAuthenticated: false,
+          error: 'Login failed. No access token received.'
+        });
+        return false;
+      }
       
       // Get user info
-      const userResponse = await axios.get('/api/auth/user', {
-        headers: { Authorization: `Bearer ${access_token}` }
-      });
+      const user = await AuthService.getUserInfo(tokenData.access_token);
       
       setAuthState({
         isAuthenticated: true,
-        token: access_token,
-        refreshToken: refresh_token,
-        user: userResponse.data,
+        token: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        user,
       });
       
-      setIsLoading(false);
       return true;
     } catch (error) {
+      console.error('Login error:', error);
       setAuthState({
         isAuthenticated: false,
         error: 'Login failed. Please check your credentials and try again.'
       });
-      setIsLoading(false);
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = async (): Promise<void> => {
     try {
-      await axios.post('/api/auth/logout');
-    } catch (error) {
-      console.error('Logout API error:', error);
+      await AuthService.logout();
     } finally {
-      // Clear local storage and state regardless of API response
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
       setAuthState({ isAuthenticated: false });
     }
   };

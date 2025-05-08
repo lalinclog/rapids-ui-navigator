@@ -1,7 +1,8 @@
 
-from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Form, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .keycloak_service import KeycloakService
+from typing import Dict, Any
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
@@ -85,3 +86,28 @@ async def logout(refresh_token: str = Form(None)):
             )
     
     return {"message": "Logged out successfully"}
+
+@router.post("/auth/users")
+async def create_user(user_data: Dict[str, Any] = Body(...)):
+    """Create a new user in Keycloak"""
+    try:
+        success = keycloak_service.create_user(
+            username=user_data.get("username"),
+            email=user_data.get("email"),
+            password=user_data.get("password"),
+            first_name=user_data.get("firstName", ""),
+            last_name=user_data.get("lastName", "")
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to create user"
+            )
+            
+        return {"success": True, "message": "User created successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
