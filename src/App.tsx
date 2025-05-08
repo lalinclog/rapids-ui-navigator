@@ -9,6 +9,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import SignUp from "./pages/SignUp";
 import Qualification from "./pages/Qualification";
 import Profiling from "./pages/Profiling";
 import JobHistory from "./pages/JobHistory";
@@ -28,7 +29,11 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public Routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<SignUp />} />
+
+            {/* Protected Routes */}
             <Route path="/" element={
               <ProtectedRoute>
                 <Index />
