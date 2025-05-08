@@ -15,8 +15,92 @@ class KeycloakService:
         self.admin_password = os.environ.get("KEYCLOAK_ADMIN_PASSWORD", "admin")
         self.realm = os.environ.get("KEYCLOAK_REALM", "master")
         self.client_id = os.environ.get("KEYCLOAK_CLIENT_ID", "admin-cli")
+        self.client_secret = os.environ.get("KEYCLOAK_CLIENT_SECRET", "")
         self.admin_token = None
         logger.info(f"KeycloakService initialized with base URL: {self.base_url}")
+
+    def get_token(self, username: str, password: str) -> Dict[str, Any]:
+        """Get user access token from Keycloak"""
+        try:
+            logger.info(f"Getting token for user: {username}")
+            url = f"{self.base_url}/realms/{self.realm}/protocol/openid-connect/token"
+            payload = {
+                "username": username,
+                "password": password,
+                "grant_type": "password",
+                "client_id": self.client_id,
+            }
+
+            # Add client_secret if available
+            if self.client_secret:
+                payload["client_secret"] = self.client_secret
+                
+            response = requests.post(url, data=payload)
+            
+            if response.status_code != 200:
+                logger.error(f"Token request failed: {response.status_code} {response.text}")
+                return {"error": "authentication_failed", "error_description": response.text}
+                
+            token_data = response.json()
+            logger.info(f"Successfully obtained token for user: {username}")
+            return token_data
+        except Exception as e:
+            logger.error(f"Failed to get token: {str(e)}", exc_info=True)
+            return {"error": "token_error", "error_description": str(e)}
+
+    def refresh_token(self, refresh_token: str) -> Dict[str, Any]:
+        """Refresh access token using refresh token"""
+        try:
+            logger.info("Refreshing token")
+            url = f"{self.base_url}/realms/{self.realm}/protocol/openid-connect/token"
+            payload = {
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+                "client_id": self.client_id,
+            }
+            
+            # Add client_secret if available
+            if self.client_secret:
+                payload["client_secret"] = self.client_secret
+                
+            response = requests.post(url, data=payload)
+            
+            if response.status_code != 200:
+                logger.error(f"Token refresh failed: {response.status_code} {response.text}")
+                return {"error": "refresh_failed", "error_description": response.text}
+                
+            token_data = response.json()
+            logger.info("Successfully refreshed token")
+            return token_data
+        except Exception as e:
+            logger.error(f"Failed to refresh token: {str(e)}", exc_info=True)
+            return {"error": "refresh_error", "error_description": str(e)}
+
+    def logout(self, refresh_token: str) -> bool:
+        """Logout by invalidating the refresh token"""
+        try:
+            logger.info("Logging out user")
+            url = f"{self.base_url}/realms/{self.realm}/protocol/openid-connect/logout"
+            payload = {
+                "refresh_token": refresh_token,
+                "client_id": self.client_id,
+            }
+            
+            # Add client_secret if available
+            if self.client_secret:
+                payload["client_secret"] = self.client_secret
+                
+            response = requests.post(url, data=payload)
+            
+            if response.status_code >= 200 and response.status_code < 300:
+                logger.info("Successfully logged out user")
+                return True
+            else:
+                logger.error(f"Logout failed: {response.status_code} {response.text}")
+                return False
+        except Exception as e:
+            logger.error(f"Logout error: {str(e)}", exc_info=True)
+            return False
 
     def get_admin_token(self) -> Optional[str]:
         """Get admin access token from Keycloak"""

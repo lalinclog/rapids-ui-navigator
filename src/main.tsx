@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import axios from 'axios';
+import AuthService from './services/AuthService.ts';
 
 // Set up axios interceptors for authentication
 axios.interceptors.request.use(
@@ -32,13 +33,11 @@ axios.interceptors.response.use(
           throw new Error('No refresh token available');
         }
         
-        // Call refresh token endpoint
-        const response = await axios.post('/api/auth/refresh', { refresh_token: refreshToken });
-        const { access_token } = response.data;
+        // Call refresh token endpoint using our service
+        const response = await AuthService.refreshToken(refreshToken);
         
-        localStorage.setItem('token', access_token);
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        
+        // Retry the original request with the new token
+        originalRequest.headers.Authorization = `Bearer ${response.access_token}`;
         return axios(originalRequest);
       } catch (err) {
         // If refresh fails, redirect to login
