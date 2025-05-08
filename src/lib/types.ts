@@ -66,6 +66,33 @@ export interface HealthCheckResponse {
 export interface PythonEnvResponse {
     success: boolean;
   }
+
+export interface KeycloakTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  refresh_expires_in: number;
+  token_type: string;
+  scope: string;
+}
+
+export interface KeycloakUserInfo {
+  sub: string;
+  email_verified: boolean;
+  name?: string;
+  preferred_username: string;
+  given_name?: string;
+  family_name?: string;
+  email?: string;
+}
+
+export interface AuthState {
+  isAuthenticated: boolean;
+  token?: string;
+  refreshToken?: string;
+  user?: KeycloakUserInfo;
+  error?: string;
+}
   
   // API response types
 export interface ApiResponse<T> {
@@ -107,6 +134,12 @@ export interface ApiClient {
     
     // File upload
     uploadFile(file: File): Promise<ApiResponse<UploadResponse>>;
+
+    // Auth functions
+    login(username: string, password: string): Promise<ApiResponse<KeycloakTokenResponse>>;
+    refreshToken(refreshToken: string): Promise<ApiResponse<KeycloakTokenResponse>>;
+    getUserInfo(token: string): Promise<ApiResponse<KeycloakUserInfo>>;
+    logout(): Promise<ApiResponse<void>>;
   }
 
 // Chart data interface for our application

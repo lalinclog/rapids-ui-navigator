@@ -12,6 +12,7 @@ services:
     depends_on:
       - minio
       - postgres
+      - keycloak
     environment:
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
@@ -24,7 +25,25 @@ services:
       - POSTGRES_DB=spark_rapids
       - PYTHONPATH=/app
       - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+      - KEYCLOAK_URL=http://keycloak:8080
     command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak_db
+      - KC_DB_USERNAME=postgres
+      - KC_DB_PASSWORD=postgres
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+      - KC_HOSTNAME_STRICT=false
+      - KC_PROXY=edge
+    command: ["start-dev"]
 
   minio:
     image: minio/minio
@@ -55,6 +74,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=spark_rapids
+      - POSTGRES_MULTIPLE_DATABASES=keycloak_db
 
 volumes:
   minio_data:
