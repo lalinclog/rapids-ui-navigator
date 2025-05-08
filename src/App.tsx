@@ -5,7 +5,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { AuthProvider } from "@/contexts/AuthContext";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
+import Login from "./pages/Login";
 import Qualification from "./pages/Qualification";
 import Profiling from "./pages/Profiling";
 import JobHistory from "./pages/JobHistory";
@@ -20,42 +23,67 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/qualification" element={
-            <AppLayout>
-              <Qualification />
-            </AppLayout>
-          } />
-          <Route path="/profiling" element={
-            <AppLayout>
-              <Profiling />
-            </AppLayout>
-          } />
-          <Route path="/history" element={
-            <AppLayout>
-              <JobHistory />
-            </AppLayout>
-          } />
-          <Route path="/jobs/:jobId" element={
-            <AppLayout>
-              <JobDetails />
-            </AppLayout>
-          } />
-          <Route path="/settings" element={
-            <AppLayout>
-              <Settings />
-            </AppLayout>
-          } />
-          {/* New Analytics Routes */}
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/bi/dashboards/:dashboardId" element={<DashboardView />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={
+              <ProtectedRoute>
+                <Index />
+              </ProtectedRoute>
+            } />
+            <Route path="/qualification" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Qualification />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/profiling" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Profiling />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/history" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <JobHistory />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/jobs/:jobId" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <JobDetails />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Settings />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+            {/* Analytics Routes */}
+            <Route path="/analytics" element={
+              <ProtectedRoute>
+                <Analytics />
+              </ProtectedRoute>
+            } />
+            <Route path="/bi/dashboards/:dashboardId" element={
+              <ProtectedRoute>
+                <DashboardView />
+              </ProtectedRoute>
+            } />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

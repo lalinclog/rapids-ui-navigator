@@ -1,117 +1,97 @@
-
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { ChevronsLeft, ChevronsRight, Home, Settings, History, LineChart, BarChart3, List } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { BarChart2, ChartBar, ChevronLeft, ChevronRight, Database, FileSearch, Home, Settings } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import LogoutButton from '../auth/LogoutButton';
+
+interface SideNavLinkProps {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ [key: string]: any }>;
+  isOpen: boolean;
+}
+
+const SideNavLink: React.FC<SideNavLinkProps> = ({ to, label, icon: Icon, isOpen }) => {
+  const { pathname } = useLocation();
+  const isActive = pathname === to;
+
+  return (
+    <li>
+      <Link
+        to={to}
+        className={cn(
+          "flex items-center gap-2 rounded-md p-2 text-sm font-semibold transition-colors hover:bg-secondary hover:text-secondary-foreground",
+          isActive ? "bg-secondary text-secondary-foreground" : "text-muted-foreground"
+        )}
+      >
+        <Icon className="h-4 w-4" />
+        <span className={cn("transition-opacity", {
+          "opacity-0 hidden": !isOpen,
+          "opacity-100": isOpen
+        })}>
+          {label}
+        </span>
+      </Link>
+    </li>
+  );
+};
 
 interface SideNavProps {
   isOpen: boolean;
-  setIsOpen: (open: boolean) => void;
+  setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export const SideNav: React.FC<SideNavProps> = ({ isOpen, setIsOpen }) => {
-  const location = useLocation();
+export const SideNav = ({ isOpen, setIsOpen }: SideNavProps) => {
+  const { pathname } = useLocation();
+  const { authState } = useAuth();
   
-  const navItems = [
-    { 
-      name: 'Dashboard', 
-      icon: <Home className="h-5 w-5" />, 
-      href: '/',
-      active: location.pathname === '/' 
-    },
-    { 
-      name: 'Qualification Tool', 
-      icon: <FileSearch className="h-5 w-5" />, 
-      href: '/qualification',
-      active: location.pathname === '/qualification'
-    },
-    { 
-      name: 'Profiling Tool', 
-      icon: <ChartBar className="h-5 w-5" />, 
-      href: '/profiling',
-      active: location.pathname === '/profiling'
-    },
-    { 
-      name: 'Analytics & BI', 
-      icon: <BarChart2 className="h-5 w-5" />, 
-      href: '/analytics',
-      active: location.pathname === '/analytics' || location.pathname.startsWith('/bi/')
-    },
-    { 
-      name: 'Job History', 
-      icon: <Database className="h-5 w-5" />, 
-      href: '/history',
-      active: location.pathname === '/history' || location.pathname.startsWith('/jobs/')
-    },
-    { 
-      name: 'Settings', 
-      icon: <Settings className="h-5 w-5" />, 
-      href: '/settings',
-      active: location.pathname === '/settings'
-    }
-  ];
+  const toggleNav = () => {
+    setIsOpen(!isOpen);
+  };
 
+  const links = [
+    { to: "/", label: "Dashboard", icon: Home },
+    { to: "/qualification", label: "Qualification", icon: LineChart },
+    { to: "/profiling", label: "Profiling", icon: BarChart3 },
+    { to: "/history", label: "Job History", icon: History },
+    { to: "/settings", label: "Settings", icon: Settings },
+    { to: "/analytics", label: "Analytics", icon: List },
+  ];
+  
   return (
-    <div
-      className={cn(
-        "bg-sidebar fixed inset-y-0 left-0 z-30 flex flex-col border-r border-sidebar-border transition-all duration-300",
-        isOpen ? "w-64" : "w-16"
-      )}
-    >
-      <div className="flex h-16 items-center justify-between px-4 border-b border-sidebar-border">
-        <div className={cn("flex items-center", !isOpen && "justify-center w-full")}>
-          {isOpen ? (
-            <div className="flex items-center">
-              <div className="h-8 w-8 rounded-md bg-nvidia-green flex items-center justify-center">
-                <span className="font-bold text-white">NV</span>
-              </div>
-              <span className="ml-2 text-lg font-semibold text-sidebar-foreground">RAPIDS UI</span>
-            </div>
-          ) : (
-            <div className="h-8 w-8 rounded-md bg-nvidia-green flex items-center justify-center">
-              <span className="font-bold text-white">NV</span>
-            </div>
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-sidebar-foreground hover:text-white hover:bg-sidebar-accent"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          {isOpen ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+    <div className="h-full flex flex-col border-r bg-background shadow-sm">
+      <div className="p-4 flex items-center justify-between">
+        <h1 className={cn("font-bold text-xl transition-opacity", {
+          "opacity-0 hidden": !isOpen,
+          "opacity-100": isOpen
+        })}>
+          Spark Analyzer
+        </h1>
+        <Button variant="ghost" size="icon" onClick={toggleNav}>
+          {isOpen ? <ChevronsLeft size={16} /> : <ChevronsRight size={16} />}
         </Button>
       </div>
 
-      <div className="flex flex-col flex-1 overflow-y-auto py-4">
-        <nav className="flex-1 space-y-1 px-2">
-          {navItems.map((item) => (
-            <Link
-              key={item.name}
-              to={item.href}
-              className={cn(
-                "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                item.active
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                !isOpen && "justify-center"
-              )}
-            >
-              {item.icon}
-              {isOpen && <span className="ml-3">{item.name}</span>}
-            </Link>
+      {/* User info if available */}
+      {authState.user && isOpen && (
+        <div className="px-4 py-2 border-t border-b border-border">
+          <p className="text-sm font-medium">{authState.user.preferred_username}</p>
+          {authState.user.email && <p className="text-xs text-muted-foreground">{authState.user.email}</p>}
+        </div>
+      )}
+      
+      <div className="flex flex-col flex-1 py-4">
+        <ul>
+          {links.map((link) => (
+            <SideNavLink key={link.to} to={link.to} label={link.label} icon={link.icon} isOpen={isOpen} />
           ))}
-        </nav>
+        </ul>
       </div>
       
-      <div className="p-4">
-        <div className={cn(
-          "px-3 py-2 text-xs font-medium text-sidebar-foreground/70",
-          !isOpen && "text-center"
-        )}>
-          {isOpen ? "RAPIDS v23.12.0" : "v23"}
-        </div>
+      <div className="p-4 border-t">
+        <LogoutButton />
       </div>
     </div>
   );
