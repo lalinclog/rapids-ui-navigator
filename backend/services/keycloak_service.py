@@ -29,6 +29,7 @@ class KeycloakService:
                 "password": password,
                 "grant_type": "password",
                 "client_id": self.client_id,
+                "scope": "openid"
             }
 
             # Add client_secret if available
