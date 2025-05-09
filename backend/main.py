@@ -19,6 +19,7 @@ from .services.postgres_service import PostgresService
 from .services.python_service import PythonService
 from .services.stats_service import StatsService
 from .services.bi_service import BIService
+from .services.api_service import router as api_router
 
 # Configure logging
 logging.basicConfig(
@@ -27,7 +28,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+app = FastAPI(
+    title="BI App API",
+    description="API documentation",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
+)
+
+#Make all routes in api_service.py accessible under http://localhost:8080/api
+app.include_router(api_router, prefix="/api")
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
 
 # Add CORS middleware
 app.add_middleware(
