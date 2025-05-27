@@ -17,7 +17,6 @@ import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import JobDetails from "./pages/JobDetails";
 import Analytics from "./pages/Analytics";
-import DashboardView from "./pages/DashboardView";
 import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 
@@ -92,11 +91,6 @@ const App = () => (
             <Route path="/analytics" element={
               <ProtectedRoute>
                 <Analytics />
-              </ProtectedRoute>
-            } />
-            <Route path="/bi/dashboards/:dashboardId" element={
-              <ProtectedRoute>
-                <DashboardView />
               </ProtectedRoute>
             } />
             <Route path="*" element={<NotFound />} />
