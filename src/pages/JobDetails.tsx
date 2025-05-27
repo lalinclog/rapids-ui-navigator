@@ -1,4 +1,3 @@
-
 import { useParams } from 'react-router-dom';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,7 +9,7 @@ import { ArrowLeft, DownloadCloud } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
-import { BaseJob, JobResults, JobStatusType } from '@/lib/types'
+import { BaseJob, JobResults, JobStatusType, OperationStat } from '@/lib/types'
 
 interface JobStatusProps {
     status: JobStatusType;
@@ -161,14 +160,17 @@ const JobDetails = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.entries(results.operationStats).map(([key, value], index) => (
-                        <tr key={index} className="border-b">
-                          <td className="p-2">{key}</td>
-                          <td className="text-right p-2">{value.cpuTime || 'N/A'}</td>
-                          <td className="text-right p-2">{value.gpuTime || 'N/A'}</td>
-                          <td className="text-right p-2">{value.speedup || 'N/A'}</td>
-                        </tr>
-                      ))}
+                      {Object.entries(results.operationStats).map(([key, value], index) => {
+                        const stat = value as OperationStat;
+                        return (
+                          <tr key={index} className="border-b">
+                            <td className="p-2">{key}</td>
+                            <td className="text-right p-2">{stat.cpuTime || 'N/A'}</td>
+                            <td className="text-right p-2">{stat.gpuTime || 'N/A'}</td>
+                            <td className="text-right p-2">{stat.speedup || 'N/A'}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

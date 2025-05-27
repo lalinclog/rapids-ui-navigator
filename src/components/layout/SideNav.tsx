@@ -1,90 +1,87 @@
 
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import {
-  BarChart,
-  Activity,
-  Cpu,
+import { 
+  Home, 
+  BarChart3, 
+  Settings, 
+  User, 
   History,
-  Settings,
-  FileText,
-  LogOut,
-  User,
-  Shield,
-  Key
+  Zap,
+  Target,
+  Users,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import LogoutButton from '@/components/auth/LogoutButton';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 
-interface NavItemProps {
-  to: string;
-  icon: React.ElementType;
-  label: string;
-  end?: boolean;
-  onClick?: () => void;
+interface SideNavProps {
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ to, icon: Icon, label, end = false, onClick }) => {
+export const SideNav: React.FC<SideNavProps> = ({ isOpen, setIsOpen }) => {
   const location = useLocation();
-  const isActive = end ? location.pathname === to : location.pathname.startsWith(to);
+  const { user } = useAuth();
+
+  const navigation = [
+    { name: 'Dashboard', href: '/', icon: Home },
+    { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+    { name: 'Qualification', href: '/qualification', icon: Target },
+    { name: 'Profiling', href: '/profiling', icon: Zap },
+    { name: 'Job History', href: '/job-history', icon: History },
+    { name: 'Profile', href: '/profile', icon: User },
+    { name: 'Settings', href: '/settings', icon: Settings },
+  ];
+
+  // Add admin navigation for admin users
+  if (user?.roles?.includes('admin')) {
+    navigation.push({ name: 'Admin', href: '/admin', icon: Users });
+  }
 
   return (
-    <NavLink
-      to={to}
-      onClick={onClick}
-      className={({ isActive }) =>
-        cn(
-          'flex items-center py-2 px-3 rounded-md transition-colors',
-          'hover:bg-accent hover:text-accent-foreground',
-          isActive
-            ? 'bg-accent text-accent-foreground font-medium'
-            : 'text-muted-foreground'
-        )
-      }
-      end={end}
-    >
-      <Icon className="h-5 w-5 mr-3 shrink-0" />
-      <span>{label}</span>
-    </NavLink>
-  );
-};
-
-export function SideNav() {
-  const { authState } = useAuth();
-  const userRoles = authState.user?.realm_access?.roles || [];
-  const isAdmin = userRoles.includes('admin');
-  const isEngineer = userRoles.includes('engineer');
-
-  return (
-    <div className="space-y-6 py-4">
-      <div className="px-4 py-2">
-        <h2 className="mb-2 px-2 text-lg font-semibold tracking-tight">
-          Navigation
-        </h2>
-        <div className="space-y-1">
-          <NavItem to="/" icon={BarChart} label="Dashboard" end />
-          <NavItem to="/analytics" icon={Activity} label="Analytics" />
-          <NavItem to="/qualification" icon={FileText} label="Qualification" />
-          <NavItem to="/profiling" icon={Cpu} label="Profiling" />
-          <NavItem to="/history" icon={History} label="Job History" />
-        </div>
+    <div className={`flex flex-col h-full bg-card border-r transition-all duration-300 ${isOpen ? 'w-64' : 'w-16'}`}>
+      <div className="flex items-center justify-between p-4">
+        {isOpen && (
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <Zap className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <span className="font-bold text-lg">RAPIDS</span>
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsOpen(!isOpen)}
+          className="p-1"
+        >
+          {isOpen ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </Button>
       </div>
 
-      <div className="px-4 py-2">
-        <h2 className="mb-2 px-2 text-lg font-semibold tracking-tight">
-          Account
-        </h2>
-        <div className="space-y-1">
-          <NavItem to="/profile" icon={User} label="My Profile" />
-          <NavItem to="/profile?tab=api-keys" icon={Key} label="API Keys" />
-          {isAdmin && (
-            <NavItem to="/admin" icon={Shield} label="Admin Panel" />
-          )}
-          <NavItem to="/settings" icon={Settings} label="Settings" />
-          <LogoutButton />
-        </div>
-      </div>
+      <nav className="flex-1 px-2 space-y-1">
+        {navigation.map((item) => {
+          const Icon = item.icon;
+          const isActive = location.pathname === item.href;
+          
+          return (
+            <NavLink
+              key={item.name}
+              to={item.href}
+              className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${
+                isActive
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              }`}
+            >
+              <Icon className={`${isOpen ? 'mr-3' : 'mx-auto'} h-5 w-5 flex-shrink-0`} />
+              {isOpen && item.name}
+            </NavLink>
+          );
+        })}
+      </nav>
     </div>
   );
-}
+};
