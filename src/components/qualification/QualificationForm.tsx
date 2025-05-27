@@ -179,6 +179,29 @@ export function QualificationForm() {
            </div>
           
           <div>
+            <Label htmlFor="platform">Platform</Label>
+            <Select 
+              defaultValue="onprem"
+              onValueChange={(value) => setValue('platform', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select platform" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="onprem">On-Premises</SelectItem>
+                <SelectItem value="emr">AWS EMR</SelectItem>
+                <SelectItem value="dataproc">Google Dataproc</SelectItem>
+                <SelectItem value="dataproc-gke">Dataproc GKE</SelectItem>
+                <SelectItem value="databricks-aws">Databricks on AWS</SelectItem>
+                <SelectItem value="databricks-azure">Databricks on Azure</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Select the platform where your Spark application was executed
+            </p>
+          </div>
+          
+          <div>
             <Label htmlFor="outputFormat">Output Format</Label>
             <Select 
               defaultValue="html"

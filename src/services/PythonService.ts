@@ -36,6 +36,21 @@ export class PythonService {
     }
   }
 
+  // Get installed Python packages
+  static async getInstalledPackages(): Promise<any> {
+    try {
+      console.log("Getting installed Python packages");
+      const response = await fetch(`${this.API_URL}/python/packages`);
+      return await response.json();
+    } catch (error) {
+      console.error("Failed to get installed packages:", error);
+      return { 
+        success: false, 
+        message: typeof error === 'string' ? error : 'An error occurred retrieving package information' 
+      };
+    }
+  }
+
   // Run qualification tool
   static async runQualificationTool(params: any): Promise<any> {
     try {
