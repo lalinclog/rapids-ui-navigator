@@ -1,13 +1,15 @@
+
 # Add to your existing data_source_service.py or create a new file
 
 import minio
 from minio.error import S3Error
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from typing import Optional, Dict, Any, List, Union
 import pandas as pd
 import io
 import json
 import logging
+from .postgres_service import PostgresService
 
 logger = logging.getLogger(__name__)
 

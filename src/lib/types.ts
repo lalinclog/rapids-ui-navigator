@@ -1,4 +1,3 @@
-
 export interface AuthState {
   isAuthenticated: boolean
   token?: string
@@ -32,6 +31,81 @@ export interface KeycloakUserInfo {
   realm_access?: { roles: string[] }
   resource_access?: Record<string, { roles: string[] }>
   [key: string]: any // For additional claims
+}
+
+// Enhanced dataset interfaces to match backend response
+export interface Dataset {
+  id: number
+  name: string
+  description?: string
+  source_id: number
+  source_name?: string
+  source_type?: string
+  query_type: string
+  query_definition: string
+  cache_policy?: string | object
+  last_refreshed?: string
+  last_refreshed_at?: string
+  created_at: string
+  updated_at: string
+  created_by: string
+  is_active: boolean
+  fields?: Field[]
+  schema?: SchemaInfo
+  minio_metadata?: MinIOMetadata
+  cache_info?: CacheInfo
+}
+
+export interface Field {
+  id: number
+  dataset_id: number
+  name: string
+  display_name?: string
+  field_type: string
+  data_type: string
+  format_pattern?: string
+  is_visible: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SchemaInfo {
+  fields: SchemaField[]
+  inferred: boolean
+  last_analyzed?: string
+  sample_file?: string
+}
+
+export interface SchemaField {
+  name: string
+  type: string
+  nullable: boolean
+  description?: string
+}
+
+export interface MinIOMetadata {
+  bucket: string
+  prefix: string
+  file_type: string
+  file_count: number
+  total_size: number
+  last_modified?: string
+  files: MinIOFile[]
+}
+
+export interface MinIOFile {
+  name: string
+  size: number
+  last_modified?: string
+}
+
+export interface CacheInfo {
+  enabled: boolean
+  ttl_minutes: number
+  auto_refresh: boolean
+  last_refreshed?: string
+  next_refresh?: string
+  status: 'valid' | 'expired' | 'unknown'
 }
 
 // Chart types
