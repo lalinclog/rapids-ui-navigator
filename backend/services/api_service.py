@@ -39,7 +39,7 @@ class APIKeyResponse(BaseModel):
     description: Optional[str] = None
 
 class AccessRequestCreate(BaseModel):
-    dataset_id: int
+    dataset_id: int  # This maps to dashboard_id in the database
     permission: str = "read"
     reason: str
     
@@ -80,7 +80,7 @@ def create_tables():
             CREATE TABLE IF NOT EXISTS access_requests (
                 id SERIAL PRIMARY KEY,
                 user_id VARCHAR(255) NOT NULL,
-                dataset_id INTEGER NOT NULL,
+                dashboard_id INTEGER NOT NULL,
                 permission VARCHAR(50) NOT NULL,
                 reason TEXT NOT NULL,
                 status VARCHAR(50) NOT NULL DEFAULT 'pending',
@@ -460,20 +460,19 @@ async def delete_api_key(key_id: str, current_user: dict = Depends(get_current_u
             detail=f"Error deleting API key: {str(e)}"
         )
 
-# Access requests
+# Access requests - Fixed to use dashboard_id instead of dataset_id
 @router.post("/access-requests", response_model=AccessRequestResponse)
 async def create_access_request(
     access_request: AccessRequestCreate, 
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
-    print("Received request:", access_request.dict())  # <-- add this
     """Create a new access request"""
     try:
         user_id = current_user["sub"]
         created_at = datetime.datetime.now()
         
         query = """
-        INSERT INTO access_requests (user_id, dataset_id, permission, reason, status, created_at)
+        INSERT INTO spark_rapids.public.access_requests (user_id, dashboard_id, permission, reason, status, created_at)
         VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING id
         """
@@ -482,7 +481,7 @@ async def create_access_request(
             query, 
             (
                 user_id,
-                access_request.dataset_id,
+                access_request.dataset_id,  # This maps to dashboard_id in DB
                 access_request.permission,
                 access_request.reason,
                 "pending",
@@ -518,11 +517,10 @@ async def cancel_request(
         user_id = current_user["sub"]
 
         query = """
-            DELETE FROM access_requests
+            DELETE FROM spark_rapids.public.access_requests
             WHERE user_id = %s AND dashboard_id = %s AND status = 'pending'
         """
 
-        # ✅ Remove fetch=True
         postgres_service.execute_query(query, (user_id, dashboard_id))
 
         return {"message": "Request cancelled"}
@@ -553,7 +551,7 @@ async def list_access_requests(
         SELECT 
             ar.id, 
             ar.user_id, 
-            ar.dataset_id, 
+            ar.dashboard_id as dataset_id, 
             ar.permission, 
             ar.reason, 
             ar.status, 
@@ -561,7 +559,7 @@ async def list_access_requests(
             ar.updated_at as reviewed_at,
             d.name as dashboard_name
         FROM spark_rapids.public.access_requests ar
-        LEFT JOIN spark_rapids.public.dashboards d ON ar.dataset_id = d.id
+        LEFT JOIN spark_rapids.public.dashboards d ON ar.dashboard_id = d.id
         """
         
         where_clauses = []
@@ -627,7 +625,7 @@ async def approve_access_request(request_id: int, current_user: dict = Depends(a
     try:
         # First, get the access request details
         query = """
-        SELECT user_id, dataset_id, permission
+        SELECT user_id, dashboard_id, permission
         FROM access_requests
         WHERE id = %s
         """
@@ -642,7 +640,7 @@ async def approve_access_request(request_id: int, current_user: dict = Depends(a
         
         request_data = result[0]
         user_id = request_data["user_id"]
-        dataset_id = request_data["dataset_id"]
+        dataset_id = request_data["dashboard_id"]
         permission = request_data["permission"]
         
         # Update the request status
