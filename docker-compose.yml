@@ -8,50 +8,139 @@ services:
       - "8080:8080"
     volumes:
       - ./:/app
+      - ./certs:/etc/ssl/certs/minio:ro
+      #- ./backend:/app/backend
+      #- ./dist:/app/dist  # <-- Only if you want live frontend reload (dev only)
       - /app/node_modules
     depends_on:
       - minio
       - postgres
+      - keycloak
     environment:
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_ACCESS_KEY=/run/secrets/minio_root_user
+      - MINIO_SECRET_KEY=/run/secrets/minio_root_password
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=spark_rapids
+      - PYTHONPATH=/app
+      - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+      - KEYCLOAK_URL=http://keycloak:8080
+    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080","--log-level", "debug"] #, "--reload"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: '4.0'
+        reservations:
+          memory: 1G
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak_db
+      - KC_DB_USERNAME=postgres
+      - KC_DB_PASSWORD=postgres
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_HOSTNAME_STRICT=false
+      #- KC_HOSTNAME_URL=http://localhost:8081
+      #- KC_HTTP_RELATIVE_PATH=/auth
+      - KC_PROXY=edge
+      - KC_HEALTH_ENABLED=true
+      - KC_METRICS_ENABLED=true
+      - KC_LOG_LEVEL=WARN
+      - JAVA_OPTS=-Xms1G -Xmx1G -XX:MaxRAMPercentage=70.0 -Djava.net.preferIPv4Stack=true
+    command: ["start-dev"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 60s
+      timeout: 20s
+      start_period: 180s  # Added to give more startup time
+      retries: 5
 
   minio:
     image: minio/minio
+    restart: always
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
+      - ./certs:/root/.minio/certs:ro  
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_ROOT_USER_FILE=/run/secrets/minio_root_user
+      - MINIO_ROOT_PASSWORD_FILE=/run/secrets/minio_root_password
+    secrets:
+      - minio_root_user
+      - minio_root_password
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
+  minio-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      - WAIT_HOSTS=minio:9000
+      - WAIT_TIMEOUT=60
+      - WAIT_BEFORE=5
 
   postgres:
     image: postgres:14
+    restart: always
+    build:
+      context: ./init-scripts
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ./init-scripts/00-create-multiple-databases.sh:/docker-entrypoint-initdb.d/00-create-multiple-databases.sh:ro
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=spark_rapids
+      - POSTGRES_MULTIPLE_DATABASES=keycloak_db
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile.nextjs
+      args:
+        #- NEXT_PUBLIC_KEYCLOAK_URL=http://keycloak:8080
+        - NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:8081
+        - NEXT_PUBLIC_KEYCLOAK_REALM=rapids-realm
+        - NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=nextjs-app
+        - NEXT_PUBLIC_API_BASE_URL=http://localhost:8080  # Changed from web:8080
+    environment:
+      - API_BASE_URL=http://web:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - keycloak
+      - web
+    restart: unless-stopped
 
 volumes:
   minio_data:
   postgres_data:
+
+secrets:
+  minio_root_user:
+    file: ./secrets/minio_root_user.txt
+  minio_root_password:
+    file: ./secrets/minio_root_password.txt

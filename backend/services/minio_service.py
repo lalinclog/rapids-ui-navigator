@@ -5,16 +5,32 @@ from fastapi import UploadFile
 import os
 import io
 import tempfile
+import urllib3
+import certifi
+import ssl
 
 class MinioService:
     def __init__(self):
+        endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}"
+        access_key = os.environ.get('MINIO_ACCESS_KEY', 'minioadmin')
+        secret_key = os.environ.get('MINIO_SECRET_KEY', 'minioadmin')
+
+        # Use certs/public.crt as CA root
+        cert_path = "/etc/ssl/certs/minio/public.crt"
+        ssl_context = ssl.create_default_context()
+        ssl_context.load_verify_locations(cafile=cert_path)
+
+        http_client = urllib3.PoolManager(ssl_context=ssl_context)
+
         self.client = Minio(
-            f"{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}",
-            access_key=os.environ.get('MINIO_ACCESS_KEY', 'minioadmin'),
-            secret_key=os.environ.get('MINIO_SECRET_KEY', 'minioadmin'),
-            secure=False
+            endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=True,
+            http_client=http_client
         )
-        self._ensure_buckets()
+
+        #self._ensure_buckets()
 
     def _ensure_buckets(self):
         """Create necessary buckets if they don't exist"""

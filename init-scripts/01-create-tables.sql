@@ -1,6 +1,6 @@
 
 -- Create jobs table
-CREATE TABLE jobs (
+CREATE TABLE spark_rapids.public.jobs (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(50) NOT NULL,
@@ -18,16 +18,37 @@ CREATE TABLE jobs (
 );
 
 -- Sample data for jobs
-INSERT INTO jobs (name, type, status, progress, start_time, end_time, user_id, event_log_path, application_name, output_format, output_path, results)
+INSERT INTO spark_rapids.public.jobs (
+    name, type, status, progress, start_time, end_time, user_id, event_log_path, application_name, output_format, output_path, results
+)
 VALUES 
-    ('Daily ETL Job', 'qualification', 'completed', 100, NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days' + INTERVAL '30 minutes', 'admin', 's3://spark-logs/etl-job-logs', 'ETL Pipeline', 'json', 's3://rapids-outputs/qualification-results/etl-report.json', 
-    '{"speedupFactor": 3.2, "gpuOpportunities": 15, "recommendedChanges": ["Replace DataFrame.groupBy() operations with GPU acceleration", "Optimize join operations for GPU processing", "Convert string columns to dictionary encoding for better GPU performance"]}'),
+    (
+        'Daily ETL Job', 'qualification', 'completed', 100,
+        NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days' + INTERVAL '30 minutes',
+        'admin', 's3://spark-logs/etl-job-logs', 'ETL Pipeline', 'json',
+        's3://rapids-outputs/qualification-results/etl-report.json',
+        '{"speedupFactor": 3.2, "gpuOpportunities": 15, "recommendedChanges": ["Replace DataFrame.groupBy() operations with GPU acceleration", "Optimize join operations for GPU processing", "Convert string columns to dictionary encoding for better GPU performance"]}'::jsonb
+    ),
     
-    ('ML Training Job', 'profiling', 'completed', 100, NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 day' + INTERVAL '45 minutes', 'admin', 's3://spark-logs/ml-job-logs', 'Machine Learning Pipeline', 'html', 's3://rapids-outputs/profiling-results/ml-report.html',
-    '{"executionTime": 42.7, "gpuUtilization": 82.6, "memoryUsage": 5.8, "recommendations": ["Increase executor memory for improved performance", "Consider adjusting partition size", "Enable adaptive query execution"]}'),
+    (
+        'ML Training Job', 'profiling', 'completed', 100,
+        NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 day' + INTERVAL '45 minutes',
+        'admin', 's3://spark-logs/ml-job-logs', 'Machine Learning Pipeline', 'html',
+        's3://rapids-outputs/profiling-results/ml-report.html',
+        '{"executionTime": 42.7, "gpuUtilization": 82.6, "memoryUsage": 5.8, "recommendations": ["Increase executor memory for improved performance", "Consider adjusting partition size", "Enable adaptive query execution"]}'::jsonb
+    ),
     
-    ('Real-time Analytics', 'qualification', 'running', 65, NOW() - INTERVAL '2 hours', NULL, 'user1', 's3://spark-logs/streaming-logs', 'Streaming Analytics', 'html', NULL, NULL),
+    (
+        'Real-time Analytics', 'qualification', 'running', 65,
+        NOW() - INTERVAL '2 hours', NULL,
+        'user1', 's3://spark-logs/streaming-logs', 'Streaming Analytics', 'html',
+        NULL, NULL
+    ),
     
-    ('Customer Segmentation', 'profiling', 'failed', 48, NOW() - INTERVAL '5 hours', NOW() - INTERVAL '4 hours', 'user2', 's3://spark-logs/segmentation-logs', 'Customer Analysis', 'csv', NULL, 
-    '{"error": "Memory allocation failed during execution phase"}'
+    (
+        'Customer Segmentation', 'profiling', 'failed', 48,
+        NOW() - INTERVAL '5 hours', NOW() - INTERVAL '4 hours',
+        'user2', 's3://spark-logs/segmentation-logs', 'Customer Analysis', 'csv',
+        NULL,
+        '{"error": "Memory allocation failed during execution phase"}'::jsonb
     );

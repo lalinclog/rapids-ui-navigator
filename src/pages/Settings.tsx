@@ -158,7 +158,7 @@ export default function Settings() {
                   </div>
                   <div>
                     <p className="font-medium">PostgreSQL Connection</p>
-                    <p className="text-muted-foreground">Host: localhost<br/>Port: 5432</p>
+                    <p className="text-muted-foreground">Host: localhost<br/>Port: 5433 5432 in docker</p>
                   </div>
                   <div>
                     <p className="font-medium">PostgreSQL Credentials</p>

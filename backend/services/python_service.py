@@ -71,16 +71,19 @@ class PythonService:
             postgres_service.update_job(job_id, {"progress": 30})
             
             # Create a temporary file for output
+            # Create a temporary directory for output instead of just a file
+            output_dir = tempfile.mkdtemp()
             output_format = params.outputFormat or "json"
-            output_file = tempfile.NamedTemporaryFile(
-                delete=False, 
-                suffix=f".{output_format}"
-            ).name
-            
-            # Build command
+            output_file = os.path.join(output_dir, f"qualification_results.{output_format}")
+
+            # Default platform
+            platform = params.platform if hasattr(params, "platform") and params.platform else "onprem"
+
+            # Build command using direct command-line invocation
             cmd = [
-                "python", "-m", "spark_rapids_tools", "qualification",
-                "-s", event_log_file,
+                "spark_rapids", "qualification",
+                "--eventlogs", event_log_file,
+                "--platform", platform,
                 "-o", output_file,
                 "--output-format", output_format
             ]
@@ -91,7 +94,8 @@ class PythonService:
             
             # Add additional options if provided
             if params.additionalOptions:
-                cmd.extend(params.additionalOptions.split())
+                additional_opts = params.additionalOptions.split()
+                cmd.extend(additional_opts)
             
             logger.info(f"Running command: {' '.join(cmd)}")
             
@@ -108,6 +112,12 @@ class PythonService:
             if result.returncode == 0:
                 # Update progress
                 postgres_service.update_job(job_id, {"progress": 80})
+
+
+                # Find the result file in the output directory
+                result_files = list(Path(output_dir).glob(f"*.{output_format}"))
+                if result_files:
+                    output_file = str(result_files[0])
                 
                 # Upload the result to MinIO
                 output_object = f"qualification-results/{job_id}/{Path(output_file).name}"
@@ -146,7 +156,12 @@ class PythonService:
                 })
                 
                 # Clean up the temporary file
-                os.unlink(output_file)
+                # os.unlink(output_file)
+                # Clean up the temporary directory
+                for file in Path(output_dir).glob("*"):
+                    if file.is_file():
+                        file.unlink()
+                Path(output_dir).rmdir()
                 
                 logger.info(f"Qualification job {job_id} completed successfully")
             else:
@@ -195,15 +210,17 @@ class PythonService:
             
             # Create a temporary file for output
             output_format = params.outputFormat or "json"
-            output_file = tempfile.NamedTemporaryFile(
-                delete=False, 
-                suffix=f".{output_format}"
-            ).name
+            output_file = os.path.join(output_dir, f"profiling_results.{output_format}")
+
+            # Default platform
+            platform = params.platform if hasattr(params, "platform") and params.platform else "onprem"
+
             
-            # Build command
+            # Build command using direct command-line invocation
             cmd = [
-                "python", "-m", "spark_rapids_tools", "profiling",
-                "-s", event_log_file,
+                "spark_rapids", "profiling",
+                "--eventlogs", event_log_file,
+                "--platform", platform,
                 "-o", output_file,
                 "--output-format", output_format
             ]
@@ -218,7 +235,8 @@ class PythonService:
             
             # Add additional options if provided
             if params.additionalOptions:
-                cmd.extend(params.additionalOptions.split())
+                additional_opts = params.additionalOptions.split()
+                cmd.extend(additional_opts)
             
             logger.info(f"Running command: {' '.join(cmd)}")
             
@@ -235,6 +253,12 @@ class PythonService:
             if result.returncode == 0:
                 # Update progress
                 postgres_service.update_job(job_id, {"progress": 80})
+
+
+                # Find the result file in the output directory
+                result_files = list(Path(output_dir).glob(f"*.{output_format}"))
+                if result_files:
+                    output_file = str(result_files[0])
                 
                 # Upload the result to MinIO
                 output_object = f"profiling-results/{job_id}/{Path(output_file).name}"
@@ -274,7 +298,12 @@ class PythonService:
                 })
                 
                 # Clean up the temporary file
-                os.unlink(output_file)
+
+                # Clean up the temporary directory
+                for file in Path(output_dir).glob("*"):
+                    if file.is_file():
+                        file.unlink()
+                Path(output_dir).rmdir()
                 
                 logger.info(f"Profiling job {job_id} completed successfully")
             else:

@@ -19,17 +19,40 @@ export type Job = {
 interface JobCardProps {
   job: Job;
   onView: (job: Job) => void;
+  onDownload?: (job: Job) => void;
 }
 
-export function JobCard({ job, onView }: JobCardProps) {
+export function JobCard({ job, onView, onDownload }: JobCardProps) {
   const { name, type, status, progress, startTime, endTime, user } = job;
 
+  // Ensure startTime is a valid Date object
+  const startTimeDate = startTime instanceof Date ? startTime : new Date(startTime);
+  
+  // Format the duration safely
   const duration = endTime 
-    ? formatDistanceToNow(new Date(endTime), { addSuffix: false })
+    ? (endTime instanceof Date 
+        ? formatDistanceToNow(endTime, { addSuffix: false })
+        : formatDistanceToNow(new Date(endTime), { addSuffix: false }))
     : "In progress";
+    
+  const handleViewClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("View button clicked for job:", job.id);
+    onView(job);
+  };
+  
+  const handleDownloadClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Download button clicked for job:", job.id);
+    if (onDownload) {
+      onDownload(job);
+    }
+  };
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer" onClick={handleViewClick}>
       <CardContent className="p-6">
         <div className="flex justify-between">
           <div>
@@ -45,7 +68,7 @@ export function JobCard({ job, onView }: JobCardProps) {
           <div>
             <p className="text-xs text-muted-foreground">Start Time</p>
             <p className="text-sm font-medium mt-0.5">
-              {startTime.toLocaleString()}
+              {startTimeDate.toLocaleString()}
             </p>
           </div>
           <div>
@@ -65,16 +88,17 @@ export function JobCard({ job, onView }: JobCardProps) {
             variant="outline" 
             size="sm" 
             className="text-sm"
-            onClick={() => onView(job)}
+            onClick={handleViewClick}
           >
             <Eye className="h-4 w-4 mr-2" />
             View Results
           </Button>
-          {status === 'completed' && (
+          {status === 'completed' && onDownload && (
             <Button 
               variant="outline" 
               size="sm" 
               className="text-sm"
+              onClick={handleDownloadClick}
             >
               <DownloadCloud className="h-4 w-4 mr-2" />
               Download

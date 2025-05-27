@@ -18,7 +18,7 @@ export default function JobHistory() {
   const [jobs] = useState<Job[]>([
     {
       id: '1',
-      name: 'Daily ETL Pipeline',
+      name: 'Daily ETL Pipelines',
       type: 'qualification',
       status: 'completed',
       startTime: new Date(2024, 3, 25, 9, 30),

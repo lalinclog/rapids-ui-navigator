@@ -1,0 +1,252 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-neutral-200 dark:border-neutral-800;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Grid pattern for dashboard */
+.bg-grid-pattern {
+  background-size: 20px 20px;
+  background-image: linear-gradient(to right, #f0f0f0 1px, transparent 1px),
+    linear-gradient(to bottom, #f0f0f0 1px, transparent 1px);
+}
+
+.dark .bg-grid-pattern {
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+
+/* Glassmorphism effects */
+.glass-panel {
+  @apply bg-background/60 backdrop-blur-md border border-border/40;
+}
+
+/* Dashboard specific styles */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-item {
+  @apply bg-card rounded-lg shadow-sm border overflow-hidden;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.dashboard-item:hover {
+  @apply shadow-md;
+}
+
+.dashboard-item.dragging {
+  @apply shadow-lg;
+  z-index: 10;
+  opacity: 0.8;
+}
+
+.dashboard-item.resizing {
+  @apply shadow-lg;
+  z-index: 10;
+}
+
+.dashboard-canvas {
+  @apply bg-background;
+  min-height: calc(100vh - 4rem);
+  position: relative;
+}
+
+.dashboard-canvas.edit-mode {
+  background-size: 20px 20px;
+  background-image: linear-gradient(to right, rgba(128, 128, 128, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(128, 128, 128, 0.15) 1px, transparent 1px);
+}
+
+.dark .dashboard-canvas.edit-mode {
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+}
+
+/* Grid snapping indicator */
+.grid-snap-indicator {
+  @apply absolute rounded-full bg-blue-500/50 pointer-events-none;
+  width: 6px;
+  height: 6px;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+}
+
+/* Alignment guides */
+.alignment-guide {
+  @apply absolute bg-blue-500 pointer-events-none;
+  z-index: 9999;
+}
+
+.alignment-guide-horizontal {
+  left: 0;
+  width: 100%;
+  height: 1px;
+}
+
+.alignment-guide-vertical {
+  top: 0;
+  height: 100%;
+  width: 1px;
+}
+
+.resize-handle {
+  @apply absolute bg-primary/20 hover:bg-primary/40;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.resize-handle-nw {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.resize-handle-ne {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.resize-handle-sw {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+.resize-handle-se {
+  bottom: -4px;
+  right: -4px;
+  cursor: nwse-resize;
+}
+.resize-handle-n {
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.resize-handle-e {
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+.resize-handle-s {
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.resize-handle-w {
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+/* Text component styles */
+.text-component-heading {
+  @apply text-2xl font-bold;
+}
+
+.text-component-subheading {
+  @apply text-xl font-semibold;
+}
+
+.text-component-caption {
+  @apply text-sm text-muted-foreground;
+}
+
+.text-component-title {
+  @apply text-3xl font-bold;
+}
+
+.text-component-subtitle {
+  @apply text-xl text-muted-foreground;
+}
+
+.text-component-quote {
+  @apply italic border-l-4 pl-4 border-muted;
+}
+
+.text-component-code {
+  @apply font-mono bg-muted p-2 rounded;
+}
+
+/* Animation styles */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.staggered-item {
+  opacity: 0;
+  animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+/* Import fonts */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");

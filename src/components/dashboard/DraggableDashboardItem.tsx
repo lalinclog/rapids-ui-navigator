@@ -1,0 +1,441 @@
+// src/components/dashboard/DraggableDashboardItem.tsx
+import React, { useEffect, useState } from 'react';
+import { useDrag, useDrop } from 'react-dnd';
+import { Resizable } from 'react-resizable';
+import { BarChart, LineChart, PieChart, AreaChart } from 'recharts';
+import { Bar, Line, Pie, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart2, LineChart as LineIcon, PieChart as PieIcon, AreaChart as AreaIcon, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from '@/hooks/use-toast';
+import 'react-resizable/css/styles.css';
+import { motion } from 'framer-motion';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { ChartDataPoint, ShadcnChartConfig } from '@/lib/types';
+
+export type DashboardItemType =
+  | 'chart'
+  | 'text'
+  | 'image'
+  | 'filter'
+  | 'divider';
+
+interface DraggableDashboardItemProps {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  children: React.ReactNode;
+  onMove: (id: number, x: number, y: number) => void;
+  onResize: (id: number, width: number, height: number) => void;
+  onRemove: (id: number) => void;
+  isEditing: boolean;
+  chartType?: string;
+  chart_id?: number;
+  itemType?: DashboardItemType;
+  active?: boolean;
+  onActive?: (id: number) => void;
+}
+
+// Fallback sample data for when API requests fail
+const sampleData = [
+  { name: 'Jan', value: 400 },
+  { name: 'Feb', value: 300 },
+  { name: 'Mar', value: 600 },
+  { name: 'Apr', value: 200 },
+  { name: 'May', value: 500 },
+  { name: 'Jun', value: 350 },
+];
+
+const pieData = [
+  { name: 'Group A', value: 400 },
+  { name: 'Group B', value: 300 },
+  { name: 'Group C', value: 300 },
+  { name: 'Group D', value: 200 },
+];
+
+const COLORS = [
+  '#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe',
+  '#00C49F', '#FFBB28', '#FF8042', '#a4de6c', '#d0ed57'
+];
+
+const fetchChartData = async (chart_id: number): Promise<ChartDataPoint[]> => {
+  if (!chart_id) return [];
+
+  try {
+    const response = await fetch(`/api/bi/charts/${chart_id}/data`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch data for chart ${chart_id}: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.error('Error fetching chart data:', error);
+    throw error;
+  }
+};
+
+const DraggableDashboardItem: React.FC<DraggableDashboardItemProps> = ({
+  id,
+  x,
+  y,
+  width,
+  height,
+  children,
+  onMove,
+  onResize,
+  onRemove,
+  isEditing,
+  chartType,
+  chart_id,
+  itemType = 'chart',
+  active = false,
+  onActive,
+}) => {
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: 'DASHBOARD_ITEM',
+    item: { id, x, y, width, height },
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+    end: (item, monitor) => {
+      const dropResult = monitor.getDropResult();
+      if (item && dropResult) {
+        // Add type assertion for dropResult to specify the expected properties
+        const typedDropResult = dropResult as { x: number; y: number };
+        onMove(id, typedDropResult.x, typedDropResult.y);
+      }
+    }
+  }));
+
+  const [, drop] = useDrop(() => ({
+    accept: 'DASHBOARD_ITEM',
+    drop: (item: { id: number; x: number; y: number; width: number; height: number }, monitor) => {
+      const delta = monitor.getDifferenceFromInitialOffset();
+      if (delta) {
+        const newX = Math.max(0, x + Math.round(delta.x / 32));
+        const newY = Math.max(0, y + Math.round(delta.y / 32));
+        return { x: newX, y: newY }; // Return drop result
+      }
+      return undefined;
+    },
+    hover: (item, monitor) => {
+      // Add hover effect
+      const clientOffset = monitor.getClientOffset();
+      if (clientOffset) {
+        const hoverElement = document.elementFromPoint(clientOffset.x, clientOffset.y);
+        if (hoverElement) {
+          hoverElement.classList.add('drop-target');
+          setTimeout(() => hoverElement.classList.remove('drop-target'), 300);
+        }
+      }
+    },
+  }));
+
+  // Add touch event handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // Prevent scrolling when dragging
+    e.preventDefault();
+    if (onActive) onActive(id);
+  };
+
+  const handleClick = () => {
+    if (onActive) onActive(id);
+  };
+
+  const handleResize = (e: any, { size }: { size: { width: number; height: number } }) => {
+    // Calculate grid-aligned sizes
+    const gridWidth = Math.max(2, Math.round(size.width / 32));
+    const gridHeight = Math.max(2, Math.round(size.height / 32));
+    onResize(id, gridWidth, gridHeight);
+  };
+
+  // Fetch real chart data from the API if a chart_id is provided
+  const { data: chartData, isLoading: isLoadingData, error } = useQuery({
+    queryKey: ['chartData', chart_id],
+    queryFn: () => fetchChartData(chart_id || 0),
+    enabled: !!chart_id && itemType === 'chart',
+    meta: {
+      onError: (err: Error) => {
+        console.error('Failed to load chart data:', err);
+        toast({
+          variant: 'destructive',
+          title: 'Failed to load chart data',
+          description: err.message || 'Unknown error occurred'
+        });
+      }
+    }
+  });
+
+  // Format the data for rendering based on the structure
+  const formattedData = React.useMemo(() => {
+    if (!chartData || chartData.length === 0) {
+      return chartType?.toLowerCase() === 'pie' ?
+        pieData.map(item => ({
+          label: item.name,
+          value: item.value
+        }))
+        : sampleData.map(item => ({
+          label: item.name,
+          value: item.value
+        }));
+    }
+
+    return chartData.map(item => ({
+      label: item.label || String(item[Object.keys(item)[0]]),
+      value: item.value || Number(item[Object.keys(item)[1]])
+    }));
+  }, [chartData, chartType]);
+
+  // Convert our data to shadcn Chart format
+  const shadcnChartConfig: ShadcnChartConfig = React.useMemo(() => {
+    // Create a config object suitable for shadcn/ui ChartContainer
+    const config: ShadcnChartConfig = {};
+    
+    // Add each data point as a named entry in the config
+    formattedData.forEach((item, index) => {
+      const key = item.label.toString();
+      config[key] = {
+        label: item.label,
+        theme: {
+          light: COLORS[index % COLORS.length],
+          dark: COLORS[index % COLORS.length]
+        }
+      };
+    });
+    
+    // Add a 'value' property for the data series
+    config.value = {
+      theme: {
+        light: COLORS[0],
+        dark: COLORS[0]
+      }
+    };
+    
+    return config;
+  }, [formattedData]);
+
+  // Add keyboard controls for accessibility
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isEditing) return;
+
+    const moveAmount = e.shiftKey ? 2 : 1;
+
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        onMove(id, x, Math.max(0, y - moveAmount));
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        onMove(id, x, y + moveAmount);
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        onMove(id, Math.max(0, x - moveAmount), y);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        onMove(id, x + moveAmount, y);
+        break;
+      case 'Delete':
+      case 'Backspace':
+        e.preventDefault();
+        onRemove(id);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const renderChart = () => {
+    const chartWidth = width * 32 - 32; // Adjust for padding
+    const chartHeight = height * 32 - 60; // Adjust for header and padding
+
+    if (!chartType || itemType !== 'chart') {
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full p-4 gap-2">
+          <BarChart2 className="h-8 w-8 text-muted-foreground" />
+          <span className="text-muted-foreground text-sm text-center">
+            Select a chart type from the sidebar
+          </span>
+        </div>
+      );
+    }
+
+    if (isLoadingData) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full p-4 gap-2">
+          <div className="animate-pulse flex space-x-4 w-full h-full">
+            <div className="flex-1 space-y-4">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-5/6" />
+            </div>
+          </div>
+          <span className="text-muted-foreground text-xs">Loading chart data...</span>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full p-4">
+          <span className="text-destructive text-sm">Error loading chart data</span>
+          <span className="text-muted-foreground text-xs mt-1">Using sample data</span>
+        </div>
+      );
+    }
+
+    // Use the shadcn/ui ChartContainer for consistent styling
+    switch (chartType.toLowerCase()) {
+      case 'bar':
+        return (
+          <ChartContainer config={shadcnChartConfig} className="w-full h-full">
+            <BarChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
+              <YAxis />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Bar dataKey="value" fill={COLORS[0]}>
+                {formattedData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ChartContainer>
+        );
+      case 'line':
+        return (
+          <ChartContainer config={shadcnChartConfig} className="w-full h-full">
+            <LineChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
+              <YAxis />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Line type="monotone" dataKey="value" stroke={COLORS[0]} />
+            </LineChart>
+          </ChartContainer>
+        );
+      case 'pie':
+        return (
+          <ChartContainer config={shadcnChartConfig} className="w-full h-full">
+            <PieChart>
+              <Pie
+                data={formattedData}
+                dataKey="value"
+                nameKey="label"
+                cx="50%"
+                cy="50%"
+                fill={COLORS[0]}
+                label
+              >
+                {formattedData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+            </PieChart>
+          </ChartContainer>
+        );
+      case 'area':
+        return (
+          <ChartContainer config={shadcnChartConfig} className="w-full h-full">
+            <AreaChart data={formattedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
+              <YAxis />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                fill={COLORS[0]} 
+                stroke={COLORS[0]} 
+              />
+            </AreaChart>
+          </ChartContainer>
+        );
+      default:
+        return (
+          <div className="h-full w-full flex items-center justify-center">
+            {chartType === 'bar' && <BarChart2 className="h-8 w-8 text-muted-foreground" />}
+            {chartType === 'line' && <LineIcon className="h-8 w-8 text-muted-foreground" />}
+            {chartType === 'pie' && <PieIcon className="h-8 w-8 text-muted-foreground" />}
+            {chartType === 'area' && <AreaIcon className="h-8 w-8 text-muted-foreground" />}
+          </div>
+        );
+    }
+  };
+
+  return (
+    <motion.div
+
+    
+      ref={(node) => drag(drop(node))}
+      className={`dashboard-item relative select-none ${active ? 'ring-2 ring-primary' : ''}`}
+      style={{
+        gridColumnStart: x + 1,
+        gridColumnEnd: x + width + 1,
+        gridRowStart: y + 1,
+        gridRowEnd: y + height + 1,
+      }}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{
+        opacity: isDragging ? 0.8 : 1,
+        scale: isDragging ? 1.02 : 1,
+        zIndex: isDragging ? 100 : active ? 10 : 1,
+      }}
+      transition={{ duration: 0.15 }}
+      drag={isEditing}
+      dragMomentum={false}
+      onTouchStart={handleTouchStart}
+      onClick={handleClick}
+      tabIndex={isEditing ? 0 : -1}
+      onKeyDown={handleKeyDown}
+      onDragEnd={(e, info) => {
+        const newX = Math.max(0, x + Math.round(info.point.x / 32));
+        const newY = Math.max(0, y + Math.round(info.point.y / 32));
+        onMove(id, newX, newY);
+      }}
+    >
+      {isEditing ? (
+        <Resizable
+          width={width * 32}
+          height={height * 32}
+          onResize={handleResize}
+          resizeHandles={['se']}
+          minConstraints={[96, 96]}
+          maxConstraints={[640, 640]} // Increased max size
+          handle={(handleAxis, ref) => (
+            <div
+              ref={ref}
+              className="resize-handle"
+              style={{
+                cursor: 'se-resize',
+              }}
+            />
+          )}
+        >
+          <div style={{
+            width: '100%',
+            height: '100%',
+            cursor: isDragging ? 'grabbing' : 'grab'
+          }}>
+            {React.cloneElement(children as React.ReactElement, {}, itemType === 'chart' ? renderChart() : null)}
+            <div className="absolute bottom-1 right-1 w-3 h-3 bg-primary rounded-sm cursor-se-resize" />
+          </div>
+        </Resizable>
+      ) : (
+        React.cloneElement(children as React.ReactElement, {}, itemType === 'chart' ? renderChart() : null)
+      )}
+    </motion.div>
+  );
+};
+
+export default DraggableDashboardItem;
