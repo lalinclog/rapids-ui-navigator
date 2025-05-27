@@ -10,6 +10,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   isLoading: boolean;
+  user: KeycloakUserInfo | undefined;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => false,
   logout: async () => {},
   isLoading: true,
+  user: undefined,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -135,7 +137,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ authState, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ 
+      authState, 
+      login, 
+      logout, 
+      isLoading, 
+      user: authState.user 
+    }}>
       {children}
     </AuthContext.Provider>
   );
