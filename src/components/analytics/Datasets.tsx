@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
-import { Database, Plus, Edit, Trash2, FileText, Server, HardDrive, Cloud, Zap, Table, Code, Layers, Calendar } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Table, Code, Layers, Calendar, Cloud } from 'lucide-react';
 import { Dataset } from '@/lib/types';
 import DatasetForm from './DatasetForm';
+import { DataSourceIcon } from './DataSourceIcons';
 
 const fetchDatasets = async (): Promise<Dataset[]> => {
   const response = await fetch('/api/bi/datasets');
@@ -84,7 +85,7 @@ const DatasetCard: React.FC<{
             </CardDescription>
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={getBadgeVariant(dataset.source_type)} className="text-xs">
-                {getDataSourceIcon(dataset.source_type)}
+                <DataSourceIcon type={dataset.source_type || ''} className="h-3 w-3" />
                 <span className="ml-1">{dataset.source_type || 'Unknown'}</span>
               </Badge>
               {dataset.source_name && (

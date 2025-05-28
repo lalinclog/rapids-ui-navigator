@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
-import { Database, Plus, Edit, Trash2, Play, Server, HardDrive, Cloud, Zap, Activity } from 'lucide-react';
+import { Database, Plus, Edit, Trash2, Play, Activity } from 'lucide-react';
 import DataSourceForm from './DataSourceForm';
+import { DataSourceIcon } from './DataSourceIcons';
 
 interface DataSource {
   id: number;
@@ -28,24 +29,6 @@ const fetchDataSources = async (): Promise<DataSource[]> => {
   return response.json();
 };
 
-const getDataSourceIcon = (type: string) => {
-  switch (type?.toLowerCase()) {
-    case 'postgresql':
-    case 'postgres':
-      return <Database className="h-5 w-5 text-blue-600" />;
-    case 'mysql':
-      return <Server className="h-5 w-5 text-orange-600" />;
-    case 'minio':
-      return <Cloud className="h-5 w-5 text-green-600" />;
-    case 'sqlserver':
-      return <HardDrive className="h-5 w-5 text-purple-600" />;
-    case 'oracle':
-      return <Zap className="h-5 w-5 text-red-600" />;
-    default:
-      return <Database className="h-5 w-5 text-gray-600" />;
-  }
-};
-
 const DataSourceCard: React.FC<{ 
   dataSource: DataSource; 
   onEdit: () => void; 
@@ -58,7 +41,7 @@ const DataSourceCard: React.FC<{
         <div className="flex justify-between items-start">
           <div className="flex items-start gap-3 flex-1">
             <div className="mt-1">
-              {getDataSourceIcon(dataSource.type)}
+              <DataSourceIcon type={dataSource.type} />
             </div>
             <div className="flex-1 min-w-0">
               <CardTitle className="text-lg truncate">{dataSource.name}</CardTitle>
