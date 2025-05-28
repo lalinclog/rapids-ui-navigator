@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
-import { Plus, Edit, Trash2, FileText, Table, Code, Layers, Calendar, Cloud } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, Table, Code, Layers, Calendar, Cloud, Database, Server, HardDrive, Zap } from 'lucide-react';
 import { Dataset } from '@/lib/types';
 import DatasetForm from './DatasetForm';
 import { DataSourceIcon } from './DataSourceIcons';
