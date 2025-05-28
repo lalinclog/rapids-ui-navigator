@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
-import { Database, Plus, Edit, Trash2, Play } from 'lucide-react';
+import { Database, Plus, Edit, Trash2, Play, Server, HardDrive, Cloud, Zap, Activity } from 'lucide-react';
 import DataSourceForm from './DataSourceForm';
 
 interface DataSource {
@@ -29,6 +28,24 @@ const fetchDataSources = async (): Promise<DataSource[]> => {
   return response.json();
 };
 
+const getDataSourceIcon = (type: string) => {
+  switch (type?.toLowerCase()) {
+    case 'postgresql':
+    case 'postgres':
+      return <Database className="h-5 w-5 text-blue-600" />;
+    case 'mysql':
+      return <Server className="h-5 w-5 text-orange-600" />;
+    case 'minio':
+      return <Cloud className="h-5 w-5 text-green-600" />;
+    case 'sqlserver':
+      return <HardDrive className="h-5 w-5 text-purple-600" />;
+    case 'oracle':
+      return <Zap className="h-5 w-5 text-red-600" />;
+    default:
+      return <Database className="h-5 w-5 text-gray-600" />;
+  }
+};
+
 const DataSourceCard: React.FC<{ 
   dataSource: DataSource; 
   onEdit: () => void; 
@@ -36,44 +53,57 @@ const DataSourceCard: React.FC<{
   onTestConnection: () => void;
 }> = ({ dataSource, onEdit, onDelete, onTestConnection }) => {
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader>
+    <Card className="h-full flex flex-col hover:shadow-md transition-shadow duration-200">
+      <CardHeader className="pb-3">
         <div className="flex justify-between items-start">
-          <div className="flex-1">
-            <CardTitle className="text-lg">{dataSource.name}</CardTitle>
-            <CardDescription className="text-xs uppercase">
-              {dataSource.type}
-            </CardDescription>
+          <div className="flex items-start gap-3 flex-1">
+            <div className="mt-1">
+              {getDataSourceIcon(dataSource.type)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <CardTitle className="text-lg truncate">{dataSource.name}</CardTitle>
+              <div className="flex items-center gap-2 mt-1">
+                <CardDescription className="text-xs uppercase font-medium">
+                  {dataSource.type}
+                </CardDescription>
+                <Badge 
+                  variant={dataSource.is_active ? "default" : "outline"}
+                  className="text-xs"
+                >
+                  <Activity className="h-3 w-3 mr-1" />
+                  {dataSource.is_active ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+            </div>
           </div>
-          <Badge variant={dataSource.is_active ? "default" : "outline"}>
-            {dataSource.is_active ? "Active" : "Inactive"}
-          </Badge>
         </div>
       </CardHeader>
-      <CardContent className="flex-grow">
-        <div className="text-xs text-muted-foreground line-clamp-2">
-          {dataSource.connection_string}
-        </div>
-        <div className="text-xs text-muted-foreground mt-2">
-          Last updated: {new Date(dataSource.updated_at).toLocaleDateString()}
-        </div>
-        {dataSource.config && Object.keys(dataSource.config).length > 0 && (
-          <div className="mt-2 text-xs">
-            <span className="font-medium text-muted-foreground">Additional settings: </span>
-            {Object.keys(dataSource.config).length} settings
+      <CardContent className="flex-grow pt-0">
+        <div className="space-y-3">
+          <div className="bg-muted/50 p-2 rounded text-xs text-muted-foreground font-mono break-all">
+            {dataSource.connection_string}
           </div>
-        )}
+          
+          <div className="flex justify-between items-center text-xs text-muted-foreground">
+            <span>Updated: {new Date(dataSource.updated_at).toLocaleDateString()}</span>
+            {dataSource.config && Object.keys(dataSource.config).length > 0 && (
+              <span className="text-primary font-medium">
+                {Object.keys(dataSource.config).length} settings
+              </span>
+            )}
+          </div>
+        </div>
       </CardContent>
-      <CardFooter className="pt-2 flex justify-between">
-        <Button variant="outline" size="sm" onClick={onEdit}>
+      <CardFooter className="pt-3 flex justify-between border-t">
+        <Button variant="outline" size="sm" onClick={onEdit} className="flex-1 mr-2">
           <Edit className="h-4 w-4 mr-1" /> Edit
         </Button>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={onDelete}>
-            <Trash2 className="h-4 w-4" />
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" onClick={onTestConnection} className="px-2">
+            <Play className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onTestConnection}>
-            <Play className="h-4 w-4 mr-1" /> Test
+          <Button variant="ghost" size="sm" onClick={onDelete} className="px-2 text-destructive hover:text-destructive">
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </CardFooter>
@@ -178,7 +208,10 @@ const DataSources: React.FC = () => {
     return (
       <div>
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Data Sources</h2>
+          <div>
+            <h2 className="text-2xl font-bold">Data Sources</h2>
+            <p className="text-muted-foreground">Connect to databases and storage systems</p>
+          </div>
           <Button disabled>
             <Plus className="mr-2 h-4 w-4" /> Add Data Source
           </Button>
@@ -215,9 +248,15 @@ const DataSources: React.FC = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold">Data Sources</h2>
-        <Button onClick={handleCreate}>
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Database className="h-6 w-6" />
+            Data Sources
+          </h2>
+          <p className="text-muted-foreground">Connect to databases and storage systems</p>
+        </div>
+        <Button onClick={handleCreate} size="lg">
           <Plus className="mr-2 h-4 w-4" /> Add Data Source
         </Button>
       </div>
@@ -235,24 +274,26 @@ const DataSources: React.FC = () => {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-          <div className="bg-muted h-12 w-12 rounded-full flex items-center justify-center mb-4">
-            <Database className="h-6 w-6 text-muted-foreground" />
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+          <div className="bg-muted h-16 w-16 rounded-full flex items-center justify-center mb-6">
+            <Database className="h-8 w-8 text-muted-foreground" />
           </div>
-          <h3 className="text-lg font-medium mb-1">No Data Sources</h3>
-          <p className="text-muted-foreground mb-4 max-w-md">
-            Connect to your first data source to start creating datasets and visualizations.
+          <h3 className="text-xl font-semibold mb-2">No Data Sources</h3>
+          <p className="text-muted-foreground mb-6 max-w-md">
+            Connect to your first data source to start creating datasets and visualizations. Supported sources include PostgreSQL, MySQL, MinIO, and more.
           </p>
-          <Button onClick={handleCreate}>
+          <Button onClick={handleCreate} size="lg">
             <Plus className="mr-2 h-4 w-4" /> Add Your First Data Source
           </Button>
         </div>
       )}
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingDataSource ? 'Edit Data Source' : 'Add New Data Source'}</DialogTitle>
+            <DialogTitle className="text-xl">
+              {editingDataSource ? 'Edit Data Source' : 'Add New Data Source'}
+            </DialogTitle>
           </DialogHeader>
           <DataSourceForm 
             dataSource={editingDataSource ?? undefined} 
