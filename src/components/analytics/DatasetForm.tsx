@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { useQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 
 // Define form schema
 const datasetFormSchema = z.object({
@@ -18,7 +19,7 @@ const datasetFormSchema = z.object({
   description: z.string().optional(),
   source_id: z.string().min(1, "Data source is required"),
   query_type: z.string().min(1, "Query type is required"),
-  query_value: z.string().min(1, "Query value is required"),
+  query_definition: z.string().min(1, "Query definition is required"),
 });
 
 type DatasetFormValues = z.infer<typeof datasetFormSchema>;
@@ -27,16 +28,17 @@ interface DataSource {
   id: number;
   name: string;
   type: string;
+  description?: string;
 }
 
 interface DatasetFormProps {
   dataset?: {
     id: number;
     name: string;
-    description: string | null;
+    description?: string;
     source_id: number;
     query_type: string;
-    query_value: string;
+    query_definition: string;
   };
   onSuccess: () => void;
   onCancel: () => void;
@@ -51,6 +53,8 @@ const fetchDataSources = async (): Promise<DataSource[]> => {
 };
 
 const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
   const { data: dataSources = [], isLoading: isLoadingDataSources } = useQuery({
     queryKey: ['data-sources'],
     queryFn: fetchDataSources,
@@ -63,17 +67,40 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       description: dataset?.description || "",
       source_id: dataset?.source_id ? dataset.source_id.toString() : "",
       query_type: dataset?.query_type || "table",
-      query_value: dataset?.query_value || "",
+      query_definition: dataset?.query_definition || "",
     },
   });
 
+  const selectedSourceType = dataSources.find(
+    source => source.id.toString() === form.watch("source_id")
+  )?.type;
+
   const onSubmit = async (values: DatasetFormValues) => {
+    setIsSubmitting(true);
     try {
       const apiUrl = dataset?.id 
         ? `/api/bi/datasets/${dataset.id}` 
         : '/api/bi/datasets';
       
       const method = dataset?.id ? 'PUT' : 'POST';
+      
+      // Prepare payload based on source type and query type
+      let queryDefinition = values.query_definition;
+      
+      // For MinIO sources, ensure query definition is JSON
+      if (selectedSourceType === 'minio' && values.query_type === 'custom') {
+        try {
+          // Try to parse as JSON to validate
+          JSON.parse(queryDefinition);
+        } catch {
+          // If not valid JSON, wrap in a basic structure
+          queryDefinition = JSON.stringify({
+            bucket: values.query_definition,
+            prefix: "",
+            file_type: "csv"
+          });
+        }
+      }
       
       const response = await fetch(apiUrl, {
         method,
@@ -83,11 +110,18 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         body: JSON.stringify({
           ...values,
           source_id: parseInt(values.source_id),
+          query_definition: queryDefinition,
+          cache_policy: {
+            enabled: true,
+            ttl_minutes: 60,
+            auto_refresh: false
+          }
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save dataset');
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Failed to save dataset');
       }
 
       const result = await response.json();
@@ -104,12 +138,60 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save dataset",
       });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const getQueryPlaceholder = () => {
+    const queryType = form.watch("query_type");
+    
+    if (selectedSourceType === 'minio') {
+      if (queryType === 'custom') {
+        return '{"bucket": "my-bucket", "prefix": "data/", "file_type": "csv"}';
+      }
+      return 'bucket-name';
+    } else {
+      if (queryType === 'custom') {
+        return 'SELECT * FROM table_name WHERE condition = value';
+      }
+      return 'table_name';
+    }
+  };
+
+  const getQueryLabel = () => {
+    const queryType = form.watch("query_type");
+    
+    if (selectedSourceType === 'minio') {
+      return queryType === 'custom' ? 'MinIO Configuration (JSON)' : 'Bucket Name';
+    } else {
+      return queryType === 'custom' ? 'SQL Query' : 'Table/View Name';
+    }
+  };
+
+  const getQueryTypeOptions = () => {
+    if (selectedSourceType === 'minio') {
+      return [
+        { value: 'bucket', label: 'Bucket' },
+        { value: 'custom', label: 'Custom Configuration' }
+      ];
+    } else {
+      return [
+        { value: 'table', label: 'Table' },
+        { value: 'view', label: 'View' },
+        { value: 'custom', label: 'Custom SQL' }
+      ];
     }
   };
 
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardHeader>
+        <CardTitle>
+          {dataset?.id ? "Edit Dataset" : "Create New Dataset"}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
@@ -182,9 +264,11 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="table">Table</SelectItem>
-                      <SelectItem value="view">View</SelectItem>
-                      <SelectItem value="custom">Custom SQL</SelectItem>
+                      {getQueryTypeOptions().map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -194,22 +278,20 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
 
             <FormField
               control={form.control}
-              name="query_value"
+              name="query_definition"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>
-                    {form.watch("query_type") === "custom" ? "SQL Query" : "Table/View Name"}
-                  </FormLabel>
+                  <FormLabel>{getQueryLabel()}</FormLabel>
                   <FormControl>
                     {form.watch("query_type") === "custom" ? (
                       <Textarea 
-                        placeholder={form.watch("query_type") === "custom" ? "SELECT * FROM table" : "table_name"}
+                        placeholder={getQueryPlaceholder()}
                         className="font-mono min-h-[100px]" 
                         {...field} 
                       />
                     ) : (
                       <Input 
-                        placeholder="table_name" 
+                        placeholder={getQueryPlaceholder()}
                         {...field} 
                       />
                     )}
@@ -223,7 +305,8 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
               <Button type="button" variant="outline" onClick={onCancel}>
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {dataset?.id ? "Update Dataset" : "Create Dataset"}
               </Button>
             </div>

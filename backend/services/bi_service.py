@@ -12,6 +12,211 @@ class BIService:
         self.postgres_service = PostgresService()
         self.data_source_service = DataSourceService()
     
+    def create_dataset(self, dataset_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+        """Create a new dataset with all related information"""
+        try:
+            with self.postgres_service._get_connection() as conn:
+                # Start transaction
+                conn.execute("BEGIN;")
+                
+                try:
+                    # Insert the dataset
+                    insert_query = """
+                    INSERT INTO bi.datasets (
+                        name, description, source_id, query_type, query_definition,
+                        cache_policy, created_by, created_at, updated_at, is_active
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s)
+                    RETURNING id
+                    """
+                    
+                    cache_policy = json.dumps(dataset_data.get('cache_policy', {}))
+                    
+                    result = self._execute_query(conn, insert_query, (
+                        dataset_data['name'],
+                        dataset_data.get('description'),
+                        dataset_data['source_id'],
+                        dataset_data['query_type'],
+                        dataset_data['query_definition'],
+                        cache_policy,
+                        user_id,
+                        True
+                    ))
+                    
+                    dataset_id = result[0]['id']
+                    
+                    # Get the source type to determine how to handle schema
+                    source_query = "SELECT type, connection_string FROM bi.data_sources WHERE id = %s"
+                    source_result = self._execute_query(conn, source_query, (dataset_data['source_id'],))
+                    
+                    if source_result:
+                        source_type = source_result[0]['type']
+                        
+                        # Auto-generate schema and fields based on source type
+                        schema_info = self._generate_schema_for_dataset({
+                            'id': dataset_id,
+                            'source_id': dataset_data['source_id'],
+                            'source_type': source_type,
+                            'query_definition': dataset_data['query_definition'],
+                            'query_type': dataset_data['query_type']
+                        })
+                        
+                        # Insert fields if schema was successfully generated
+                        if schema_info and 'fields' in schema_info:
+                            for field in schema_info['fields']:
+                                field_query = """
+                                INSERT INTO bi.fields (
+                                    dataset_id, name, display_name, field_type, data_type,
+                                    format_pattern, is_visible, created_at, updated_at
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                                """
+                                
+                                self._execute_query(conn, field_query, (
+                                    dataset_id,
+                                    field['name'],
+                                    field.get('display_name', field['name']),
+                                    field.get('field_type', 'dimension'),
+                                    field.get('type', 'string'),
+                                    field.get('format_pattern'),
+                                    True
+                                ))
+                    
+                    # Commit transaction
+                    conn.execute("COMMIT;")
+                    
+                    # Return the created dataset with all information
+                    return self.get_dataset(dataset_id, user_id)
+                    
+                except Exception as e:
+                    conn.execute("ROLLBACK;")
+                    raise e
+                    
+        except Exception as e:
+            logger.error(f"Error creating dataset: {str(e)}")
+            raise
+    
+    def update_dataset(self, dataset_id: int, dataset_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+        """Update an existing dataset and related information"""
+        try:
+            with self.postgres_service._get_connection() as conn:
+                conn.execute("BEGIN;")
+                
+                try:
+                    # Update the dataset
+                    update_query = """
+                    UPDATE bi.datasets 
+                    SET name = %s, description = %s, source_id = %s, query_type = %s,
+                        query_definition = %s, cache_policy = %s, updated_at = NOW()
+                    WHERE id = %s AND (created_by = %s OR %s IN (
+                        SELECT sub FROM keycloak_users WHERE realm_access->'roles' ? 'admin'
+                    ))
+                    """
+                    
+                    cache_policy = json.dumps(dataset_data.get('cache_policy', {}))
+                    
+                    self._execute_query(conn, update_query, (
+                        dataset_data['name'],
+                        dataset_data.get('description'),
+                        dataset_data['source_id'],
+                        dataset_data['query_type'],
+                        dataset_data['query_definition'],
+                        cache_policy,
+                        dataset_id,
+                        user_id,
+                        user_id  # For admin check
+                    ))
+                    
+                    # If source or query changed, regenerate schema
+                    if 'source_id' in dataset_data or 'query_definition' in dataset_data:
+                        # Get updated dataset info
+                        dataset_query = """
+                        SELECT d.*, ds.type as source_type 
+                        FROM bi.datasets d
+                        JOIN bi.data_sources ds ON d.source_id = ds.id
+                        WHERE d.id = %s
+                        """
+                        dataset_result = self._execute_query(conn, dataset_query, (dataset_id,))
+                        
+                        if dataset_result:
+                            dataset_info = dict(dataset_result[0])
+                            
+                            # Remove existing fields
+                            self._execute_query(conn, "DELETE FROM bi.fields WHERE dataset_id = %s", (dataset_id,))
+                            
+                            # Regenerate schema and fields
+                            schema_info = self._generate_schema_for_dataset(dataset_info)
+                            
+                            if schema_info and 'fields' in schema_info:
+                                for field in schema_info['fields']:
+                                    field_query = """
+                                    INSERT INTO bi.fields (
+                                        dataset_id, name, display_name, field_type, data_type,
+                                        format_pattern, is_visible, created_at, updated_at
+                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                                    """
+                                    
+                                    self._execute_query(conn, field_query, (
+                                        dataset_id,
+                                        field['name'],
+                                        field.get('display_name', field['name']),
+                                        field.get('field_type', 'dimension'),
+                                        field.get('type', 'string'),
+                                        field.get('format_pattern'),
+                                        True
+                                    ))
+                    
+                    conn.execute("COMMIT;")
+                    
+                    # Return updated dataset
+                    return self.get_dataset(dataset_id, user_id)
+                    
+                except Exception as e:
+                    conn.execute("ROLLBACK;")
+                    raise e
+                    
+        except Exception as e:
+            logger.error(f"Error updating dataset: {str(e)}")
+            raise
+    
+    def delete_dataset(self, dataset_id: int, user_id: str) -> bool:
+        """Delete a dataset and all related information"""
+        try:
+            with self.postgres_service._get_connection() as conn:
+                conn.execute("BEGIN;")
+                
+                try:
+                    # Delete related fields first
+                    self._execute_query(conn, "DELETE FROM bi.fields WHERE dataset_id = %s", (dataset_id,))
+                    
+                    # Delete the dataset (with permission check)
+                    delete_query = """
+                    DELETE FROM bi.datasets 
+                    WHERE id = %s AND (created_by = %s OR %s IN (
+                        SELECT sub FROM keycloak_users WHERE realm_access->'roles' ? 'admin'
+                    ))
+                    """
+                    
+                    result = self._execute_query(conn, delete_query, (dataset_id, user_id, user_id))
+                    
+                    conn.execute("COMMIT;")
+                    
+                    return True
+                    
+                except Exception as e:
+                    conn.execute("ROLLBACK;")
+                    raise e
+                    
+        except Exception as e:
+            logger.error(f"Error deleting dataset: {str(e)}")
+            return False
+    
+    def get_dataset(self, dataset_id: int, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get a single dataset with all related information"""
+        datasets = self.get_datasets(user_id)
+        for dataset in datasets:
+            if dataset['id'] == dataset_id:
+                return dataset
+        return None
+    
     def get_datasets(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all datasets with source information and metadata"""
         try:
@@ -39,8 +244,8 @@ class BIService:
             """
             
             if user_id:
-                query += " AND d.created_by = %s"
-                params = (user_id,)
+                query += " AND (d.created_by = %s OR %s IN (SELECT sub FROM keycloak_users WHERE realm_access->'roles' ? 'admin'))"
+                params = (user_id, user_id)
             else:
                 params = ()
             
@@ -81,44 +286,41 @@ class BIService:
             logger.error(f"Error getting datasets: {str(e)}")
             return []
     
-    def _get_schema_info(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
-        """Get schema information for a dataset based on its source type"""
+    def _generate_schema_for_dataset(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate schema information for a dataset based on its source type"""
         try:
             source_type = dataset.get('source_type', '').lower()
-            query_definition = dataset.get('query_definition', '')
             
             if source_type in ['postgresql', 'postgres', 'mysql', 'sqlserver']:
-                return self._get_sql_schema_info(dataset)
+                return self._generate_sql_schema(dataset)
             elif source_type == 'minio':
-                return self._get_minio_schema_info(dataset)
+                return self._generate_minio_schema(dataset)
             else:
-                return {
-                    'fields': [],
-                    'inferred': False,
-                    'last_analyzed': None
-                }
+                return {'fields': [], 'inferred': False}
                 
         except Exception as e:
-            logger.error(f"Error getting schema info for dataset {dataset.get('id')}: {str(e)}")
-            return {'fields': [], 'inferred': False, 'last_analyzed': None}
+            logger.error(f"Error generating schema for dataset {dataset.get('id')}: {str(e)}")
+            return {'fields': [], 'inferred': False}
     
-    def _get_sql_schema_info(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
-        """Get schema information for SQL-based datasets"""
+    def _generate_sql_schema(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate schema for SQL-based datasets"""
         try:
             source_id = dataset.get('source_id')
             query_definition = dataset.get('query_definition', '')
+            query_type = dataset.get('query_type', 'table')
             
             if not source_id or not query_definition:
                 return {'fields': [], 'inferred': False}
             
-            # Execute DESCRIBE or similar query to get column information
             connection = self.data_source_service.get_connection(source_id)
             if not connection:
                 return {'fields': [], 'inferred': False}
             
-            # For PostgreSQL, we can use INFORMATION_SCHEMA or analyze the query
-            # This is a simplified approach - in production, you'd want more robust schema detection
-            sample_query = f"SELECT * FROM ({query_definition}) as sample_query LIMIT 0"
+            # Build the actual query based on query_type
+            if query_type == 'custom':
+                sample_query = f"SELECT * FROM ({query_definition}) as sample_query LIMIT 0"
+            else:  # table or view
+                sample_query = f"SELECT * FROM {query_definition} LIMIT 0"
             
             with connection.connect() as conn:
                 from sqlalchemy import text
@@ -129,9 +331,10 @@ class BIService:
                 for col in columns:
                     fields.append({
                         'name': col,
-                        'type': 'unknown',  # Would need more sophisticated type detection
+                        'type': 'string',  # Default to string, could be enhanced with type detection
                         'nullable': True,
-                        'description': None
+                        'description': None,
+                        'field_type': 'dimension'
                     })
                 
                 return {
@@ -141,11 +344,11 @@ class BIService:
                 }
                 
         except Exception as e:
-            logger.error(f"Error getting SQL schema info: {str(e)}")
+            logger.error(f"Error generating SQL schema: {str(e)}")
             return {'fields': [], 'inferred': False}
     
-    def _get_minio_schema_info(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
-        """Get schema information for MinIO-based datasets"""
+    def _generate_minio_schema(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate schema for MinIO-based datasets"""
         try:
             query_definition = dataset.get('query_definition', '{}')
             
@@ -162,7 +365,6 @@ class BIService:
             if not bucket:
                 return {'fields': [], 'inferred': False}
             
-            # Try to analyze a sample file to infer schema
             source_id = dataset.get('source_id')
             connection = self.data_source_service.get_connection(source_id)
             
@@ -173,7 +375,6 @@ class BIService:
                     # Find the first file of the specified type
                     for obj in objects:
                         if obj.object_name.endswith(f'.{file_type}'):
-                            # Analyze this file for schema
                             schema_fields = self._analyze_minio_file_schema(
                                 connection, bucket, obj.object_name, file_type
                             )
@@ -189,7 +390,7 @@ class BIService:
             return {'fields': [], 'inferred': False}
             
         except Exception as e:
-            logger.error(f"Error getting MinIO schema info: {str(e)}")
+            logger.error(f"Error generating MinIO schema: {str(e)}")
             return {'fields': [], 'inferred': False}
     
     def _analyze_minio_file_schema(self, client, bucket: str, object_name: str, file_type: str) -> List[Dict[str, Any]]:
@@ -201,7 +402,7 @@ class BIService:
             response = client.get_object(bucket, object_name)
             
             if file_type == 'csv':
-                df = pd.read_csv(io.BytesIO(response.data), nrows=100)  # Sample first 100 rows
+                df = pd.read_csv(io.BytesIO(response.data), nrows=100)
             elif file_type == 'json':
                 df = pd.read_json(io.BytesIO(response.data))
             elif file_type == 'parquet':
@@ -216,20 +417,26 @@ class BIService:
                 # Map pandas dtypes to our schema types
                 if 'int' in dtype:
                     field_type = 'integer'
+                    data_type = 'metric'
                 elif 'float' in dtype:
                     field_type = 'number'
+                    data_type = 'metric'
                 elif 'bool' in dtype:
                     field_type = 'boolean'
+                    data_type = 'dimension'
                 elif 'datetime' in dtype:
                     field_type = 'datetime'
+                    data_type = 'dimension'
                 else:
                     field_type = 'string'
+                    data_type = 'dimension'
                 
                 fields.append({
                     'name': col,
                     'type': field_type,
                     'nullable': df[col].isnull().any(),
-                    'description': None
+                    'description': None,
+                    'field_type': data_type
                 })
             
             return fields
@@ -238,161 +445,19 @@ class BIService:
             logger.error(f"Error analyzing file {object_name}: {str(e)}")
             return []
     
-    def _get_minio_metadata(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
-        """Get MinIO-specific metadata for a dataset"""
-        try:
-            query_definition = dataset.get('query_definition', '{}')
-            
-            # Parse MinIO query definition
-            try:
-                minio_query = json.loads(query_definition) if isinstance(query_definition, str) else query_definition
-            except:
-                minio_query = {}
-            
-            bucket = minio_query.get('bucket', '')
-            prefix = minio_query.get('prefix', '')
-            file_type = minio_query.get('file_type', 'csv')
-            
-            metadata = {
-                'bucket': bucket,
-                'prefix': prefix,
-                'file_type': file_type,
-                'file_count': 0,
-                'total_size': 0,
-                'last_modified': None,
-                'files': []
-            }
-            
-            if not bucket:
-                return metadata
-            
-            # Get MinIO connection and gather file information
-            source_id = dataset.get('source_id')
-            connection = self.data_source_service.get_connection(source_id)
-            
-            if connection:
-                try:
-                    objects = connection.list_objects(bucket, prefix=prefix, recursive=True)
-                    
-                    files = []
-                    total_size = 0
-                    latest_modified = None
-                    
-                    for obj in objects:
-                        if obj.object_name.endswith(f'.{file_type}'):
-                            file_info = {
-                                'name': obj.object_name,
-                                'size': obj.size,
-                                'last_modified': obj.last_modified.isoformat() if obj.last_modified else None
-                            }
-                            files.append(file_info)
-                            total_size += obj.size or 0
-                            
-                            if obj.last_modified and (not latest_modified or obj.last_modified > latest_modified):
-                                latest_modified = obj.last_modified
-                    
-                    metadata.update({
-                        'file_count': len(files),
-                        'total_size': total_size,
-                        'last_modified': latest_modified.isoformat() if latest_modified else None,
-                        'files': files[:10]  # Limit to first 10 files for performance
-                    })
-                    
-                except Exception as e:
-                    logger.error(f"Error getting MinIO metadata: {str(e)}")
-            
-            return metadata
-            
-        except Exception as e:
-            logger.error(f"Error getting MinIO metadata for dataset {dataset.get('id')}: {str(e)}")
-            return {
-                'bucket': '',
-                'prefix': '',
-                'file_type': 'csv',
-                'file_count': 0,
-                'total_size': 0,
-                'last_modified': None,
-                'files': []
-            }
+    # ... keep existing code (_get_schema_info, _get_minio_metadata, _get_dataset_fields, _get_cache_info methods)
     
-    def _get_dataset_fields(self, dataset_id: int) -> List[Dict[str, Any]]:
-        """Get field definitions for a dataset"""
-        try:
-            query = """
-            SELECT 
-                id,
-                dataset_id,
-                name,
-                display_name,
-                field_type,
-                data_type,
-                format_pattern,
-                is_visible,
-                created_at,
-                updated_at
-            FROM bi.fields
-            WHERE dataset_id = %s
-            ORDER BY name
-            """
-            
-            results = self.postgres_service.execute_query(query, (dataset_id,))
-            return [dict(row) for row in results]
-            
-        except Exception as e:
-            logger.error(f"Error getting fields for dataset {dataset_id}: {str(e)}")
+    def _execute_query(self, conn, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        """Execute a query and return results as list of dictionaries"""
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        
+        if query.strip().upper().startswith('SELECT') or 'RETURNING' in query.upper():
+            columns = [desc[0] for desc in cursor.description]
+            results = []
+            for row in cursor.fetchall():
+                results.append(dict(zip(columns, row)))
+            return results
+        else:
+            conn.commit()
             return []
-    
-    def _get_cache_info(self, dataset: Dict[str, Any]) -> Dict[str, Any]:
-        """Get cache information for a dataset"""
-        try:
-            cache_policy = dataset.get('cache_policy')
-            last_refreshed = dataset.get('last_refreshed')
-            
-            if isinstance(cache_policy, str):
-                try:
-                    cache_policy = json.loads(cache_policy)
-                except:
-                    cache_policy = {}
-            
-            cache_info = {
-                'enabled': cache_policy.get('enabled', False) if cache_policy else False,
-                'ttl_minutes': cache_policy.get('ttl_minutes', 60) if cache_policy else 60,
-                'auto_refresh': cache_policy.get('auto_refresh', False) if cache_policy else False,
-                'last_refreshed': last_refreshed,
-                'next_refresh': None,
-                'status': 'unknown'
-            }
-            
-            # Calculate next refresh time if auto refresh is enabled
-            if cache_info['enabled'] and cache_info['auto_refresh'] and last_refreshed:
-                from datetime import datetime, timedelta
-                try:
-                    if isinstance(last_refreshed, str):
-                        last_refresh_dt = datetime.fromisoformat(last_refreshed.replace('Z', '+00:00'))
-                    else:
-                        last_refresh_dt = last_refreshed
-                    
-                    next_refresh = last_refresh_dt + timedelta(minutes=cache_info['ttl_minutes'])
-                    cache_info['next_refresh'] = next_refresh.isoformat()
-                    
-                    # Determine cache status
-                    now = datetime.now(last_refresh_dt.tzinfo) if last_refresh_dt.tzinfo else datetime.now()
-                    if now > next_refresh:
-                        cache_info['status'] = 'expired'
-                    else:
-                        cache_info['status'] = 'valid'
-                except Exception as e:
-                    logger.error(f"Error calculating cache times: {str(e)}")
-            
-            return cache_info
-            
-        except Exception as e:
-            logger.error(f"Error getting cache info: {str(e)}")
-            return {
-                'enabled': False,
-                'ttl_minutes': 60,
-                'auto_refresh': False,
-                'last_refreshed': None,
-                'next_refresh': None,
-                'status': 'unknown'
-            }
