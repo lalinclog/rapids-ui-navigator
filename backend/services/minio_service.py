@@ -8,12 +8,23 @@ import tempfile
 import urllib3
 import certifi
 import ssl
+from .vault_service import VaultService
+import pandas as pd
+from typing import Optional, List, Dict, Any
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class MinioService:
     def __init__(self):
         endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}"
-        access_key = os.environ.get('MINIO_ACCESS_KEY', 'minioadmin')
-        secret_key = os.environ.get('MINIO_SECRET_KEY', 'minioadmin')
+        #access_key = os.environ.get('MINIO_ACCESS_KEY', 'minioadmin')
+        #secret_key = os.environ.get('MINIO_SECRET_KEY', 'minioadmin')
+
+        vault = VaultService()
+        access_key, secret_key = vault.get_minio_creds()
 
         # Use certs/public.crt as CA root
         cert_path = "/etc/ssl/certs/minio/public.crt"
@@ -113,3 +124,85 @@ class MinioService:
             }
         except S3Error as e:
             raise Exception(f"Error storing file: {e}")
+        
+    def list_objects(self, bucket_name, prefix=''):
+        return list(self.client.list_objects(bucket_name, prefix=prefix, recursive=True))
+    
+    def list_minio_datasets(self, bucket_name="bi-dashboard-data"):
+        objects = self.client.list_objects(bucket_name, recursive=True)
+        datasets = []
+
+        for obj in objects:
+            if not obj.object_name.endswith((".csv", ".parquet")):
+                continue
+
+            response = self.client.get_object(bucket_name, obj.object_name)
+            try:
+                if obj.object_name.endswith(".csv"):
+                    df = pd.read_csv(io.BytesIO(response.read()), nrows=5)
+                else:
+                    df = pd.read_parquet(io.BytesIO(response.read()), engine="pyarrow")
+                    df = df.head(5)
+            except Exception as e:
+                print(f"Error reading {obj.object_name}: {e}")
+                continue
+
+            datasets.append({
+                "name": obj.object_name,
+                "preview": df.to_dict(orient="records"),
+                "description": f"Preview from {obj.object_name}"
+            })
+
+        return datasets
+    
+    def _analyze_minio_file_schema(self, client, bucket: str, object_name: str, file_type: str) -> List[Dict[str, Any]]:
+        """Analyze a MinIO file to infer its schema"""
+        try:
+            import pandas as pd
+            import io
+            
+            response = client.get_object(bucket, object_name)
+            
+            if file_type == 'csv':
+                df = pd.read_csv(io.BytesIO(response.data), nrows=100)
+            elif file_type == 'json':
+                df = pd.read_json(io.BytesIO(response.data))
+            elif file_type == 'parquet':
+                df = pd.read_parquet(io.BytesIO(response.data))
+            else:
+                return []
+            
+            fields = []
+            for col in df.columns:
+                dtype = str(df[col].dtype)
+                
+                # Map pandas dtypes to our schema types
+                if 'int' in dtype:
+                    field_type = 'integer'
+                    data_type = 'metric'
+                elif 'float' in dtype:
+                    field_type = 'number'
+                    data_type = 'metric'
+                elif 'bool' in dtype:
+                    field_type = 'boolean'
+                    data_type = 'dimension'
+                elif 'datetime' in dtype:
+                    field_type = 'datetime'
+                    data_type = 'dimension'
+                else:
+                    field_type = 'string'
+                    data_type = 'dimension'
+                
+                fields.append({
+                    'name': col,
+                    'type': field_type,
+                    'nullable': df[col].isnull().any(),
+                    'description': None,
+                    'field_type': data_type
+                })
+            
+            return fields
+            
+        except Exception as e:
+            logger.error(f"Error analyzing file {object_name}: {str(e)}")
+            return []
