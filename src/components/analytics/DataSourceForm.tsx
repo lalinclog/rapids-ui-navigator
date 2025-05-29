@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -93,6 +92,8 @@ const DataSourceForm: React.FC<DataSourceFormProps> = ({ dataSource, onSuccess, 
   const onSubmit = async (values: DataSourceFormValues) => {
     setIsSubmitting(true);
     try {
+      console.log('Form values being submitted:', values);
+      
       const apiUrl = dataSource?.id 
         ? `/api/bi/data-sources/${dataSource.id}` 
         : '/api/bi/data-sources';
@@ -108,15 +109,22 @@ const DataSourceForm: React.FC<DataSourceFormProps> = ({ dataSource, onSuccess, 
         }
       }
 
+      const payload = {
+        name: values.name,
+        type: values.type,
+        description: values.description || '', // Ensure description is always included
+        connection_string: values.connection_string,
+        config,
+      };
+
+      console.log('Payload being sent to backend:', payload);
+
       const response = await fetch(apiUrl, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...values,
-          config,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -125,6 +133,8 @@ const DataSourceForm: React.FC<DataSourceFormProps> = ({ dataSource, onSuccess, 
       }
 
       const result = await response.json();
+      console.log('Backend response:', result);
+      
       toast({
         title: dataSource?.id ? "Data source updated" : "Data source created",
         description: `Successfully ${dataSource?.id ? 'updated' : 'created'} data source ${values.name}`,
