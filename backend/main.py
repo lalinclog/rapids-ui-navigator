@@ -116,6 +116,7 @@ class JobBase(BaseModel):
 class DataSourceCreate(BaseModel):
     name: str
     type: str
+    description: Optional[str] = None
     connection_string: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
     created_by: Optional[str] = "admin"
@@ -123,6 +124,7 @@ class DataSourceCreate(BaseModel):
 class DataSourceUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
+    description: Optional[str] = None
     connection_string: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
