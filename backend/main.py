@@ -1,4 +1,3 @@
-
 import logging
 import sys
 
@@ -513,6 +512,30 @@ async def get_dataset(dataset_id: int, bi_service: BIService = Depends(get_bi_se
         logger.error(f"Error getting dataset {dataset_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/bi/datasets/preview")
+async def preview_dataset_schema(preview_data: dict, bi_service: BIService = Depends(get_bi_service)):
+    logger.info("Generating dataset schema preview")
+    try:
+        result = bi_service.preview_dataset_schema(
+            preview_data.get('source_id'),
+            preview_data.get('query_type'),
+            preview_data.get('query_value')
+        )
+        
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+        
+        return {
+            "columns": result.get("columns", []),
+            "sample_data": result.get("sample_data", []),
+            "total_rows": result.get("total_rows")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating dataset preview: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/bi/datasets/{dataset_id}/query")
 async def query_dataset(dataset_id: int, query: DatasetQuery, bi_service: BIService = Depends(get_bi_service)):
     logger.info(f"Executing query for dataset {dataset_id}")
@@ -529,26 +552,10 @@ async def query_dataset(dataset_id: int, query: DatasetQuery, bi_service: BIServ
             except Exception as e:
                 logger.warning(f"Failed to convert columns to list: {e}")
 
-        #logger.info(f"Returning result: {result}")
-        
-        # STEP 1: Add detailed logging of the result and its data types
-        #logger.info("Raw result from BI service:\n%s", pprint.pformat(result))
-        #logger.info("Result types:")
-        #for key, value in result.items():
-        #    logger.info(" - %s: %s", key, type(value))
-        #    if key == "data" and isinstance(value, list):
-        #        for i, row in enumerate(value):
-        #            logger.info("   row %d: %s (%s)", i, repr(row), type(row))
-        #            if i >= 5:  # Only log a few rows to keep it readable
-        #                break
-                    # Optionally just encode 'data' if the rest is fine
-            
         result["data"] = jsonable_encoder(result["data"])
 
         return result
                      
-        #result["data"] = serializable_data
-        #return jsonable_encoder(result)
     except HTTPException:
         raise
     except Exception as e:
