@@ -1,3 +1,4 @@
+
 # Add to your existing data_source_service.py or create a new file
 
 import minio
@@ -56,6 +57,9 @@ class DataSourceService:
         """Update an existing data source"""
         try:
             with self.postgres_service._get_connection() as conn:
+                # Add logging to debug the issue
+                logger.info(f"Updating data source {source_id} with data: {source_data}")
+                
                 query = """
                 UPDATE data_sources 
                 SET name = %s, type = %s, description = %s, connection_string = %s,
@@ -63,6 +67,7 @@ class DataSourceService:
                 WHERE id = %s AND (created_by = %s OR %s IN (
                     SELECT sub FROM keycloak_users WHERE realm_access->'roles' ? 'admin'
                 ))
+                RETURNING id
                 """
 
                 config = json.dumps(source_data.get('config', {}))
@@ -79,6 +84,15 @@ class DataSourceService:
                     user_id
                 ))
 
+                # Check if any rows were updated
+                result = cursor.fetchone()
+                if not result:
+                    logger.warning(f"No data source updated for ID {source_id} and user {user_id}")
+                    raise ValueError("Data source not found or you don't have permission to update it")
+
+                affected_rows = cursor.rowcount
+                logger.info(f"Updated {affected_rows} rows for data source {source_id}")
+                
                 conn.commit()
 
                 return self.get_data_source(source_id)
@@ -87,6 +101,8 @@ class DataSourceService:
             logger.error(f"Error updating data source: {str(e)}")
             raise
 
+    # ... keep existing code (delete_data_source, get_data_source, get_data_sources, get_connection, execute_query, test_connection methods)
+    
     def delete_data_source(self, source_id: int, user_id: str) -> bool:
         """Delete a data source"""
         try:
@@ -295,3 +311,4 @@ class DataSourceService:
 
         except Exception as e:
             return {'success': False, 'message': f'Connection failed: {str(e)}'}
+
