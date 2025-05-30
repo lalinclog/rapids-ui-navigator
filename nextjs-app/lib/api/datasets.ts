@@ -1,4 +1,3 @@
-
 import { get, post, put, del } from "./api-client"
 
 export interface Dataset {
@@ -6,15 +5,22 @@ export interface Dataset {
   name: string
   description?: string
   source_id: number
-  query_type: string
+  source_name?: string
+  source_type?: string
+  query_type: "table" | "view" | "custom" | "bucket"
   query_definition: string
-  cache_policy?: string
+  query_value?: string  // Add this for backward compatibility with DatasetForm
+  cache_policy?: string | object
   last_refreshed?: string
+  last_refreshed_at?: string
   created_at: string
   updated_at: string
   created_by: string
   is_active: boolean
   fields?: Field[]
+  schema?: SchemaInfo
+  minio_metadata?: MinIOMetadata
+  cache_info?: CacheInfo
 }
 
 export interface Field {
@@ -28,6 +34,18 @@ export interface Field {
   is_visible: boolean
   created_at: string
   updated_at: string
+}
+
+export interface SchemaInfo {
+  // Define the structure of SchemaInfo
+}
+
+export interface MinIOMetadata {
+  // Define the structure of MinIOMetadata
+}
+
+export interface CacheInfo {
+  // Define the structure of CacheInfo
 }
 
 export interface Chart {
@@ -109,14 +127,24 @@ export interface DatasetCreateParams {
  * Get all datasets
  */
 export async function getDatasets(): Promise<Dataset[]> {
-  return get<Dataset[]>("/api/bi/datasets")
+  const datasets = await get<Dataset[]>("/api/bi/datasets")
+  // Map query_definition to query_value for backward compatibility with DatasetForm
+  return datasets.map(dataset => ({
+    ...dataset,
+    query_value: dataset.query_definition
+  }))
 }
 
 /**
  * Get a specific dataset by ID
  */
 export async function getDataset(id: number): Promise<Dataset> {
-  return get<Dataset>(`/api/bi/datasets/${id}`)
+  const dataset = await get<Dataset>(`/api/bi/datasets/${id}`)
+  // Map query_definition to query_value for backward compatibility with DatasetForm
+  return {
+    ...dataset,
+    query_value: dataset.query_definition
+  }
 }
 
 /**

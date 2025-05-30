@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,8 +15,11 @@ interface Dataset {
   name: string;
   description?: string;
   source_id: number;
-  query_type: string;
+  source_name?: string;
+  source_type?: string;
+  query_type: "table" | "view" | "custom" | "bucket";
   query_definition: string;
+  query_value?: string;
   schema?: any;
   column_types?: Record<string, string>;
   created_at: string;
@@ -41,9 +43,14 @@ const Datasets: React.FC = () => {
         throw new Error('Failed to fetch datasets');
       }
       const data = await response.json();
-      setDatasets(data);
+      // Map query_definition to query_value for backward compatibility
+      const mappedData = data.map((dataset: any) => ({
+        ...dataset,
+        query_value: dataset.query_definition
+      }));
+      setDatasets(mappedData);
       setIsLoading(false);
-      return data;
+      return mappedData;
     },
   });
 
@@ -150,8 +157,9 @@ const Datasets: React.FC = () => {
     // Ensure all required properties are present for the form
     const editDataset = {
       ...dataset,
-      query_type: dataset.query_type || 'table',
+      query_type: dataset.query_type || 'table' as const,
       query_definition: dataset.query_definition || '',
+      query_value: dataset.query_value || dataset.query_definition || '', // Use query_value or fallback to query_definition
     };
     setEditingDataset(editDataset);
     setIsCreateDialogOpen(true);
@@ -208,7 +216,7 @@ const Datasets: React.FC = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Source ID</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead>Query Type</TableHead>
                   <TableHead>Created At</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -218,8 +226,19 @@ const Datasets: React.FC = () => {
                 {datasets.map((dataset) => (
                   <TableRow key={dataset.id}>
                     <TableCell>{dataset.name}</TableCell>
-                    <TableCell>{dataset.source_id}</TableCell>
-                    <TableCell>{dataset.query_type}</TableCell>
+                    <TableCell>
+                      {dataset.source_name ? (
+                        <div className="flex items-center gap-2">
+                          {dataset.source_type && <DataSourceIcon type={dataset.source_type} className="h-4 w-4" />}
+                          {dataset.source_name}
+                        </div>
+                      ) : (
+                        dataset.source_id
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="capitalize">{dataset.query_type}</span>
+                    </TableCell>
                     <TableCell>{new Date(dataset.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(dataset)}>
