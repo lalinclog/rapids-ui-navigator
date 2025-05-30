@@ -54,7 +54,7 @@ interface DatasetFormProps {
     description?: string;
     source_id: number;
     query_type: string;
-    query_value: string;
+    query_value?: string;
     schema?: any;
     column_types?: Record<string, string>;
   };
@@ -114,24 +114,24 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
 
   // Initialize form values when dataset or dataSources change
   useEffect(() => {
-    if (dataset) {
-      form.reset({
-        name: dataset.name,
-        description: dataset.description || "",
-        source_id: dataset.source_id.toString(),
-        query_type: dataset.query_type,
-        query_value: dataset.query_value,
-      });
-
-      // Initialize selected columns and types from existing dataset
-      if (dataset.schema?.columns) {
-        const columns = new Set<string>(dataset.schema.columns.map((col: any) => col.name));
-        setSelectedColumns(columns);
-        setSchemaInfo(dataset.schema);
-      }
-      if (dataset.column_types) {
-        setColumnTypes(dataset.column_types);
-      }
+      if (dataset) {
+        form.reset({
+          name: dataset.name,
+          description: dataset.description || "",
+          source_id: dataset.source_id.toString(),
+          query_type: dataset.query_type,
+          query_value: dataset.query_value,
+        });
+  
+        // Initialize selected columns and types from existing dataset
+        if (dataset.schema?.columns) {
+      const columns = new Set<string>(dataset.schema.columns.map((col: any) => col.name));
+      setSelectedColumns(columns);
+      setSchemaInfo(dataset.schema);
+    }
+    if (dataset.column_types) {
+      setColumnTypes(dataset.column_types);
+    }
     }
   }, [dataset, form]);
 
@@ -212,7 +212,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         : '/api/bi/datasets';
       
       const method = dataset?.id ? 'PUT' : 'POST';
-      
+
       // Prepare schema definition
       const schemaDefinition = schemaInfo ? {
         columns: schemaInfo.columns
@@ -239,12 +239,11 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           ttl_minutes: 60,
           auto_refresh: false
         },
-        // Include user_id for update operations
         ...(dataset?.id && { user_id: 1 }) // TODO: Get actual user_id from auth context
       };
       
       console.log('Submitting dataset payload:', payload);
-      
+
       const response = await fetch(apiUrl, {
         method,
         headers: {
@@ -350,89 +349,89 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           <TabsContent value="basic">
             <Form {...form}>
               <div className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Dataset name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Dataset name" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Dataset description" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Dataset description" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-                <FormField
-                  control={form.control}
-                  name="source_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Data Source</FormLabel>
-                      <Select 
-                        onValueChange={field.onChange} 
-                        value={field.value}
-                        disabled={isLoadingDataSources}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a data source" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {dataSources.map((source) => (
-                            <SelectItem key={source.id} value={source.id.toString()}>
-                              {source.name} ({source.type})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <FormField
+              control={form.control}
+              name="source_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Data Source</FormLabel>
+                  <Select 
+                    onValueChange={field.onChange} 
+                    value={field.value}
+                    disabled={isLoadingDataSources}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a data source" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {dataSources.map((source) => (
+                        <SelectItem key={source.id} value={source.id.toString()}>
+                          {source.name} ({source.type})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-                <FormField
-                  control={form.control}
-                  name="query_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Query Type</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select query type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {getQueryTypeOptions().map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
+            <FormField
+              control={form.control}
+              name="query_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Query Type</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select query type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {getQueryTypeOptions().map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+           
+            <FormField
                   control={form.control}
                   name="query_value"
                   render={({ field }) => (
