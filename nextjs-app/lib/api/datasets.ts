@@ -123,6 +123,11 @@ export interface DatasetCreateParams {
   cache_policy?: object
 }
 
+export interface IcebergDataset extends Dataset {
+  iceberg_namespace?: string;
+  iceberg_table?: string;
+}
+
 /**
  * Get all datasets
  */
@@ -175,4 +180,51 @@ export async function updateDataset(id: number, dataset: Partial<Dataset>): Prom
  */
 export async function deleteDataset(id: number): Promise<void> {
   return del<void>(`/api/bi/datasets/${id}`)
+}
+
+/**
+ * Get Iceberg namespaces
+ */
+export async function getIcebergNamespaces(): Promise<string[]> {
+  const response = await get<{namespaces: string[]}>("/api/iceberg/namespaces")
+  return response.namespaces
+}
+
+/**
+ * Get Iceberg tables in a namespace
+ */
+export async function getIcebergTables(namespace: string): Promise<string[]> {
+  const response = await get<{tables: string[]}>(`/api/iceberg/namespaces/${namespace}/tables`)
+  return response.tables
+}
+
+/**
+ * Create Iceberg dataset
+ */
+export async function createIcebergDataset(dataset: {
+  name: string;
+  description?: string;
+  source_id: number;
+  namespace: string;
+  table_name: string;
+  bucket: string;
+  base_path?: string;
+  csv_path?: string;
+}): Promise<IcebergDataset> {
+  return post<IcebergDataset>("/api/iceberg/datasets", dataset)
+}
+
+/**
+ * Preview Iceberg table
+ */
+export async function previewIcebergTable(
+  namespace: string, 
+  table_name: string, 
+  limit: number = 100
+): Promise<any> {
+  return post<any>("/api/iceberg/preview", {
+    namespace,
+    table_name,
+    limit
+  })
 }

@@ -61,6 +61,8 @@ interface DatasetFormProps {
     schema?: any;
     column_types?: Record<string, string>;
     base_path?: string; // Add base_path to dataset type
+    iceberg_namespace?: string; // Add Iceberg fields
+    iceberg_table?: string;
   };
   onSuccess: () => void;
   onCancel: () => void;
@@ -135,12 +137,33 @@ const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValu
   return responseData;
 };
 
+const fetchIcebergNamespaces = async (): Promise<string[]> => {
+  const response = await fetch('/api/iceberg/namespaces');
+  if (!response.ok) {
+    throw new Error('Failed to fetch Iceberg namespaces');
+  }
+  const data = await response.json();
+  return data.namespaces;
+};
+
+const fetchIcebergTables = async (namespace: string): Promise<string[]> => {
+  const response = await fetch(`/api/iceberg/namespaces/${namespace}/tables`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch Iceberg tables');
+  }
+  const data = await response.json();
+  return data.tables;
+};
+
 const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [schemaInfo, setSchemaInfo] = useState<SchemaInfo | null>(null);
   const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
+  const [icebergNamespaces, setIcebergNamespaces] = useState<string[]>([]);
+  const [icebergTables, setIcebergTables] = useState<string[]>([]);
+  const [selectedNamespace, setSelectedNamespace] = useState<string>("");
 
   const { data: dataSources = [], isLoading: isLoadingDataSources } = useQuery({
     queryKey: ['data-sources'],
@@ -332,7 +355,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           ttl_minutes: 60,
           auto_refresh: false
         },
-       user_id: 1
+        user_id: 1
       };
 
       console.log('Submitting dataset payload:', payload);
@@ -407,7 +430,8 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
   const getQueryTypeOptions = () => {
     if (selectedSource?.type === 'minio') {
       return [
-        { value: 'bucket', label: 'Bucket' },
+        { value: 'bucket', label: 'Bucket (CSV Files)' },
+        { value: 'iceberg_table', label: 'Iceberg Table' },
         { value: 'custom', label: 'Custom Configuration' }
       ];
     } else {
@@ -422,6 +446,86 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
   const availableColumnTypes = [
     'string', 'integer', 'float', 'boolean', 'date', 'datetime', 'timestamp', 'text', 'json'
   ];
+
+  const renderIcebergTableConfig = () => {
+    if (selectedSource?.type !== 'minio' || form.watch("query_type") !== "iceberg_table") {
+      return null;
+    }
+
+    return (
+      <div className="space-y-4">
+        <div>
+          <Label>Iceberg Namespace</Label>
+          <Select 
+            value={selectedNamespace} 
+            onValueChange={(value) => {
+              setSelectedNamespace(value);
+              form.setValue("query_value", `${value}.`);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select namespace" />
+            </SelectTrigger>
+            <SelectContent>
+              {icebergNamespaces.map((namespace) => (
+                <SelectItem key={namespace} value={namespace}>
+                  {namespace}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Iceberg Table</Label>
+          <Select 
+            value={form.watch("query_value")?.split('.')[1] || ''} 
+            onValueChange={(value) => {
+              form.setValue("query_value", `${selectedNamespace}.${value}`);
+            }}
+            disabled={!selectedNamespace}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select table" />
+            </SelectTrigger>
+            <SelectContent>
+              {icebergTables.map((table) => (
+                <SelectItem key={table} value={table}>
+                  {table}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="text-sm text-muted-foreground">
+          Or create a new table from CSV files by specifying the table name and CSV path below.
+        </div>
+
+        <div>
+          <Label>New Table Name (Optional)</Label>
+          <Input 
+            placeholder="my_new_table" 
+            onChange={(e) => {
+              if (e.target.value && selectedNamespace) {
+                form.setValue("query_value", `${selectedNamespace}.${e.target.value}`);
+              }
+            }}
+          />
+        </div>
+
+        <div>
+          <Label>CSV Path (for new table creation)</Label>
+          <Input 
+            placeholder="data/sales/customers.csv" 
+            onChange={(e) => {
+              // Store CSV path for table creation
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Card className="max-w-4xl">
@@ -538,30 +642,35 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="query_value"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{getQueryLabel()}</FormLabel>
-                      <FormControl>
-                        {form.watch("query_type") === "custom" ? (
-                          <Textarea
-                            placeholder={getQueryPlaceholder()}
-                            className="font-mono min-h-[100px]"
-                            {...field}
-                          />
-                        ) : (
-                          <Input
-                            placeholder={getQueryPlaceholder()}
-                            {...field}
-                          />
-                        )}
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Conditional rendering based on query type */}
+                {form.watch("query_type") === "iceberg_table" ? (
+                  renderIcebergTableConfig()
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="query_value"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{getQueryLabel()}</FormLabel>
+                        <FormControl>
+                          {form.watch("query_type") === "custom" ? (
+                            <Textarea
+                              placeholder={getQueryPlaceholder()}
+                              className="font-mono min-h-[100px]"
+                              {...field}
+                            />
+                          ) : (
+                            <Input
+                              placeholder={getQueryPlaceholder()}
+                              {...field}
+                            />
+                          )}
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {/* Add base_path input for MinIO sources */}
                 {selectedSource?.type === 'minio' && (

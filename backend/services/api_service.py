@@ -9,6 +9,7 @@ import datetime
 from .postgres_service import PostgresService
 from .bi_service import BIService
 import time
+from .iceberg_bi_extension import IcebergBIExtension
 
 from fastapi import BackgroundTasks
 from fastapi.concurrency import run_in_threadpool
@@ -23,6 +24,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 keycloak_service = KeycloakService()
 postgres_service = PostgresService()
 bi_service = BIService()  # Add BIService instance
+iceberg_bi = IcebergBIExtension(bi_service)
 
 # Models for API key management
 class APIKeyCreate(BaseModel):
@@ -728,6 +730,92 @@ async def list_roles(current_user: dict = Depends(admin_only)):
         {"name": "analyst", "description": "Analyst role for data analysis"},
         {"name": "department_role", "description": "Department-specific access role"}
     ]
+
+# Iceberg-specific endpoints
+@router.get("/iceberg/namespaces")
+async def list_iceberg_namespaces(current_user: dict = Depends(get_current_user_or_api_key)):
+    """List all Iceberg namespaces"""
+    try:
+        namespaces = iceberg_bi.iceberg_service.list_namespaces()
+        return {"namespaces": namespaces}
+    except Exception as e:
+        logger.error(f"Error listing namespaces: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing namespaces: {str(e)}"
+        )
+
+@router.get("/iceberg/namespaces/{namespace}/tables")
+async def list_iceberg_tables(
+    namespace: str, 
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """List all tables in an Iceberg namespace"""
+    try:
+        tables = iceberg_bi.iceberg_service.list_tables(namespace)
+        return {"tables": tables}
+    except Exception as e:
+        logger.error(f"Error listing tables: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing tables: {str(e)}"
+        )
+
+@router.post("/iceberg/datasets")
+async def create_iceberg_dataset(
+    dataset_data: Dict[str, Any] = Body(...),
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """Create a new Iceberg dataset"""
+    try:
+        user_id = current_user.get("sub", "1")
+        
+        dataset = iceberg_bi.create_iceberg_dataset(
+            name=dataset_data["name"],
+            description=dataset_data.get("description", ""),
+            source_id=dataset_data["source_id"],
+            namespace=dataset_data["namespace"],
+            table_name=dataset_data["table_name"],
+            bucket=dataset_data["bucket"],
+            base_path=dataset_data.get("base_path"),
+            csv_path=dataset_data.get("csv_path"),
+            user_id=int(user_id) if str(user_id).isdigit() else 1
+        )
+        
+        return dataset
+        
+    except Exception as e:
+        logger.error(f"Error creating Iceberg dataset: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating Iceberg dataset: {str(e)}"
+        )
+
+@router.post("/iceberg/preview")
+async def preview_iceberg_table(
+    preview_data: Dict[str, Any] = Body(...),
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """Preview an Iceberg table"""
+    try:
+        namespace = preview_data["namespace"]
+        table_name = preview_data["table_name"]
+        limit = preview_data.get("limit", 100)
+        
+        preview = iceberg_bi.preview_iceberg_dataset(
+            namespace=namespace,
+            table_name=table_name,
+            limit=limit
+        )
+        
+        return preview
+        
+    except Exception as e:
+        logger.error(f"Error previewing Iceberg table: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error previewing Iceberg table: {str(e)}"
+        )
 
 # Version and health check
 @router.get("/version")
