@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { toast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Edit, Trash2 } from 'lucide-react';
 import DatasetForm from './DatasetForm';
+import { DataSourceIcon } from './DataSourceIcons';
 
 interface Dataset {
   id: number;
@@ -49,8 +51,8 @@ const Datasets: React.FC = () => {
     refetch();
   }, []);
 
-  const createDatasetMutation = useMutation(
-    async (newDataset: Omit<Dataset, 'id'>) => {
+  const createDatasetMutation = useMutation({
+    mutationFn: async (newDataset: Omit<Dataset, 'id' | 'created_at' | 'updated_at'>) => {
       const response = await fetch('/api/bi/datasets', {
         method: 'POST',
         headers: {
@@ -63,28 +65,26 @@ const Datasets: React.FC = () => {
       }
       return response.json();
     },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['datasets']);
-        toast({
-          title: "Dataset created",
-          description: "Successfully created dataset",
-        });
-        setIsCreateDialogOpen(false);
-        setEditingDataset(null);
-      },
-      onError: (error: any) => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: error.message || "Failed to create dataset",
-        });
-      },
-    }
-  );
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['datasets'] });
+      toast({
+        title: "Dataset created",
+        description: "Successfully created dataset",
+      });
+      setIsCreateDialogOpen(false);
+      setEditingDataset(null);
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to create dataset",
+      });
+    },
+  });
 
-  const updateDatasetMutation = useMutation(
-    async (updatedDataset: Dataset) => {
+  const updateDatasetMutation = useMutation({
+    mutationFn: async (updatedDataset: Dataset) => {
       const response = await fetch(`/api/bi/datasets/${updatedDataset.id}`, {
         method: 'PUT',
         headers: {
@@ -97,28 +97,26 @@ const Datasets: React.FC = () => {
       }
       return response.json();
     },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['datasets']);
-        toast({
-          title: "Dataset updated",
-          description: "Successfully updated dataset",
-        });
-        setIsCreateDialogOpen(false);
-        setEditingDataset(null);
-      },
-      onError: (error: any) => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: error.message || "Failed to update dataset",
-        });
-      },
-    }
-  );
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['datasets'] });
+      toast({
+        title: "Dataset updated",
+        description: "Successfully updated dataset",
+      });
+      setIsCreateDialogOpen(false);
+      setEditingDataset(null);
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to update dataset",
+      });
+    },
+  });
 
-  const deleteDatasetMutation = useMutation(
-    async (id: number) => {
+  const deleteDatasetMutation = useMutation({
+    mutationFn: async (id: number) => {
       const response = await fetch(`/api/bi/datasets/${id}`, {
         method: 'DELETE',
       });
@@ -127,23 +125,21 @@ const Datasets: React.FC = () => {
       }
       return response.json();
     },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(['datasets']);
-        toast({
-          title: "Dataset deleted",
-          description: "Successfully deleted dataset",
-        });
-      },
-      onError: (error: any) => {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: error.message || "Failed to delete dataset",
-        });
-      },
-    }
-  );
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['datasets'] });
+      toast({
+        title: "Dataset deleted",
+        description: "Successfully deleted dataset",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to delete dataset",
+      });
+    },
+  });
 
   const handleCreateDialogOpen = () => {
     setEditingDataset(null);
@@ -153,16 +149,12 @@ const Datasets: React.FC = () => {
   const handleEdit = (dataset: Dataset) => {
     // Ensure all required properties are present for the form
     const editDataset = {
-      id: dataset.id,
-      name: dataset.name,
-      description: dataset.description,
-      source_id: dataset.source_id,
-      query_type: dataset.query_type || 'table', // Default value if missing
-      query_value: dataset.query_value || '', // Default value if missing
-      schema: dataset.schema,
-      column_types: dataset.column_types
+      ...dataset,
+      query_type: dataset.query_type || 'table',
+      query_value: dataset.query_value || '',
     };
     setEditingDataset(editDataset);
+    setIsCreateDialogOpen(true);
   };
 
   const handleDelete = (id: number) => {
@@ -174,9 +166,14 @@ const Datasets: React.FC = () => {
     setEditingDataset(null);
   };
 
-  const handleSubmit = async (datasetData: Omit<Dataset, 'id'>) => {
+  const handleSubmit = async (datasetData: Omit<Dataset, 'id' | 'created_at' | 'updated_at'>) => {
     if (editingDataset) {
-      updateDatasetMutation.mutate({ ...editingDataset, ...datasetData });
+      updateDatasetMutation.mutate({ 
+        ...editingDataset, 
+        ...datasetData,
+        created_at: editingDataset.created_at,
+        updated_at: editingDataset.updated_at
+      });
     } else {
       createDatasetMutation.mutate(datasetData);
     }
