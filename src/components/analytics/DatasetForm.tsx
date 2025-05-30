@@ -72,13 +72,7 @@ const fetchDataSources = async (): Promise<DataSource[]> => {
 };
 
 const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValue: string): Promise<SchemaInfo> => {
-  console.log('Fetching schema preview with params:', {
-    source_id: sourceId,
-    query_type: queryType,
-    query_value: queryValue,
-  });
-
-  const response = await fetch('/api/bi/datasets/preview', {
+  const response = await fetch(`/api/bi/datasets/${sourceId}/preview`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -89,18 +83,12 @@ const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValu
       query_value: queryValue,
     }),
   });
-  
-  console.log('Preview response status:', response.status);
-  
+
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Preview request failed:', errorText);
-    throw new Error(`Failed to fetch schema preview: ${response.status} ${errorText}`);
+    throw new Error('Failed to fetch schema preview');
   }
-  
-  const data = await response.json();
-  console.log('Preview response data:', data);
-  return data;
+
+  return response.json();
 };
 
 const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel }) => {
@@ -109,7 +97,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
   const [schemaInfo, setSchemaInfo] = useState<SchemaInfo | null>(null);
   const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
-  
+
   const { data: dataSources = [], isLoading: isLoadingDataSources } = useQuery({
     queryKey: ['data-sources'],
     queryFn: fetchDataSources,
@@ -128,24 +116,24 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
 
   // Initialize form values when dataset or dataSources change
   useEffect(() => {
-      if (dataset) {
-        form.reset({
-          name: dataset.name,
-          description: dataset.description || "",
-          source_id: dataset.source_id.toString(),
-          query_type: dataset.query_type,
-          query_value: dataset.query_value || dataset.query_definition || "",
-        });
-  
-        // Initialize selected columns and types from existing dataset
-        if (dataset.schema?.columns) {
-      const columns = new Set<string>(dataset.schema.columns.map((col: any) => col.name));
-      setSelectedColumns(columns);
-      setSchemaInfo(dataset.schema);
-    }
-    if (dataset.column_types) {
-      setColumnTypes(dataset.column_types);
-    }
+    if (dataset) {
+      form.reset({
+        name: dataset.name,
+        description: dataset.description || "",
+        source_id: dataset.source_id.toString(),
+        query_type: dataset.query_type,
+        query_value: dataset.query_value || dataset?.query_definition || "",
+      });
+
+      // Initialize selected columns and types from existing dataset
+      if (dataset.schema?.columns) {
+        const columns = new Set<string>(dataset.schema.columns.map((col: any) => col.name));
+        setSelectedColumns(columns);
+        setSchemaInfo(dataset.schema);
+      }
+      if (dataset.column_types) {
+        setColumnTypes(dataset.column_types);
+      }
     }
   }, [dataset, form]);
 
@@ -155,8 +143,6 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
 
   const handlePreviewSchema = async () => {
     const values = form.getValues();
-    console.log('Form values for preview:', values);
-    
     if (!values.source_id || !values.query_type || !values.query_value) {
       toast({
         variant: "destructive",
@@ -173,31 +159,20 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         values.query_type,
         values.query_value
       );
-      
-      console.log('Received preview data:', preview);
+
       setSchemaInfo(preview);
-      
-      // Check if we actually got data
-      if (!preview.columns || preview.columns.length === 0) {
-        toast({
-          variant: "destructive",
-          title: "No Schema Found",
-          description: "The preview returned no columns. Please check your query and data source connection.",
-        });
-        return;
-      }
-      
+
       // Auto-select all columns initially
       const allColumns = new Set<string>(preview.columns.map(col => col.name));
       setSelectedColumns(allColumns);
-      
+
       // Initialize column types from detected schema
       const detectedTypes: Record<string, string> = {};
       preview.columns.forEach(col => {
         detectedTypes[col.name] = col.type;
       });
       setColumnTypes(detectedTypes);
-      
+
       toast({
         title: "Schema Preview Generated",
         description: `Found ${preview.columns.length} columns with ${preview.sample_data.length} sample rows`,
@@ -234,10 +209,10 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
   const onSubmit = async (values: DatasetFormValues) => {
     setIsSubmitting(true);
     try {
-      const apiUrl = dataset?.id 
-        ? `/api/bi/datasets/${dataset.id}` 
+      const apiUrl = dataset?.id
+        ? `/api/bi/datasets/${dataset.id}`
         : '/api/bi/datasets';
-      
+
       const method = dataset?.id ? 'PUT' : 'POST';
 
       // Prepare schema definition
@@ -250,14 +225,14 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
             nullable: col.nullable,
           }))
       } : undefined;
-      
+
       const payload = {
         name: values.name,
         description: values.description,
         source_id: parseInt(values.source_id),
         query_type: values.query_type,
         query_definition: values.query_value, // Use query_definition for backend
-        query_value: values.query_value, // Keep query_value for frontend compatibility
+        query_value: values.query_value,
         schema: schemaDefinition,
         column_types: Object.fromEntries(
           Array.from(selectedColumns).map(col => [col, columnTypes[col]])
@@ -267,9 +242,9 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           ttl_minutes: 60,
           auto_refresh: false
         },
-        user_id: 1 // Always include user_id for both create and update
+       user_id: 1 // TODO: Get actual user_id from auth context
       };
-      
+
       console.log('Submitting dataset payload:', payload);
 
       const response = await fetch(apiUrl, {
@@ -306,7 +281,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
 
   const getQueryPlaceholder = () => {
     const queryType = form.watch("query_type");
-    
+
     if (selectedSourceType === 'minio') {
       if (queryType === 'custom') {
         return '{"bucket": "my-bucket", "prefix": "data/", "file_type": "csv"}';
@@ -322,7 +297,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
 
   const getQueryLabel = () => {
     const queryType = form.watch("query_type");
-    
+
     if (selectedSourceType === 'minio') {
       return queryType === 'custom' ? 'MinIO Configuration (JSON)' : 'Bucket Name';
     } else {
@@ -377,89 +352,89 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           <TabsContent value="basic">
             <Form {...form}>
               <div className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Dataset name" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Dataset name" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Dataset description" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="Dataset description" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="source_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Data Source</FormLabel>
-                  <Select 
-                    onValueChange={field.onChange} 
-                    value={field.value}
-                    disabled={isLoadingDataSources}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a data source" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {dataSources.map((source) => (
-                        <SelectItem key={source.id} value={source.id.toString()}>
-                          {source.name} ({source.type})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="source_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Data Source</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isLoadingDataSources}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a data source" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {dataSources.map((source) => (
+                            <SelectItem key={source.id} value={source.id.toString()}>
+                              {source.name} ({source.type})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="query_type"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Query Type</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select query type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {getQueryTypeOptions().map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-           
-            <FormField
+                <FormField
+                  control={form.control}
+                  name="query_type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Query Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select query type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {getQueryTypeOptions().map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
                   control={form.control}
                   name="query_value"
                   render={({ field }) => (
@@ -467,15 +442,15 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                       <FormLabel>{getQueryLabel()}</FormLabel>
                       <FormControl>
                         {form.watch("query_type") === "custom" ? (
-                          <Textarea 
+                          <Textarea
                             placeholder={getQueryPlaceholder()}
-                            className="font-mono min-h-[100px]" 
-                            {...field} 
+                            className="font-mono min-h-[100px]"
+                            {...field}
                           />
                         ) : (
-                          <Input 
+                          <Input
                             placeholder={getQueryPlaceholder()}
-                            {...field} 
+                            {...field}
                           />
                         )}
                       </FormControl>
@@ -491,8 +466,8 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Dataset Preview</h3>
-                <Button 
-                  onClick={handlePreviewSchema} 
+                <Button
+                  onClick={handlePreviewSchema}
                   disabled={isPreviewLoading}
                   variant="outline"
                 >
@@ -538,8 +513,8 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                           <TableRow key={index}>
                             {schemaInfo.columns.map((col) => (
                               <TableCell key={col.name} className="max-w-48 truncate">
-                                {row[col.name] !== null && row[col.name] !== undefined 
-                                  ? String(row[col.name]) 
+                                {row[col.name] !== null && row[col.name] !== undefined
+                                  ? String(row[col.name])
                                   : <span className="text-muted-foreground italic">null</span>
                                 }
                               </TableCell>
@@ -571,7 +546,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                         checked={selectedColumns.has(col.name)}
                         onCheckedChange={() => handleColumnToggle(col.name)}
                       />
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{col.name}</div>
                         {col.sample_values && col.sample_values.length > 0 && (
