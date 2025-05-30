@@ -2,6 +2,7 @@
 import os
 import logging
 from io import BytesIO
+import io
 import json
 import csv
 from datetime import datetime
@@ -1551,15 +1552,7 @@ class BIService:
                 return {"success": False, "error": "No connection string found for data source"}
 
             # Build the query based on type
-            if query_type == 'table':
-                query = f"SELECT * FROM {query_value} LIMIT 20"
-                schema_query = f"""
-                SELECT column_name, data_type, is_nullable 
-                FROM information_schema.columns 
-                WHERE table_name = '{query_value}'
-                ORDER BY ordinal_position
-                """
-            elif query_type == 'view':
+            if query_type in ['table', 'view']:
                 query = f"SELECT * FROM {query_value} LIMIT 20"
                 schema_query = f"""
                 SELECT column_name, data_type, is_nullable 
@@ -1569,80 +1562,62 @@ class BIService:
                 """
             elif query_type == 'custom':
                 # query = f"SELECT * FROM ({query_value}) AS preview_query LIMIT 20"
-                query = f"{query_value} AS preview_query LIMIT 20"
+                query = f"{query_value} LIMIT 20"
                 # For custom queries, we'll infer schema from the result
                 schema_query = None
             else:
                 return {"success": False, "error": f"Unsupported query type: {query_type}"}
 
-            # Execute the data query
+            # Step 1: Run data query
             with self.postgres_service._get_connection() as conn:
                 with conn.cursor() as cur:
-                    data_result = cur.execute(
+                    cur.execute(
                         query, connection_string)
-                    
+
                     # Fetch column names
                     columns = [desc[0] for desc in cur.description]
-                    
+
                     # Fetch data rows
                     rows = cur.fetchall()
-                    
+
                     # Convert to list of dicts
-                    data = [dict(zip(columns, row)) for row in rows]
-                    
-                    # Return success
-                    return {"success": True, "data": data}
-                    
-                if not data.get("success"):
-                    return {"success": False, "error": data_result.get("error", "Failed to execute query")}
+                    sample_data = [dict(zip(columns, row)) for row in rows]
 
-                sample_data = data_result.get("data", [])
-
-            # Get schema information
+            # Step 2: Get schema info
             if schema_query:
                 with self.postgres_service._get_connection() as conn:
                     with conn.cursor() as cur:
-                        schema_result = cur.execute(
-                            schema_query, connection_string)
-                        
-                        rows = cur.fetchall()
+                        cur.execute(schema_query, connection_string)
+                        schema_rows = cur.fetchall()
+                        schema_columns = [desc[0] for desc in cur.description]
+                        schema_data = [dict(zip(schema_columns, row)) for row in schema_rows]
 
-                        data = [dict(zip(columns, row)) for row in rows]
+                        columns_info = []
+                        for row in schema_data:
+                            pg_type = row.get('data_type', 'text')
+                            col_type = self._map_postgres_type(pg_type)
 
-                        result = {"success": True, "data": data}
-                        
-                        if result.get("success"):
-                            schema_rows = result.get("data", [])
-                            columns = []
-                            for row in schema_rows:
-                                pg_type = row.get('data_type', 'text')
-                                col_type = self._map_postgres_type(pg_type)
-
-                                columns.append({
-                                    'name': row.get('column_name'),
-                                    'type': col_type,
-                                    'nullable': row.get('is_nullable') == 'YES',
-                                    'sample_values': []
-                                })
-                        else:
-                            # Fallback: infer from data
-                            columns = self._infer_columns_from_data(
-                                sample_data)
+                            columns_info.append({
+                                'name': row.get('column_name'),
+                                'type': col_type,
+                                'nullable': row.get('is_nullable') == 'YES',
+                                'sample_values': []
+                            })
             else:
                 # Infer schema from sample data for custom queries
-                columns = self._infer_columns_from_data(sample_data)
+                columns_info = self._infer_columns_from_data(sample_data)
 
-            # Add sample values to columns
-            if sample_data and columns:
-                for col in columns:
-                    col_name = col['name']
-                    sample_values = [
-                        row.get(col_name) for row in sample_data[:3] if row.get(col_name) is not None]
-                    col['sample_values'] = sample_values
+            # Step 3: Add sample values
+    
+            for col in columns_info:
+                col_name = col['name']
+                col['sample_values'] = [
+                    row.get(col_name) for row in sample_data[:3] if row.get(col_name) is not None
+                ]
 
             return {
                 "success": True,
-                "columns": columns,
+                "columns": columns_info,
                 "sample_data": sample_data[:10],
                 "total_rows": len(sample_data)
             }
