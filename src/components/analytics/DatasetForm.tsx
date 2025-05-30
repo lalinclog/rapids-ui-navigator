@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -113,16 +112,28 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
     },
   });
 
-  // Initialize selected columns and types from existing dataset
+  // Initialize form values when dataset or dataSources change
   useEffect(() => {
-    if (dataset?.schema?.columns) {
-      const columns = new Set<string>(dataset.schema.columns.map((col: any) => col.name));
-      setSelectedColumns(columns);
+    if (dataset) {
+      form.reset({
+        name: dataset.name,
+        description: dataset.description || "",
+        source_id: dataset.source_id.toString(),
+        query_type: dataset.query_type,
+        query_value: dataset.query_value,
+      });
+
+      // Initialize selected columns and types from existing dataset
+      if (dataset.schema?.columns) {
+        const columns = new Set<string>(dataset.schema.columns.map((col: any) => col.name));
+        setSelectedColumns(columns);
+        setSchemaInfo(dataset.schema);
+      }
+      if (dataset.column_types) {
+        setColumnTypes(dataset.column_types);
+      }
     }
-    if (dataset?.column_types) {
-      setColumnTypes(dataset.column_types);
-    }
-  }, [dataset]);
+  }, [dataset, form]);
 
   const selectedSourceType = dataSources.find(
     source => source.id.toString() === form.watch("source_id")
@@ -227,7 +238,9 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           enabled: true,
           ttl_minutes: 60,
           auto_refresh: false
-        }
+        },
+        // Include user_id for update operations
+        ...(dataset?.id && { user_id: 1 }) // TODO: Get actual user_id from auth context
       };
       
       console.log('Submitting dataset payload:', payload);
@@ -373,7 +386,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                       <FormLabel>Data Source</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        defaultValue={field.value}
+                        value={field.value}
                         disabled={isLoadingDataSources}
                       >
                         <FormControl>
@@ -400,7 +413,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Query Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select query type" />
