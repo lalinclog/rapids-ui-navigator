@@ -1,3 +1,4 @@
+
 import os
 import logging
 from io import BytesIO
@@ -122,13 +123,14 @@ class BIService:
                 with conn.cursor() as cursor:
                     query = """
                     INSERT INTO data_sources
-                    (name, type, connection_string, config, is_active, created_by)
+                    (name, type, description, connection_string, config, is_active, created_by)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """
                     cursor.execute(query, (
                         data.get("name"),
                         data.get("type"),
+                        data.get("description"),
                         data.get("connection_string"),
                         json.dumps(data.get("config", {})),
                         data.get("is_active", True),
@@ -143,41 +145,21 @@ class BIService:
                 f"Error creating data source: {str(e)}", exc_info=True)
             return None
 
-    def update_data_source(self, source_id: int, data: Dict[str, Any]) -> bool:
+    def update_data_source(self, source_id: int, payload: Dict[str, Any]) -> bool:
         """Update an existing data source"""
-        logger.info(f"Updating data source {source_id}")
+        name = payload.get("name")
+        type_ = payload.get("type")
+        description = payload.get("description")
+        connection_string = payload.get("connection_string")
+        config = json.dumps(payload.get("config"))
+
+        logger.info(f"Updating data source {source_id} with form {payload} and DESC {description}")
         try:
             with self.postgres_service._get_connection() as conn:
                 with conn.cursor() as cursor:
-                    set_parts = []
-                    params = []
 
-                    if "name" in data:
-                        set_parts.append("name = %s")
-                        params.append(data["name"])
-
-                    if "type" in data:
-                        set_parts.append("type = %s")
-                        params.append(data["type"])
-
-                    if "connection_string" in data:
-                        set_parts.append("connection_string = %s")
-                        params.append(data["connection_string"])
-
-                    if "config" in data:
-                        set_parts.append("config = %s")
-                        params.append(json.dumps(data["config"]))
-
-                    if "is_active" in data:
-                        set_parts.append("is_active = %s")
-                        params.append(data["is_active"])
-
-                    if not set_parts:
-                        return False
-
-                    params.append(source_id)
-                    query = f"UPDATE data_sources SET {', '.join(set_parts)}, updated_at = NOW() WHERE id = %s"
-                    cursor.execute(query, params)
+                    query = f"UPDATE data_sources SET name = %s, type = %s, description = %s, connection_string = %s, config = %s WHERE id = %s"
+                    cursor.execute(query, [name, type_, description, connection_string, config, source_id])
 
                     affected = cursor.rowcount > 0
                     logger.info(
@@ -344,8 +326,10 @@ class BIService:
                             f"Could not get sample data for dataset {dataset_id}: {preview_error}")
 
                     datasets.append({
-                        "id": f"ds-{dataset_id}",
+                        "id": f"{dataset_id}",
                         "name": row["name"],
+                        "source_id": row["source_id"],
+                        "query_value": row["query_value"],
                         "type": row["source_type"],
                         "description": row["description"],
                         "lastUpdated": parser.parse(row["source_last_updated"]).isoformat() if row["source_last_updated"] else None,
@@ -423,7 +407,7 @@ class BIService:
 
                 # Build base dataset structure
                 dataset = {
-                    "id": f"ds-{row['id']}",
+                    "id": f"{row['id']}",
                     "name": row["name"],
                     "type": row["source_type"],
                     "description": row["description"],
@@ -870,27 +854,6 @@ class BIService:
             return [{"error": "Data fetch failed"}]
 
     def create_dataset(self, dataset_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
-        """
-        Create a new dataset and save its fields.
-
-        Expected dataset dict structure:
-        {
-            "name": "Sales Data (Demo)",
-            "description": "Monthly sales data by product category",
-            "source_id": 1,
-            "query_definition": "SELECT * FROM demo_sales",
-            "cache_policy": "none",
-            "created_by": "admin",
-            "schema": {
-                "fields": [
-                    { "name": "month", "type": "string", "description": "Month of sale" },
-                    { "name": "category", "type": "string", "description": "Product category" },
-                    { "name": "revenue", "type": "number", "description": "Revenue in USD" },
-                    ...
-                ]
-            }
-        }
-        """
         logger.info(f"Creating new dataset: {dataset_data.get('name')}")
         try:
             with self.postgres_service._get_connection() as conn:
@@ -1163,7 +1126,7 @@ class BIService:
             elif dataset["query_type"] == "custom":
                 base_query = dataset["query_value"]
             else:
-                return {"success": False, "error": f"Unknown query type: {dataset['query_type']}"}  # Added missing else clause
+                return {"success": False, "error": f"Unknown query type: {dataset['query_type']}"}
 
             # Apply filters if provided
             if filters:
