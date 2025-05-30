@@ -64,31 +64,69 @@ interface DatasetFormProps {
 }
 
 const fetchDataSources = async (): Promise<DataSource[]> => {
+  console.log('🔍 TRACE: fetchDataSources - Starting request to /api/bi/data-sources');
+  
   const response = await fetch('/api/bi/data-sources');
+  
+  console.log('🔍 TRACE: fetchDataSources - Response status:', response.status);
+  console.log('🔍 TRACE: fetchDataSources - Response headers:', Object.fromEntries(response.headers.entries()));
+  
   if (!response.ok) {
+    console.error('🔍 TRACE: fetchDataSources - Request failed:', response.status, response.statusText);
     throw new Error('Failed to fetch data sources');
   }
-  return response.json();
+  
+  const data = await response.json();
+  console.log('🔍 TRACE: fetchDataSources - Response data:', data);
+  
+  return data;
 };
 
 const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValue: string): Promise<SchemaInfo> => {
-  const response = await fetch(`/api/bi/datasets/${sourceId}/preview`, {
+  const endpoint = `/api/bi/datasets/${sourceId}/preview`;
+  const payload = {
+    source_id: sourceId,
+    query_type: queryType,
+    query_value: queryValue,
+  };
+  
+  console.log('🔍 TRACE: fetchSchemaPreview - Starting request');
+  console.log('🔍 TRACE: fetchSchemaPreview - Endpoint:', endpoint);
+  console.log('🔍 TRACE: fetchSchemaPreview - Payload:', JSON.stringify(payload, null, 2));
+  
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      source_id: sourceId,
-      query_type: queryType,
-      query_value: queryValue,
-    }),
+    body: JSON.stringify(payload),
   });
 
+  console.log('🔍 TRACE: fetchSchemaPreview - Response status:', response.status);
+  console.log('🔍 TRACE: fetchSchemaPreview - Response headers:', Object.fromEntries(response.headers.entries()));
+  console.log('🔍 TRACE: fetchSchemaPreview - Response ok:', response.ok);
+
+  // Get response text first to see raw response
+  const responseText = await response.text();
+  console.log('🔍 TRACE: fetchSchemaPreview - Raw response text:', responseText);
+
   if (!response.ok) {
+    console.error('🔍 TRACE: fetchSchemaPreview - Request failed:', response.status, response.statusText);
+    console.error('🔍 TRACE: fetchSchemaPreview - Error response:', responseText);
     throw new Error('Failed to fetch schema preview');
   }
 
-  return response.json();
+  // Parse the JSON from the text
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+    console.log('🔍 TRACE: fetchSchemaPreview - Parsed response data:', JSON.stringify(responseData, null, 2));
+  } catch (parseError) {
+    console.error('🔍 TRACE: fetchSchemaPreview - JSON parse error:', parseError);
+    throw new Error('Invalid JSON response from server');
+  }
+
+  return responseData;
 };
 
 const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel }) => {
@@ -143,7 +181,12 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
 
   const handlePreviewSchema = async () => {
     const values = form.getValues();
+    
+    console.log('🔍 TRACE: handlePreviewSchema - Starting preview generation');
+    console.log('🔍 TRACE: handlePreviewSchema - Form values:', values);
+    
     if (!values.source_id || !values.query_type || !values.query_value) {
+      console.error('🔍 TRACE: handlePreviewSchema - Missing required values');
       toast({
         variant: "destructive",
         title: "Missing Information",
@@ -153,18 +196,31 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
     }
 
     setIsPreviewLoading(true);
+    console.log('🔍 TRACE: handlePreviewSchema - Set preview loading to true');
+    
     try {
+      console.log('🔍 TRACE: handlePreviewSchema - Calling fetchSchemaPreview with:', {
+        sourceId: parseInt(values.source_id),
+        queryType: values.query_type,
+        queryValue: values.query_value
+      });
+      
       const preview = await fetchSchemaPreview(
         parseInt(values.source_id),
         values.query_type,
         values.query_value
       );
 
+      console.log('🔍 TRACE: handlePreviewSchema - Received preview response:', preview);
+      console.log('🔍 TRACE: handlePreviewSchema - Preview columns length:', preview.columns?.length);
+      console.log('🔍 TRACE: handlePreviewSchema - Preview sample_data length:', preview.sample_data?.length);
+
       setSchemaInfo(preview);
 
       // Auto-select all columns initially
       const allColumns = new Set<string>(preview.columns.map(col => col.name));
       setSelectedColumns(allColumns);
+      console.log('🔍 TRACE: handlePreviewSchema - Selected columns:', Array.from(allColumns));
 
       // Initialize column types from detected schema
       const detectedTypes: Record<string, string> = {};
@@ -172,13 +228,14 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         detectedTypes[col.name] = col.type;
       });
       setColumnTypes(detectedTypes);
+      console.log('🔍 TRACE: handlePreviewSchema - Detected column types:', detectedTypes);
 
       toast({
         title: "Schema Preview Generated",
         description: `Found ${preview.columns.length} columns with ${preview.sample_data.length} sample rows`,
       });
     } catch (error) {
-      console.error('Error previewing schema:', error);
+      console.error('🔍 TRACE: handlePreviewSchema - Error occurred:', error);
       toast({
         variant: "destructive",
         title: "Preview Failed",
@@ -186,6 +243,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       });
     } finally {
       setIsPreviewLoading(false);
+      console.log('🔍 TRACE: handlePreviewSchema - Set preview loading to false');
     }
   };
 
