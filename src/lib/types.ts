@@ -41,7 +41,7 @@ export interface Dataset {
   source_id: number
   source_name?: string
   source_type?: string
-  query_type: string
+  query_type: "table" | "view" | "custom" | "bucket"
   query_definition: string
   cache_policy?: string | object
   last_refreshed?: string

@@ -17,7 +17,7 @@ interface Dataset {
   description?: string;
   source_id: number;
   query_type: string;
-  query_value: string;
+  query_definition: string;
   schema?: any;
   column_types?: Record<string, string>;
   created_at: string;
@@ -151,7 +151,7 @@ const Datasets: React.FC = () => {
     const editDataset = {
       ...dataset,
       query_type: dataset.query_type || 'table',
-      query_value: dataset.query_value || '',
+      query_definition: dataset.query_definition || '',
     };
     setEditingDataset(editDataset);
     setIsCreateDialogOpen(true);
