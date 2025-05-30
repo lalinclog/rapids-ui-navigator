@@ -72,6 +72,12 @@ const fetchDataSources = async (): Promise<DataSource[]> => {
 };
 
 const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValue: string): Promise<SchemaInfo> => {
+  console.log('Fetching schema preview with params:', {
+    source_id: sourceId,
+    query_type: queryType,
+    query_value: queryValue,
+  });
+
   const response = await fetch('/api/bi/datasets/preview', {
     method: 'POST',
     headers: {
@@ -84,10 +90,17 @@ const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValu
     }),
   });
   
+  console.log('Preview response status:', response.status);
+  
   if (!response.ok) {
-    throw new Error('Failed to fetch schema preview');
+    const errorText = await response.text();
+    console.error('Preview request failed:', errorText);
+    throw new Error(`Failed to fetch schema preview: ${response.status} ${errorText}`);
   }
-  return response.json();
+  
+  const data = await response.json();
+  console.log('Preview response data:', data);
+  return data;
 };
 
 const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel }) => {
@@ -142,6 +155,8 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
 
   const handlePreviewSchema = async () => {
     const values = form.getValues();
+    console.log('Form values for preview:', values);
+    
     if (!values.source_id || !values.query_type || !values.query_value) {
       toast({
         variant: "destructive",
@@ -159,7 +174,18 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         values.query_value
       );
       
+      console.log('Received preview data:', preview);
       setSchemaInfo(preview);
+      
+      // Check if we actually got data
+      if (!preview.columns || preview.columns.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "No Schema Found",
+          description: "The preview returned no columns. Please check your query and data source connection.",
+        });
+        return;
+      }
       
       // Auto-select all columns initially
       const allColumns = new Set<string>(preview.columns.map(col => col.name));
