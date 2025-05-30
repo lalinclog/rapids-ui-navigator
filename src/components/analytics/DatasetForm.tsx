@@ -32,6 +32,7 @@ interface DataSource {
   name: string;
   type: string;
   description?: string;
+  config?: any; // MinIO config will be stored here
 }
 
 interface ColumnInfo {
@@ -55,7 +56,7 @@ interface DatasetFormProps {
     source_id: number;
     query_type: string;
     query_value?: string;
-    query_definition?: string; // Add this for backward compatibility
+    query_definition?: string;
     schema?: any;
     column_types?: Record<string, string>;
   };
@@ -69,7 +70,6 @@ const fetchDataSources = async (): Promise<DataSource[]> => {
   const response = await fetch('/api/bi/data-sources');
   
   console.log('🔍 TRACE: fetchDataSources - Response status:', response.status);
-  console.log('🔍 TRACE: fetchDataSources - Response headers:', Object.fromEntries(response.headers.entries()));
   
   if (!response.ok) {
     console.error('🔍 TRACE: fetchDataSources - Request failed:', response.status, response.statusText);
@@ -103,20 +103,23 @@ const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValu
   });
 
   console.log('🔍 TRACE: fetchSchemaPreview - Response status:', response.status);
-  console.log('🔍 TRACE: fetchSchemaPreview - Response headers:', Object.fromEntries(response.headers.entries()));
   console.log('🔍 TRACE: fetchSchemaPreview - Response ok:', response.ok);
 
-  // Get response text first to see raw response
   const responseText = await response.text();
   console.log('🔍 TRACE: fetchSchemaPreview - Raw response text:', responseText);
 
   if (!response.ok) {
     console.error('🔍 TRACE: fetchSchemaPreview - Request failed:', response.status, response.statusText);
     console.error('🔍 TRACE: fetchSchemaPreview - Error response:', responseText);
+    
+    // Handle 500 errors from numpy serialization issues
+    if (response.status === 500 && responseText.includes('numpy')) {
+      throw new Error('Backend serialization error. Please try again or contact support.');
+    }
+    
     throw new Error('Failed to fetch schema preview');
   }
 
-  // Parse the JSON from the text
   let responseData;
   try {
     responseData = JSON.parse(responseText);
@@ -152,6 +155,26 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
     },
   });
 
+  // Get selected data source
+  const selectedSource = dataSources.find(
+    source => source.id.toString() === form.watch("source_id")
+  );
+
+  // Auto-populate MinIO configuration from data source config
+  useEffect(() => {
+    if (selectedSource?.type === 'minio' && selectedSource.config && !dataset) {
+      // Only auto-populate for new datasets, not when editing existing ones
+      const config = selectedSource.config;
+      
+      if (config.bucket) {
+        form.setValue("query_value", config.bucket);
+        form.setValue("query_type", "bucket");
+      }
+      
+      console.log('🔍 TRACE: Auto-populated MinIO config from data source:', config);
+    }
+  }, [selectedSource, form, dataset]);
+
   // Initialize form values when dataset or dataSources change
   useEffect(() => {
     if (dataset) {
@@ -174,10 +197,6 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       }
     }
   }, [dataset, form]);
-
-  const selectedSourceType = dataSources.find(
-    source => source.id.toString() === form.watch("source_id")
-  )?.type;
 
   const handlePreviewSchema = async () => {
     const values = form.getValues();
@@ -289,7 +308,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         description: values.description,
         source_id: parseInt(values.source_id),
         query_type: values.query_type,
-        query_definition: values.query_value, // Use query_definition for backend
+        query_definition: values.query_value,
         query_value: values.query_value,
         schema: schemaDefinition,
         column_types: Object.fromEntries(
@@ -300,7 +319,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           ttl_minutes: 60,
           auto_refresh: false
         },
-       user_id: 1 // TODO: Get actual user_id from auth context
+       user_id: 1
       };
 
       console.log('Submitting dataset payload:', payload);
@@ -340,11 +359,20 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
   const getQueryPlaceholder = () => {
     const queryType = form.watch("query_type");
 
-    if (selectedSourceType === 'minio') {
+    if (selectedSource?.type === 'minio') {
       if (queryType === 'custom') {
+        // Show example with actual config if available
+        const config = selectedSource.config;
+        if (config) {
+          return JSON.stringify({
+            bucket: config.bucket || "my-bucket",
+            prefix: config.prefix || "data/",
+            file_type: config.file_type || "csv"
+          }, null, 2);
+        }
         return '{"bucket": "my-bucket", "prefix": "data/", "file_type": "csv"}';
       }
-      return 'bucket-name';
+      return selectedSource.config?.bucket || 'bucket-name';
     } else {
       if (queryType === 'custom') {
         return 'SELECT * FROM table_name WHERE condition = value';
@@ -356,7 +384,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
   const getQueryLabel = () => {
     const queryType = form.watch("query_type");
 
-    if (selectedSourceType === 'minio') {
+    if (selectedSource?.type === 'minio') {
       return queryType === 'custom' ? 'MinIO Configuration (JSON)' : 'Bucket Name';
     } else {
       return queryType === 'custom' ? 'SQL Query' : 'Table/View Name';
@@ -364,7 +392,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
   };
 
   const getQueryTypeOptions = () => {
-    if (selectedSourceType === 'minio') {
+    if (selectedSource?.type === 'minio') {
       return [
         { value: 'bucket', label: 'Bucket' },
         { value: 'custom', label: 'Custom Configuration' }
@@ -458,6 +486,11 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                           {dataSources.map((source) => (
                             <SelectItem key={source.id} value={source.id.toString()}>
                               {source.name} ({source.type})
+                              {source.config && source.type === 'minio' && (
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  [{source.config.bucket}]
+                                </span>
+                              )}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -513,6 +546,11 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                         )}
                       </FormControl>
                       <FormMessage />
+                      {selectedSource?.type === 'minio' && selectedSource.config && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          <strong>Data Source Config:</strong> {JSON.stringify(selectedSource.config)}
+                        </div>
+                      )}
                     </FormItem>
                   )}
                 />
