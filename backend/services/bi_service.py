@@ -938,7 +938,7 @@ class BIService:
             logger.error(f"Error creating dataset: {str(e)}", exc_info=True)
             return None
 
-    def update_dataset(self, dataset_id: int, dataset_data: Dict[str, Any],  user_id: str) -> Dict[str, Any]:
+    def update_dataset(self, dataset_id: int, dataset_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing dataset and related information"""
         logger.info(f"Updating dataset {dataset_id}")
         try:
@@ -988,6 +988,7 @@ class BIService:
 
                     params.append(dataset_id)
                     query = f"UPDATE datasets SET {', '.join(set_parts)}, updated_at = NOW() WHERE id = %s"
+                    logger.info(f"UPDATE datasets with {query}")
                     cursor.execute(query, params)
 
                     # If source or query changed, regenerate schema
