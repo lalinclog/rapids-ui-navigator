@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -592,34 +591,6 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       </CardContent>
     </Card>
   );
-};
-
-// Missing function implementations from the original file
-const fetchDataSources = async (): Promise<DataSource[]> => {
-  const response = await fetch('/api/bi/data-sources');
-  if (!response.ok) {
-    throw new Error('Failed to fetch data sources');
-  }
-  return response.json();
-};
-
-const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValue: string): Promise<SchemaInfo> => {
-  const response = await fetch('/api/bi/datasets/preview', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      source_id: sourceId,
-      query_type: queryType,
-      query_value: queryValue,
-    }),
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch schema preview');
-  }
-  return response.json();
 };
 
 export default DatasetForm;
