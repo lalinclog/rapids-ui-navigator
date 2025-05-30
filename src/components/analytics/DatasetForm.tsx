@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -55,6 +56,7 @@ interface DatasetFormProps {
     source_id: number;
     query_type: string;
     query_value?: string;
+    query_definition?: string; // Add this for backward compatibility
     schema?: any;
     column_types?: Record<string, string>;
   };
@@ -108,7 +110,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       description: dataset?.description || "",
       source_id: dataset?.source_id ? dataset.source_id.toString() : "",
       query_type: dataset?.query_type || "table",
-      query_value: dataset?.query_value || "",
+      query_value: dataset?.query_value || dataset?.query_definition || "",
     },
   });
 
@@ -120,7 +122,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           description: dataset.description || "",
           source_id: dataset.source_id.toString(),
           query_type: dataset.query_type,
-          query_value: dataset.query_value,
+          query_value: dataset.query_value || dataset.query_definition || "",
         });
   
         // Initialize selected columns and types from existing dataset
@@ -229,7 +231,8 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         description: values.description,
         source_id: parseInt(values.source_id),
         query_type: values.query_type,
-        query_value: values.query_value,
+        query_definition: values.query_value, // Use query_definition for backend
+        query_value: values.query_value, // Keep query_value for frontend compatibility
         schema: schemaDefinition,
         column_types: Object.fromEntries(
           Array.from(selectedColumns).map(col => [col, columnTypes[col]])
@@ -239,7 +242,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
           ttl_minutes: 60,
           auto_refresh: false
         },
-        ...(dataset?.id && { user_id: 1 }) // TODO: Get actual user_id from auth context
+        user_id: 1 // Always include user_id for both create and update
       };
       
       console.log('Submitting dataset payload:', payload);
@@ -589,6 +592,34 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       </CardContent>
     </Card>
   );
+};
+
+// Missing function implementations from the original file
+const fetchDataSources = async (): Promise<DataSource[]> => {
+  const response = await fetch('/api/bi/data-sources');
+  if (!response.ok) {
+    throw new Error('Failed to fetch data sources');
+  }
+  return response.json();
+};
+
+const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValue: string): Promise<SchemaInfo> => {
+  const response = await fetch('/api/bi/datasets/preview', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      source_id: sourceId,
+      query_type: queryType,
+      query_value: queryValue,
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch schema preview');
+  }
+  return response.json();
 };
 
 export default DatasetForm;

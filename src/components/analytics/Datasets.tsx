@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,12 +60,18 @@ const Datasets: React.FC = () => {
 
   const createDatasetMutation = useMutation({
     mutationFn: async (newDataset: Omit<Dataset, 'id' | 'created_at' | 'updated_at'>) => {
+      const payload = {
+        ...newDataset,
+        user_id: 1, // Always include user_id
+        query_definition: newDataset.query_value || newDataset.query_definition, // Ensure backend gets query_definition
+      };
+      
       const response = await fetch('/api/bi/datasets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(newDataset),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         throw new Error('Failed to create dataset');
@@ -93,12 +98,18 @@ const Datasets: React.FC = () => {
 
   const updateDatasetMutation = useMutation({
     mutationFn: async (updatedDataset: Dataset) => {
+      const payload = {
+        ...updatedDataset,
+        user_id: 1, // Always include user_id
+        query_definition: updatedDataset.query_value || updatedDataset.query_definition, // Ensure backend gets query_definition
+      };
+      
       const response = await fetch(`/api/bi/datasets/${updatedDataset.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(updatedDataset),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         throw new Error('Failed to update dataset');
@@ -176,10 +187,12 @@ const Datasets: React.FC = () => {
   };
 
   const handleSubmit = async (datasetData: Omit<Dataset, 'id' | 'created_at' | 'updated_at'>) => {
-    // Ensure query_value is always present
+    // Ensure query_value is always present and map to query_definition for backend
     const datasetPayload = {
       ...datasetData,
-      query_value: datasetData.query_value || datasetData.query_definition || ''
+      query_value: datasetData.query_value || datasetData.query_definition || '',
+      query_definition: datasetData.query_value || datasetData.query_definition || '', // Backend expects query_definition
+      user_id: 1, // Always include user_id
     };
 
     if (editingDataset) {
