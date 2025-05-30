@@ -116,7 +116,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
   // Initialize selected columns and types from existing dataset
   useEffect(() => {
     if (dataset?.schema?.columns) {
-      const columns = new Set(dataset.schema.columns.map((col: any) => col.name));
+      const columns = new Set<string>(dataset.schema.columns.map((col: any) => col.name));
       setSelectedColumns(columns);
     }
     if (dataset?.column_types) {
@@ -150,7 +150,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       setSchemaInfo(preview);
       
       // Auto-select all columns initially
-      const allColumns = new Set(preview.columns.map(col => col.name));
+      const allColumns = new Set<string>(preview.columns.map(col => col.name));
       setSelectedColumns(allColumns);
       
       // Initialize column types from detected schema

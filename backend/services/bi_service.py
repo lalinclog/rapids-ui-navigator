@@ -1,11 +1,10 @@
-
 import os
 import logging
 from io import BytesIO
 import json
 import csv
 from datetime import datetime
-from typing import Dict, Any, List, Optional,  Union
+from typing import Dict, Any, List, Optional,  Union, Tuple
 from psycopg2.extras import Json
 import traceback
 import re
@@ -1164,7 +1163,7 @@ class BIService:
             elif dataset["query_type"] == "custom":
                 base_query = dataset["query_value"]
             else:
-                return {"success": False, "error": f"Unknown query type: {dataset['query_type']}"}
+                return {"success": False, "error": f"Unknown query type: {dataset['query_type']}"}  # Added missing else clause
 
             # Apply filters if provided
             if filters:
@@ -1425,3 +1424,294 @@ class BIService:
         except Exception as e:
             print(f"Error updating dashboard {dashboard_id}:", e)
             return False
+
+    def preview_dataset_schema(self, source_id: int, query_type: str, query_value: str) -> Dict[str, Any]:
+        """Preview dataset schema and sample data based on data source type"""
+        try:
+            logger.info(f"Previewing schema for source_id={source_id}, query_type={query_type}, query_value={query_value}")
+            
+            # Get data source details
+            data_source = self.get_data_source(source_id)
+            if not data_source:
+                return {"success": False, "error": f"Data source with ID {source_id} not found"}
+            
+            source_type = data_source.get('type', '').lower()
+            logger.info(f"Data source type: {source_type}")
+            
+            if source_type == 'minio':
+                return self._preview_minio_schema(data_source, query_type, query_value)
+            elif source_type in ['postgresql', 'postgres']:
+                return self._preview_postgres_schema(data_source, query_type, query_value)
+            else:
+                return {"success": False, "error": f"Unsupported data source type: {source_type}"}
+                
+        except Exception as e:
+            logger.error(f"Error previewing dataset schema: {str(e)}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    def _preview_minio_schema(self, data_source: Dict[str, Any], query_type: str, query_value: str) -> Dict[str, Any]:
+        """Preview schema for MinIO data source"""
+        try:
+            config = data_source.get('config', {})
+            
+            if query_type == 'bucket':
+                # Simple bucket listing
+                bucket_name = query_value
+                objects = list(self.minio_service.client.list_objects(bucket_name, recursive=True))
+                
+                if not objects:
+                    return {"success": False, "error": f"No objects found in bucket {bucket_name}"}
+                
+                # Try to analyze the first file we can read
+                for obj in objects[:5]:  # Check first 5 objects
+                    if obj.object_name.endswith(('.csv', '.parquet', '.json')):
+                        try:
+                            file_type = obj.object_name.split('.')[-1].lower()
+                            return self._analyze_minio_file(bucket_name, obj.object_name, file_type)
+                        except Exception as e:
+                            logger.warning(f"Failed to analyze {obj.object_name}: {e}")
+                            continue
+                
+                return {"success": False, "error": "No readable files found in bucket"}
+                
+            elif query_type == 'custom':
+                # Parse JSON configuration
+                try:
+                    config_data = json.loads(query_value)
+                    bucket_name = config_data.get('bucket')
+                    prefix = config_data.get('prefix', '')
+                    file_type = config_data.get('file_type', 'csv')
+                    
+                    if not bucket_name:
+                        return {"success": False, "error": "Bucket name is required in configuration"}
+                    
+                    # List objects with prefix
+                    objects = list(self.minio_service.client.list_objects(bucket_name, prefix=prefix, recursive=True))
+                    
+                    if not objects:
+                        return {"success": False, "error": f"No objects found with prefix {prefix}"}
+                    
+                    # Analyze the first matching file
+                    for obj in objects:
+                        if obj.object_name.endswith(f'.{file_type}'):
+                            return self._analyze_minio_file(bucket_name, obj.object_name, file_type)
+                    
+                    return {"success": False, "error": f"No {file_type} files found with prefix {prefix}"}
+                    
+                except json.JSONDecodeError:
+                    return {"success": False, "error": "Invalid JSON configuration"}
+            
+            return {"success": False, "error": f"Unsupported query type: {query_type}"}
+            
+        except Exception as e:
+            logger.error(f"Error previewing MinIO schema: {str(e)}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    def _analyze_minio_file(self, bucket_name: str, object_name: str, file_type: str) -> Dict[str, Any]:
+        """Analyze a specific MinIO file"""
+        try:
+            response = self.minio_service.client.get_object(bucket_name, object_name)
+            data = response.read()
+            
+            if file_type == 'csv':
+                df = pd.read_csv(io.BytesIO(data), nrows=100)
+            elif file_type == 'json':
+                df = pd.read_json(io.BytesIO(data))
+                df = df.head(100)
+            elif file_type == 'parquet':
+                df = pd.read_parquet(io.BytesIO(data))
+                df = df.head(100)
+            else:
+                return {"success": False, "error": f"Unsupported file type: {file_type}"}
+            
+            # Convert DataFrame to schema info
+            columns = []
+            for col in df.columns:
+                dtype = str(df[col].dtype)
+                
+                # Map pandas dtypes to our schema types
+                if 'int' in dtype:
+                    col_type = 'integer'
+                elif 'float' in dtype:
+                    col_type = 'float'
+                elif 'bool' in dtype:
+                    col_type = 'boolean'
+                elif 'datetime' in dtype:
+                    col_type = 'datetime'
+                else:
+                    col_type = 'string'
+                
+                columns.append({
+                    'name': col,
+                    'type': col_type,
+                    'nullable': df[col].isnull().any(),
+                    'sample_values': df[col].dropna().head(3).tolist()
+                })
+            
+            sample_data = df.head(10).fillna('').to_dict(orient='records')
+            
+            return {
+                "success": True,
+                "columns": columns,
+                "sample_data": sample_data,
+                "total_rows": len(df)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing MinIO file {object_name}: {str(e)}", exc_info=True)
+            return {"success": False, "error": f"Failed to analyze file: {str(e)}"}
+
+    def _preview_postgres_schema(self, data_source: Dict[str, Any], query_type: str, query_value: str) -> Dict[str, Any]:
+        """Preview schema for PostgreSQL data source"""
+        try:
+            connection_string = data_source.get('connection_string')
+            if not connection_string:
+                return {"success": False, "error": "No connection string found for data source"}
+            
+            # Build the query based on type
+            if query_type == 'table':
+                query = f"SELECT * FROM {query_value} LIMIT 100"
+                schema_query = f"""
+                SELECT column_name, data_type, is_nullable 
+                FROM information_schema.columns 
+                WHERE table_name = '{query_value}'
+                ORDER BY ordinal_position
+                """
+            elif query_type == 'view':
+                query = f"SELECT * FROM {query_value} LIMIT 100"
+                schema_query = f"""
+                SELECT column_name, data_type, is_nullable 
+                FROM information_schema.columns 
+                WHERE table_name = '{query_value}'
+                ORDER BY ordinal_position
+                """
+            elif query_type == 'custom':
+                query = f"SELECT * FROM ({query_value}) AS preview_query LIMIT 100"
+                # For custom queries, we'll infer schema from the result
+                schema_query = None
+            else:
+                return {"success": False, "error": f"Unsupported query type: {query_type}"}
+            
+            # Execute the data query
+            data_result = self.postgres_service.execute_query(query, connection_string)
+            if not data_result.get("success"):
+                return {"success": False, "error": data_result.get("error", "Failed to execute query")}
+            
+            sample_data = data_result.get("data", [])
+            
+            # Get schema information
+            if schema_query:
+                schema_result = self.postgres_service.execute_query(schema_query, connection_string)
+                if schema_result.get("success"):
+                    schema_rows = schema_result.get("data", [])
+                    columns = []
+                    for row in schema_rows:
+                        pg_type = row.get('data_type', 'text')
+                        col_type = self._map_postgres_type(pg_type)
+                        
+                        columns.append({
+                            'name': row.get('column_name'),
+                            'type': col_type,
+                            'nullable': row.get('is_nullable') == 'YES',
+                            'sample_values': []
+                        })
+                else:
+                    # Fallback: infer from data
+                    columns = self._infer_columns_from_data(sample_data)
+            else:
+                # Infer schema from sample data for custom queries
+                columns = self._infer_columns_from_data(sample_data)
+            
+            # Add sample values to columns
+            if sample_data and columns:
+                for col in columns:
+                    col_name = col['name']
+                    sample_values = [row.get(col_name) for row in sample_data[:3] if row.get(col_name) is not None]
+                    col['sample_values'] = sample_values
+            
+            return {
+                "success": True,
+                "columns": columns,
+                "sample_data": sample_data[:10],
+                "total_rows": len(sample_data)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error previewing PostgreSQL schema: {str(e)}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    def _map_postgres_type(self, pg_type: str) -> str:
+        """Map PostgreSQL data types to our schema types"""
+        pg_type = pg_type.lower()
+        
+        if pg_type in ['integer', 'bigint', 'smallint', 'serial', 'bigserial']:
+            return 'integer'
+        elif pg_type in ['real', 'double precision', 'numeric', 'decimal']:
+            return 'float'
+        elif pg_type == 'boolean':
+            return 'boolean'
+        elif pg_type in ['date']:
+            return 'date'
+        elif pg_type in ['timestamp', 'timestamptz', 'timestamp with time zone']:
+            return 'datetime'
+        elif pg_type in ['json', 'jsonb']:
+            return 'json'
+        elif pg_type == 'text':
+            return 'text'
+        else:
+            return 'string'
+
+    def _infer_columns_from_data(self, sample_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Infer column types from sample data"""
+        if not sample_data:
+            return []
+        
+        columns = []
+        first_row = sample_data[0]
+        
+        for col_name in first_row.keys():
+            # Look at all values to infer type
+            values = [row.get(col_name) for row in sample_data if row.get(col_name) is not None]
+            
+            if not values:
+                col_type = 'string'
+            else:
+                # Simple type inference
+                first_value = values[0]
+                if isinstance(first_value, bool):
+                    col_type = 'boolean'
+                elif isinstance(first_value, int):
+                    col_type = 'integer'
+                elif isinstance(first_value, float):
+                    col_type = 'float'
+                elif isinstance(first_value, dict):
+                    col_type = 'json'
+                else:
+                    col_type = 'string'
+            
+            columns.append({
+                'name': col_name,
+                'type': col_type,
+                'nullable': len(values) < len(sample_data),
+                'sample_values': values[:3]
+            })
+        
+        return columns
+
+    def _generate_schema_for_dataset(self, dataset_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate schema for a dataset"""
+        try:
+            source_id = dataset_info['source_id']
+            source_type = dataset_info['source_type']
+            query_definition = dataset_info['query_definition']
+            query_type = dataset_info['query_type']
+            
+            if source_type == 'minio':
+                return self._preview_minio_schema(dataset_info, query_type, query_definition)
+            elif source_type in ['postgresql', 'postgres']:
+                return self._preview_postgres_schema(dataset_info, query_type, query_definition)
+            else:
+                return {"success": False, "error": f"Unsupported data source type: {source_type}"}
+        except Exception as e:
+            logger.error(f"Error generating schema for dataset: {str(e)}", exc_info=True)
+            return {"success": False, "error": str(e)}
