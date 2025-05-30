@@ -77,7 +77,7 @@ class BIService:
             data_source = self.get_data_source(source_id)
             if not data_source:
                 return {"success": False, "error": f"Data source with ID {source_id} not found"}
-            
+
             ds_type = data_source["type"].lower()
 
             # Currently only supporting PostgreSQL
@@ -99,14 +99,16 @@ class BIService:
                     config = data_source.get("config", {})
                     bucket = config.get('bucket')
                     prefix = config.get("base_path", "")
-                    objects = self.minio_service.list_objects(bucket_name=bucket, prefix=prefix)
+                    objects = self.minio_service.list_objects(
+                        bucket_name=bucket, prefix=prefix)
                     # You can log or return a success message here
                     return {
-                        "success": True, 
+                        "success": True,
                         "message": f"Connection successful, found {len(objects)} object(s)."
-                        }
+                    }
                 except Exception as e:
-                    logger.error(f"MinIO CSV connection test failed: {str(e)}", exc_info=True)
+                    logger.error(
+                        f"MinIO CSV connection test failed: {str(e)}", exc_info=True)
                     return {"success": False, "error": str(e)}
                 else:
                     return {"success": False, "error": f"Unsupported data source type: {data_source['type']}"}
@@ -153,13 +155,15 @@ class BIService:
         connection_string = payload.get("connection_string")
         config = json.dumps(payload.get("config"))
 
-        logger.info(f"Updating data source {source_id} with form {payload} and DESC {description}")
+        logger.info(
+            f"Updating data source {source_id} with form {payload} and DESC {description}")
         try:
             with self.postgres_service._get_connection() as conn:
                 with conn.cursor() as cursor:
 
                     query = f"UPDATE data_sources SET name = %s, type = %s, description = %s, connection_string = %s, config = %s WHERE id = %s"
-                    cursor.execute(query, [name, type_, description, connection_string, config, source_id])
+                    cursor.execute(
+                        query, [name, type_, description, connection_string, config, source_id])
 
                     affected = cursor.rowcount > 0
                     logger.info(
@@ -232,8 +236,8 @@ class BIService:
                 SELECT 
                     d.id, d.name, d.description, d.source_id, ds.name AS source_name,
                     ds.type AS source_type, ds.status AS source_status,
-                    ds.config AS source_config, ds.last_updated AS source_last_updated,
-                    d.query_definition AS query_value, d.cache_policy,
+                    ds.config AS source_config, ds.last_updated AS source_last_updated, 
+                    d.query_type, d.query_definition AS query_value, d.cache_policy,
                     d.created_at, d.updated_at, d.created_by, d.last_refreshed, ds.connection_string
                 FROM datasets d
                 JOIN data_sources ds ON d.source_id = ds.id
@@ -329,6 +333,7 @@ class BIService:
                         "id": f"{dataset_id}",
                         "name": row["name"],
                         "source_id": row["source_id"],
+                        "query_type": row["query_type"],
                         "query_value": row["query_value"],
                         "type": row["source_type"],
                         "description": row["description"],
@@ -393,7 +398,7 @@ class BIService:
                     d.id, d.name, d.description, d.source_id, ds.name AS source_name,
                     ds.type AS source_type, ds.status AS source_status,
                     ds.config AS source_config, ds.last_updated AS source_last_updated,
-                    d.query_definition AS query_value, d.cache_policy,
+                    d.query_type, d.query_definition AS query_value, d.cache_policy,
                     d.created_at, d.updated_at, d.created_by, d.last_refreshed
                 FROM datasets d
                 JOIN data_sources ds ON d.source_id = ds.id
@@ -925,7 +930,7 @@ class BIService:
 
                         self._execute_batch_query(
                             conn, insert_field_query, field_params, commit=True)
-                        
+
                 # Return the created dataset with all information
                 return self.get_dataset(dataset_id, user_id)
 
@@ -961,7 +966,7 @@ class BIService:
                     if "query_definition" in dataset_data:
                         set_parts.append("query_definition = %s")
                         params.append(dataset_data["query_definition"])
-                
+
                     if "cache_policy" in dataset_data:
                         set_parts.append("cache_policy = %s")
                         params.append(json.dumps(dataset_data["cache_policy"]))
@@ -994,17 +999,20 @@ class BIService:
                         JOIN data_sources ds ON d.source_id = ds.id
                         WHERE d.id = %s
                         """
-                        dataset_result = self._execute_query(conn, dataset_query, (dataset_id,))
-                        
+                        dataset_result = self._execute_query(
+                            conn, dataset_query, (dataset_id,))
+
                         if dataset_result:
                             dataset_info = dict(dataset_result[0])
-                            
+
                             # Remove existing fields
-                            self._execute_query(conn, "DELETE FROM dataset_fields WHERE dataset_id = %s", (dataset_id,))
-                            
+                            self._execute_query(
+                                conn, "DELETE FROM dataset_fields WHERE dataset_id = %s", (dataset_id,))
+
                             # Regenerate schema and fields
-                            schema_info = self._generate_schema_for_dataset(dataset_info)
-                            
+                            schema_info = self._generate_schema_for_dataset(
+                                dataset_info)
+
                             if schema_info and 'fields' in schema_info:
                                 for field in schema_info['fields']:
                                     field_query = """
@@ -1013,11 +1021,12 @@ class BIService:
                                         format_pattern, is_visible, created_at, updated_at
                                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                                     """
-                                    
+
                                     self._execute_query(conn, field_query, (
                                         dataset_id,
                                         field['name'],
-                                        field.get('display_name', field['name']),
+                                        field.get('display_name',
+                                                  field['name']),
                                         field.get('field_type', 'dimension'),
                                         field.get('type', 'string'),
                                         field.get('format_pattern'),
@@ -1051,7 +1060,8 @@ class BIService:
 
                     # If no dependency, proceed with deletion
                     # Delete related fields first
-                    cursor.execute("DELETE FROM dataset_fields WHERE dataset_id = %s", (dataset_id,))
+                    cursor.execute(
+                        "DELETE FROM dataset_fields WHERE dataset_id = %s", (dataset_id,))
 
                     query = "DELETE FROM datasets WHERE id = %s"
                     # AND (created_by = %s OR %s IN ( SELECT sub FROM keycloak_users WHERE realm_access->'roles' ? 'admin'
@@ -1391,40 +1401,43 @@ class BIService:
     def preview_dataset_schema(self, source_id: int, query_type: str, query_value: str) -> Dict[str, Any]:
         """Preview dataset schema and sample data based on data source type"""
         try:
-            logger.info(f"Previewing schema for source_id={source_id}, query_type={query_type}, query_value={query_value}")
-            
+            logger.info(
+                f"Previewing schema for source_id={source_id}, query_type={query_type}, query_value={query_value}")
+
             # Get data source details
             data_source = self.get_data_source(source_id)
             if not data_source:
                 return {"success": False, "error": f"Data source with ID {source_id} not found"}
-            
+
             source_type = data_source.get('type', '').lower()
             logger.info(f"Data source type: {source_type}")
-            
+
             if source_type == 'minio':
                 return self._preview_minio_schema(data_source, query_type, query_value)
             elif source_type in ['postgresql', 'postgres']:
                 return self._preview_postgres_schema(data_source, query_type, query_value)
             else:
                 return {"success": False, "error": f"Unsupported data source type: {source_type}"}
-                
+
         except Exception as e:
-            logger.error(f"Error previewing dataset schema: {str(e)}", exc_info=True)
+            logger.error(
+                f"Error previewing dataset schema: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _preview_minio_schema(self, data_source: Dict[str, Any], query_type: str, query_value: str) -> Dict[str, Any]:
         """Preview schema for MinIO data source"""
         try:
             config = data_source.get('config', {})
-            
+
             if query_type == 'bucket':
                 # Simple bucket listing
                 bucket_name = query_value
-                objects = list(self.minio_service.client.list_objects(bucket_name, recursive=True))
-                
+                objects = list(self.minio_service.client.list_objects(
+                    bucket_name, recursive=True))
+
                 if not objects:
                     return {"success": False, "error": f"No objects found in bucket {bucket_name}"}
-                
+
                 # Try to analyze the first file we can read
                 for obj in objects[:5]:  # Check first 5 objects
                     if obj.object_name.endswith(('.csv', '.parquet', '.json')):
@@ -1432,11 +1445,12 @@ class BIService:
                             file_type = obj.object_name.split('.')[-1].lower()
                             return self._analyze_minio_file(bucket_name, obj.object_name, file_type)
                         except Exception as e:
-                            logger.warning(f"Failed to analyze {obj.object_name}: {e}")
+                            logger.warning(
+                                f"Failed to analyze {obj.object_name}: {e}")
                             continue
-                
+
                 return {"success": False, "error": "No readable files found in bucket"}
-                
+
             elif query_type == 'custom':
                 # Parse JSON configuration
                 try:
@@ -1444,38 +1458,41 @@ class BIService:
                     bucket_name = config_data.get('bucket')
                     prefix = config_data.get('prefix', '')
                     file_type = config_data.get('file_type', 'csv')
-                    
+
                     if not bucket_name:
                         return {"success": False, "error": "Bucket name is required in configuration"}
-                    
+
                     # List objects with prefix
-                    objects = list(self.minio_service.client.list_objects(bucket_name, prefix=prefix, recursive=True))
-                    
+                    objects = list(self.minio_service.client.list_objects(
+                        bucket_name, prefix=prefix, recursive=True))
+
                     if not objects:
                         return {"success": False, "error": f"No objects found with prefix {prefix}"}
-                    
+
                     # Analyze the first matching file
                     for obj in objects:
                         if obj.object_name.endswith(f'.{file_type}'):
                             return self._analyze_minio_file(bucket_name, obj.object_name, file_type)
-                    
+
                     return {"success": False, "error": f"No {file_type} files found with prefix {prefix}"}
-                    
+
                 except json.JSONDecodeError:
                     return {"success": False, "error": "Invalid JSON configuration"}
-            
+
             return {"success": False, "error": f"Unsupported query type: {query_type}"}
-            
+
         except Exception as e:
-            logger.error(f"Error previewing MinIO schema: {str(e)}", exc_info=True)
+            logger.error(
+                f"Error previewing MinIO schema: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _analyze_minio_file(self, bucket_name: str, object_name: str, file_type: str) -> Dict[str, Any]:
         """Analyze a specific MinIO file"""
         try:
-            response = self.minio_service.client.get_object(bucket_name, object_name)
+            response = self.minio_service.client.get_object(
+                bucket_name, object_name)
             data = response.read()
-            
+
             if file_type == 'csv':
                 df = pd.read_csv(io.BytesIO(data), nrows=100)
             elif file_type == 'json':
@@ -1486,12 +1503,12 @@ class BIService:
                 df = df.head(100)
             else:
                 return {"success": False, "error": f"Unsupported file type: {file_type}"}
-            
+
             # Convert DataFrame to schema info
             columns = []
             for col in df.columns:
                 dtype = str(df[col].dtype)
-                
+
                 # Map pandas dtypes to our schema types
                 if 'int' in dtype:
                     col_type = 'integer'
@@ -1503,25 +1520,26 @@ class BIService:
                     col_type = 'datetime'
                 else:
                     col_type = 'string'
-                
+
                 columns.append({
                     'name': col,
                     'type': col_type,
                     'nullable': df[col].isnull().any(),
                     'sample_values': df[col].dropna().head(3).tolist()
                 })
-            
+
             sample_data = df.head(10).fillna('').to_dict(orient='records')
-            
+
             return {
                 "success": True,
                 "columns": columns,
                 "sample_data": sample_data,
                 "total_rows": len(df)
             }
-            
+
         except Exception as e:
-            logger.error(f"Error analyzing MinIO file {object_name}: {str(e)}", exc_info=True)
+            logger.error(
+                f"Error analyzing MinIO file {object_name}: {str(e)}", exc_info=True)
             return {"success": False, "error": f"Failed to analyze file: {str(e)}"}
 
     def _preview_postgres_schema(self, data_source: Dict[str, Any], query_type: str, query_value: str) -> Dict[str, Any]:
@@ -1530,10 +1548,10 @@ class BIService:
             connection_string = data_source.get('connection_string')
             if not connection_string:
                 return {"success": False, "error": "No connection string found for data source"}
-            
+
             # Build the query based on type
             if query_type == 'table':
-                query = f"SELECT * FROM {query_value} LIMIT 100"
+                query = f"SELECT * FROM {query_value} LIMIT 20"
                 schema_query = f"""
                 SELECT column_name, data_type, is_nullable 
                 FROM information_schema.columns 
@@ -1541,7 +1559,7 @@ class BIService:
                 ORDER BY ordinal_position
                 """
             elif query_type == 'view':
-                query = f"SELECT * FROM {query_value} LIMIT 100"
+                query = f"SELECT * FROM {query_value} LIMIT 20"
                 schema_query = f"""
                 SELECT column_name, data_type, is_nullable 
                 FROM information_schema.columns 
@@ -1549,64 +1567,94 @@ class BIService:
                 ORDER BY ordinal_position
                 """
             elif query_type == 'custom':
-                query = f"SELECT * FROM ({query_value}) AS preview_query LIMIT 100"
+                # query = f"SELECT * FROM ({query_value}) AS preview_query LIMIT 20"
+                query = f"{query_value} AS preview_query LIMIT 20"
                 # For custom queries, we'll infer schema from the result
                 schema_query = None
             else:
                 return {"success": False, "error": f"Unsupported query type: {query_type}"}
-            
+
             # Execute the data query
-            data_result = self.postgres_service.execute_query(query, connection_string)
-            if not data_result.get("success"):
-                return {"success": False, "error": data_result.get("error", "Failed to execute query")}
-            
-            sample_data = data_result.get("data", [])
-            
+            with self.postgres_service._get_connection() as conn:
+                with conn.cursor() as cur:
+                    data_result = cur.execute(
+                        query, connection_string)
+                    
+                    # Fetch column names
+                    columns = [desc[0] for desc in cur.description]
+                    
+                    # Fetch data rows
+                    rows = cur.fetchall()
+                    
+                    # Convert to list of dicts
+                    data = [dict(zip(columns, row)) for row in rows]
+                    
+                    # Return success
+                    return {"success": True, "data": data}
+                    
+                if not data.get("success"):
+                    return {"success": False, "error": data_result.get("error", "Failed to execute query")}
+
+                sample_data = data_result.get("data", [])
+
             # Get schema information
             if schema_query:
-                schema_result = self.postgres_service.execute_query(schema_query, connection_string)
-                if schema_result.get("success"):
-                    schema_rows = schema_result.get("data", [])
-                    columns = []
-                    for row in schema_rows:
-                        pg_type = row.get('data_type', 'text')
-                        col_type = self._map_postgres_type(pg_type)
+                with self.postgres_service._get_connection() as conn:
+                    with conn.cursor() as cur:
+                        schema_result = cur.execute(
+                            schema_query, connection_string)
                         
-                        columns.append({
-                            'name': row.get('column_name'),
-                            'type': col_type,
-                            'nullable': row.get('is_nullable') == 'YES',
-                            'sample_values': []
-                        })
-                else:
-                    # Fallback: infer from data
-                    columns = self._infer_columns_from_data(sample_data)
+                        rows = cur.fetchall()
+
+                        data = [dict(zip(columns, row)) for row in rows]
+
+                        result = {"success": True, "data": data}
+                        
+                        if result.get("success"):
+                            schema_rows = result.get("data", [])
+                            columns = []
+                            for row in schema_rows:
+                                pg_type = row.get('data_type', 'text')
+                                col_type = self._map_postgres_type(pg_type)
+
+                                columns.append({
+                                    'name': row.get('column_name'),
+                                    'type': col_type,
+                                    'nullable': row.get('is_nullable') == 'YES',
+                                    'sample_values': []
+                                })
+                        else:
+                            # Fallback: infer from data
+                            columns = self._infer_columns_from_data(
+                                sample_data)
             else:
                 # Infer schema from sample data for custom queries
                 columns = self._infer_columns_from_data(sample_data)
-            
+
             # Add sample values to columns
             if sample_data and columns:
                 for col in columns:
                     col_name = col['name']
-                    sample_values = [row.get(col_name) for row in sample_data[:3] if row.get(col_name) is not None]
+                    sample_values = [
+                        row.get(col_name) for row in sample_data[:3] if row.get(col_name) is not None]
                     col['sample_values'] = sample_values
-            
+
             return {
                 "success": True,
                 "columns": columns,
                 "sample_data": sample_data[:10],
                 "total_rows": len(sample_data)
             }
-            
+
         except Exception as e:
-            logger.error(f"Error previewing PostgreSQL schema: {str(e)}", exc_info=True)
+            logger.error(
+                f"Error previewing PostgreSQL schema: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _map_postgres_type(self, pg_type: str) -> str:
         """Map PostgreSQL data types to our schema types"""
         pg_type = pg_type.lower()
-        
+
         if pg_type in ['integer', 'bigint', 'smallint', 'serial', 'bigserial']:
             return 'integer'
         elif pg_type in ['real', 'double precision', 'numeric', 'decimal']:
@@ -1628,14 +1676,15 @@ class BIService:
         """Infer column types from sample data"""
         if not sample_data:
             return []
-        
+
         columns = []
         first_row = sample_data[0]
-        
+
         for col_name in first_row.keys():
             # Look at all values to infer type
-            values = [row.get(col_name) for row in sample_data if row.get(col_name) is not None]
-            
+            values = [row.get(col_name)
+                      for row in sample_data if row.get(col_name) is not None]
+
             if not values:
                 col_type = 'string'
             else:
@@ -1651,14 +1700,14 @@ class BIService:
                     col_type = 'json'
                 else:
                     col_type = 'string'
-            
+
             columns.append({
                 'name': col_name,
                 'type': col_type,
                 'nullable': len(values) < len(sample_data),
                 'sample_values': values[:3]
             })
-        
+
         return columns
 
     def _generate_schema_for_dataset(self, dataset_info: Dict[str, Any]) -> Dict[str, Any]:
@@ -1668,7 +1717,7 @@ class BIService:
             source_type = dataset_info['source_type']
             query_definition = dataset_info['query_definition']
             query_type = dataset_info['query_type']
-            
+
             if source_type == 'minio':
                 return self._preview_minio_schema(dataset_info, query_type, query_definition)
             elif source_type in ['postgresql', 'postgres']:
@@ -1676,5 +1725,6 @@ class BIService:
             else:
                 return {"success": False, "error": f"Unsupported data source type: {source_type}"}
         except Exception as e:
-            logger.error(f"Error generating schema for dataset: {str(e)}", exc_info=True)
+            logger.error(
+                f"Error generating schema for dataset: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
