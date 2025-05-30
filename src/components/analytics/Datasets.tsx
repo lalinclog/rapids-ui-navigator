@@ -175,15 +175,21 @@ const Datasets: React.FC = () => {
   };
 
   const handleSubmit = async (datasetData: Omit<Dataset, 'id' | 'created_at' | 'updated_at'>) => {
+    // Ensure query_value is always present
+    const datasetPayload = {
+      ...datasetData,
+      query_value: datasetData.query_value || datasetData.query_definition || ''
+    };
+
     if (editingDataset) {
       updateDatasetMutation.mutate({ 
         ...editingDataset, 
-        ...datasetData,
+        ...datasetPayload,
         created_at: editingDataset.created_at,
         updated_at: editingDataset.updated_at
       });
     } else {
-      createDatasetMutation.mutate(datasetData);
+      createDatasetMutation.mutate(datasetPayload);
     }
   };
 
