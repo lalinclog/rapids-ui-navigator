@@ -23,6 +23,7 @@ const datasetFormSchema = z.object({
   source_id: z.string().min(1, "Data source is required"),
   query_type: z.string().min(1, "Query type is required"),
   query_value: z.string().min(1, "Query definition is required"),
+  base_path: z.string().optional(), // Add base_path field for MinIO
 });
 
 type DatasetFormValues = z.infer<typeof datasetFormSchema>;
@@ -59,6 +60,7 @@ interface DatasetFormProps {
     query_definition?: string;
     schema?: any;
     column_types?: Record<string, string>;
+    base_path?: string; // Add base_path to dataset type
   };
   onSuccess: () => void;
   onCancel: () => void;
@@ -82,12 +84,13 @@ const fetchDataSources = async (): Promise<DataSource[]> => {
   return data;
 };
 
-const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValue: string): Promise<SchemaInfo> => {
+const fetchSchemaPreview = async (sourceId: number, queryType: string, queryValue: string, basePath?: string): Promise<SchemaInfo> => {
   const endpoint = `/api/bi/datasets/${sourceId}/preview`;
   const payload = {
     source_id: sourceId,
     query_type: queryType,
     query_value: queryValue,
+    base_path: basePath, // Include base_path in payload
   };
   
   console.log('🔍 TRACE: fetchSchemaPreview - Starting request');
@@ -152,6 +155,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       source_id: dataset?.source_id ? dataset.source_id.toString() : "",
       query_type: dataset?.query_type || "table",
       query_value: dataset?.query_value || dataset?.query_definition || "",
+      base_path: dataset?.base_path || "", // Initialize base_path
     },
   });
 
@@ -171,6 +175,11 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         form.setValue("query_type", "bucket");
       }
       
+      // Set base_path from config
+      if (config.prefix || config.base_path) {
+        form.setValue("base_path", config.prefix || config.base_path || "");
+      }
+      
       console.log('🔍 TRACE: Auto-populated MinIO config from data source:', config);
     }
   }, [selectedSource, form, dataset]);
@@ -184,6 +193,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         source_id: dataset.source_id.toString(),
         query_type: dataset.query_type,
         query_value: dataset.query_value || dataset?.query_definition || "",
+        base_path: dataset.base_path || "", // Initialize base_path from dataset
       });
 
       // Initialize selected columns and types from existing dataset
@@ -221,13 +231,15 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
       console.log('🔍 TRACE: handlePreviewSchema - Calling fetchSchemaPreview with:', {
         sourceId: parseInt(values.source_id),
         queryType: values.query_type,
-        queryValue: values.query_value
+        queryValue: values.query_value,
+        basePath: values.base_path
       });
       
       const preview = await fetchSchemaPreview(
         parseInt(values.source_id),
         values.query_type,
-        values.query_value
+        values.query_value,
+        values.base_path
       );
 
       console.log('🔍 TRACE: handlePreviewSchema - Received preview response:', preview);
@@ -310,6 +322,7 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
         query_type: values.query_type,
         query_definition: values.query_value,
         query_value: values.query_value,
+        base_path: values.base_path, // Include base_path in payload
         schema: schemaDefinition,
         column_types: Object.fromEntries(
           Array.from(selectedColumns).map(col => [col, columnTypes[col]])
@@ -546,14 +559,38 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
                         )}
                       </FormControl>
                       <FormMessage />
-                      {selectedSource?.type === 'minio' && selectedSource.config && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          <strong>Data Source Config:</strong> {JSON.stringify(selectedSource.config)}
-                        </div>
-                      )}
                     </FormItem>
                   )}
                 />
+
+                {/* Add base_path input for MinIO sources */}
+                {selectedSource?.type === 'minio' && (
+                  <FormField
+                    control={form.control}
+                    name="base_path"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Base Path / Prefix</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="data/sales/"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                        <div className="text-xs text-muted-foreground">
+                          The path within the bucket to treat as the table root (e.g., "sales/customers/")
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {selectedSource?.type === 'minio' && selectedSource.config && (
+                  <div className="text-xs text-muted-foreground mt-1 p-2 bg-muted rounded">
+                    <strong>Data Source Config:</strong> {JSON.stringify(selectedSource.config)}
+                  </div>
+                )}
               </div>
             </Form>
           </TabsContent>
