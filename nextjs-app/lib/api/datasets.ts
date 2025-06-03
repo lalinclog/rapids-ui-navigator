@@ -7,7 +7,7 @@ export interface Dataset {
   source_id: number
   source_name?: string
   source_type?: string
-  query_type: "table" | "view" | "custom" | "bucket"
+  query_type: "table" | "view" | "custom" | "bucket" | "iceberg_table"
   query_definition: string
   query_value?: string  // Add this for backward compatibility with DatasetForm
   cache_policy?: string | object
@@ -21,6 +21,9 @@ export interface Dataset {
   schema?: SchemaInfo
   minio_metadata?: MinIOMetadata
   cache_info?: CacheInfo
+  iceberg_namespace?: string
+  iceberg_table?: string
+  base_path?: string
 }
 
 export interface Field {
@@ -37,15 +40,55 @@ export interface Field {
 }
 
 export interface SchemaInfo {
-  // Define the structure of SchemaInfo
+  columns: SchemaColumn[]
+  inferred?: boolean
+  last_analyzed?: string
+  sample_file?: string
+  table_format?: "csv" | "parquet" | "iceberg"
+  total_rows?: number
+}
+
+export interface SchemaColumn {
+  name: string
+  type: string
+  nullable: boolean
+  field_id?: number
+  description?: string
 }
 
 export interface MinIOMetadata {
-  // Define the structure of MinIOMetadata
+  bucket: string
+  prefix?: string
+  base_path?: string
+  file_type: "csv" | "parquet" | "json" | "mixed"
+  file_count: number
+  total_size: number
+  last_modified?: string
+  files: MinIOFile[]
+  compression?: string
+  delimiter?: string
+  has_header?: boolean
+}
+
+export interface MinIOFile {
+  name: string
+  key: string
+  size: number
+  last_modified: string
+  etag?: string
 }
 
 export interface CacheInfo {
-  // Define the structure of CacheInfo
+  enabled: boolean
+  ttl_minutes: number
+  auto_refresh: boolean
+  last_refreshed?: string
+  next_refresh?: string
+  status: "valid" | "expired" | "refreshing" | "error" | "unknown"
+  cache_size?: number
+  hit_count?: number
+  miss_count?: number
+  error_message?: string
 }
 
 export interface Chart {
@@ -126,6 +169,7 @@ export interface DatasetCreateParams {
 export interface IcebergDataset extends Dataset {
   iceberg_namespace?: string;
   iceberg_table?: string;
+  base_path?: string;
 }
 
 /**

@@ -41,7 +41,7 @@ export interface Dataset {
   source_id: number
   source_name?: string
   source_type?: string
-  query_type: "table" | "view" | "custom" | "bucket"
+  query_type: "table" | "view" | "custom" | "bucket" | "iceberg_table"
   query_definition: string
   cache_policy?: string | object
   last_refreshed?: string
@@ -54,6 +54,9 @@ export interface Dataset {
   schema?: SchemaInfo
   minio_metadata?: MinIOMetadata
   cache_info?: CacheInfo
+  iceberg_namespace?: string
+  iceberg_table?: string
+  base_path?: string
 }
 
 export interface Field {
@@ -70,33 +73,42 @@ export interface Field {
 }
 
 export interface SchemaInfo {
-  fields: SchemaField[]
-  inferred: boolean
+  columns: SchemaColumn[]
+  inferred?: boolean
   last_analyzed?: string
   sample_file?: string
+  table_format?: "csv" | "parquet" | "iceberg"
+  total_rows?: number
 }
 
-export interface SchemaField {
+export interface SchemaColumn {
   name: string
   type: string
   nullable: boolean
+  field_id?: number
   description?: string
 }
 
 export interface MinIOMetadata {
   bucket: string
-  prefix: string
-  file_type: string
+  prefix?: string
+  base_path?: string
+  file_type: "csv" | "parquet" | "json" | "mixed"
   file_count: number
   total_size: number
   last_modified?: string
   files: MinIOFile[]
+  compression?: string
+  delimiter?: string
+  has_header?: boolean
 }
 
 export interface MinIOFile {
   name: string
+  key: string
   size: number
-  last_modified?: string
+  last_modified: string
+  etag?: string
 }
 
 export interface CacheInfo {
@@ -105,7 +117,11 @@ export interface CacheInfo {
   auto_refresh: boolean
   last_refreshed?: string
   next_refresh?: string
-  status: 'valid' | 'expired' | 'unknown'
+  status: "valid" | "expired" | "refreshing" | "error" | "unknown"
+  cache_size?: number
+  hit_count?: number
+  miss_count?: number
+  error_message?: string
 }
 
 // Chart types
