@@ -758,9 +758,9 @@ async def list_iceberg_namespaces(current_user: dict = Depends(get_current_user_
 @router.post("/iceberg/namespaces")
 async def create_iceberg_namespace(
     namespace_data: NamespaceCreate,
-    current_user: dict = Depends(data_steward_only)
+    current_user: dict = Depends(get_current_user_or_api_key)
 ):
-    """Create a new Iceberg namespace (data steward only)"""
+    """Create a new Iceberg namespace"""
     try:
         result = iceberg_service.create_namespace(
             namespace=namespace_data.name,
@@ -777,9 +777,9 @@ async def create_iceberg_namespace(
 @router.delete("/iceberg/namespaces/{namespace}")
 async def delete_iceberg_namespace(
     namespace: str,
-    current_user: dict = Depends(data_steward_only)
+    current_user: dict = Depends(get_current_user_or_api_key)
 ):
-    """Delete an Iceberg namespace (data steward only)"""
+    """Delete an Iceberg namespace"""
     try:
         result = iceberg_service.delete_namespace(namespace)
         return result
@@ -795,7 +795,7 @@ async def get_namespace_properties(
     namespace: str,
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
-    """Get namespace properties and information"""
+    """Get namespace properties and details"""
     try:
         result = iceberg_service.get_namespace_properties(namespace)
         return result
@@ -809,14 +809,14 @@ async def get_namespace_properties(
 @router.put("/iceberg/namespaces/{namespace}")
 async def update_namespace_properties(
     namespace: str,
-    namespace_data: NamespaceUpdate,
-    current_user: dict = Depends(data_steward_only)
+    namespace_update: NamespaceUpdate,
+    current_user: dict = Depends(get_current_user_or_api_key)
 ):
-    """Update namespace properties (data steward only)"""
+    """Update namespace properties"""
     try:
         result = iceberg_service.update_namespace_properties(
             namespace=namespace,
-            properties=namespace_data.properties
+            properties=namespace_update.properties
         )
         return result
     except Exception as e:

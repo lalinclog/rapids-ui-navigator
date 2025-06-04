@@ -1,142 +1,124 @@
-import React, { useState, useEffect } from 'react';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableCaption, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { toast } from "@/hooks/use-toast";
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, Edit, Trash2 } from 'lucide-react';
-import DatasetForm from './DatasetForm';
-import { DataSourceIcon } from './DataSourceIcons';
 
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/hooks/use-toast';
+import { Database, Plus, Edit, Trash2, Play, FileText } from 'lucide-react';
+import DatasetForm from './DatasetForm';
+
+// Define the Dataset interface locally to avoid conflicts
 interface Dataset {
   id: number;
   name: string;
-  description?: string;
-  source_id: number;
-  source_name?: string;
-  source_type?: string;
-  query_type: "table" | "view" | "custom" | "bucket";
-  query_definition: string;
-  query_value?: string;
-  schema?: any;
-  column_types?: Record<string, string>;
+  description: string;
+  table_name: string;
+  namespace: string;
+  schema_info: Record<string, any>;
   created_at: string;
   updated_at: string;
+  row_count?: number;
+  file_size?: number;
+  last_updated?: string;
 }
 
+const fetchDatasets = async (): Promise<Dataset[]> => {
+  const response = await fetch('/api/bi/datasets');
+  if (!response.ok) {
+    throw new Error('Failed to fetch datasets');
+  }
+  return response.json();
+};
+
+const DatasetCard: React.FC<{ 
+  dataset: Dataset; 
+  onEdit: () => void; 
+  onDelete: () => void;
+  onPreview: () => void;
+}> = ({ dataset, onEdit, onDelete, onPreview }) => {
+  return (
+    <Card className="h-full flex flex-col hover:shadow-md transition-shadow duration-200">
+      <CardHeader className="pb-3">
+        <div className="flex justify-between items-start">
+          <div className="flex items-start gap-3 flex-1">
+            <div className="mt-1">
+              <Database className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <CardTitle className="text-lg truncate">{dataset.name}</CardTitle>
+              <CardDescription className="text-sm mt-1">
+                {dataset.description}
+              </CardDescription>
+              <div className="flex items-center gap-2 mt-2">
+                <Badge variant="outline" className="text-xs">
+                  {dataset.namespace}
+                </Badge>
+                <Badge variant="secondary" className="text-xs">
+                  {dataset.table_name}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex-grow pt-0">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            {dataset.row_count && (
+              <div>
+                <span className="text-muted-foreground">Rows:</span>
+                <div className="font-medium">{dataset.row_count.toLocaleString()}</div>
+              </div>
+            )}
+            {dataset.file_size && (
+              <div>
+                <span className="text-muted-foreground">Size:</span>
+                <div className="font-medium">{(dataset.file_size / 1024 / 1024).toFixed(2)} MB</div>
+              </div>
+            )}
+          </div>
+          
+          <div className="text-xs text-muted-foreground">
+            <div>Created: {new Date(dataset.created_at).toLocaleDateString()}</div>
+            {dataset.last_updated && (
+              <div>Updated: {new Date(dataset.last_updated).toLocaleDateString()}</div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+      <CardFooter className="pt-3 flex justify-between border-t">
+        <Button variant="outline" size="sm" onClick={onEdit} className="flex-1 mr-2">
+          <Edit className="h-4 w-4 mr-1" /> Edit
+        </Button>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" onClick={onPreview} className="px-2">
+            <FileText className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onDelete} className="px-2 text-destructive hover:text-destructive">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardFooter>
+    </Card>
+  );
+};
+
 const Datasets: React.FC = () => {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingDataset, setEditingDataset] = useState<Dataset | null>(null);
 
-  const queryClient = useQueryClient();
-
-  const { data, isError, error, refetch } = useQuery({
+  const { data: datasets, isLoading, error } = useQuery({
     queryKey: ['datasets'],
-    queryFn: async () => {
-      setIsLoading(true);
-      const response = await fetch('/api/bi/datasets');
-      if (!response.ok) {
-        throw new Error('Failed to fetch datasets');
-      }
-      const data = await response.json();
-      // Map query_definition to query_value for backward compatibility
-      const mappedData = data.map((dataset: any) => ({
-        ...dataset,
-        query_value: dataset.query_definition
-      }));
-      setDatasets(mappedData);
-      setIsLoading(false);
-      return mappedData;
-    },
-  });
-
-  useEffect(() => {
-    refetch();
-  }, []);
-
-  const createDatasetMutation = useMutation({
-    mutationFn: async (newDataset: Omit<Dataset, 'id' | 'created_at' | 'updated_at'>) => {
-      const payload = {
-        ...newDataset,
-        user_id: 1, // Always include user_id
-        query_definition: newDataset.query_value || newDataset.query_definition, // Ensure backend gets query_definition
-      };
-      
-      const response = await fetch('/api/bi/datasets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to create dataset');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['datasets'] });
-      toast({
-        title: "Dataset created",
-        description: "Successfully created dataset",
-      });
-      setIsCreateDialogOpen(false);
-      setEditingDataset(null);
-    },
-    onError: (error: any) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to create dataset",
-      });
-    },
-  });
-
-  const updateDatasetMutation = useMutation({
-    mutationFn: async (updatedDataset: Dataset) => {
-      const payload = {
-        ...updatedDataset,
-        user_id: 1, // Always include user_id
-        query_definition: updatedDataset.query_value || updatedDataset.query_definition, // Ensure backend gets query_definition
-      };
-      
-      const response = await fetch(`/api/bi/datasets/${updatedDataset.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to update dataset');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['datasets'] });
-      toast({
-        title: "Dataset updated",
-        description: "Successfully updated dataset",
-      });
-      setIsCreateDialogOpen(false);
-      setEditingDataset(null);
-    },
-    onError: (error: any) => {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to update dataset",
-      });
-    },
+    queryFn: fetchDatasets,
   });
 
   const deleteDatasetMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const response = await fetch(`/api/bi/datasets/${id}`, {
+    mutationFn: async (datasetId: number) => {
+      const response = await fetch(`/api/bi/datasets/${datasetId}`, {
         method: 'DELETE',
       });
       if (!response.ok) {
@@ -147,155 +129,148 @@ const Datasets: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['datasets'] });
       toast({
-        title: "Dataset deleted",
-        description: "Successfully deleted dataset",
+        title: 'Dataset deleted',
+        description: 'Dataset has been successfully deleted',
       });
     },
-    onError: (error: any) => {
+    onError: (error) => {
       toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to delete dataset",
+        variant: 'destructive',
+        title: 'Error deleting dataset',
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
       });
-    },
+    }
   });
 
-  const handleCreateDialogOpen = () => {
+  const handleCreate = () => {
     setEditingDataset(null);
     setIsCreateDialogOpen(true);
   };
 
   const handleEdit = (dataset: Dataset) => {
-    // Ensure all required properties are present for the form
-    const editDataset = {
-      ...dataset,
-      query_type: dataset.query_type || 'table' as const,
-      query_definition: dataset.query_definition || '',
-      query_value: dataset.query_value || dataset.query_definition || '', // Use query_value or fallback to query_definition
-    };
-    setEditingDataset(editDataset);
+    setEditingDataset(dataset);
     setIsCreateDialogOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    deleteDatasetMutation.mutate(id);
+  const handleDelete = (dataset: Dataset) => {
+    if (confirm(`Are you sure you want to delete the dataset "${dataset.name}"?`)) {
+      deleteDatasetMutation.mutate(dataset.id);
+    }
   };
 
-  const handleDialogClose = () => {
+  const handlePreview = (dataset: Dataset) => {
+    // TODO: Implement dataset preview functionality
+    toast({
+      title: 'Preview coming soon',
+      description: 'Dataset preview functionality will be available soon',
+    });
+  };
+
+  const handleFormSuccess = () => {
     setIsCreateDialogOpen(false);
     setEditingDataset(null);
-  };
-
-  const handleSubmit = async (datasetData: Omit<Dataset, 'id' | 'created_at' | 'updated_at'>) => {
-    // Ensure query_value is always present and map to query_definition for backend
-    const datasetPayload = {
-      ...datasetData,
-      query_value: datasetData.query_value || datasetData.query_definition || '',
-      query_definition: datasetData.query_value || datasetData.query_definition || '', // Backend expects query_definition
-      user_id: 1, // Always include user_id
-    };
-
-    if (editingDataset) {
-      updateDatasetMutation.mutate({ 
-        ...editingDataset, 
-        ...datasetPayload,
-        created_at: editingDataset.created_at,
-        updated_at: editingDataset.updated_at
-      });
-    } else {
-      createDatasetMutation.mutate(datasetPayload);
-    }
+    queryClient.invalidateQueries({ queryKey: ['datasets'] });
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-48">
-        <Loader2 className="mr-2 h-6 w-6 animate-spin" />
-        Loading datasets...
+      <div>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-2xl font-bold">Datasets</h2>
+            <p className="text-muted-foreground">Manage your Iceberg datasets</p>
+          </div>
+          <Button disabled>
+            <Plus className="mr-2 h-4 w-4" /> Create Dataset
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index} className="h-full flex flex-col">
+              <CardHeader>
+                <Skeleton className="h-5 w-2/3 mb-2" />
+                <Skeleton className="h-4 w-1/3" />
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-3 w-1/2" />
+              </CardContent>
+              <CardFooter className="pt-2 flex justify-between">
+                <Skeleton className="h-9 w-16" />
+                <Skeleton className="h-9 w-16" />
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
 
-  if (isError) {
-    return <div className="text-red-500">Error: {error?.message}</div>;
+  if (error) {
+    return (
+      <div className="p-4 border border-red-200 bg-red-50 text-red-700 rounded-md">
+        Error loading datasets: {error instanceof Error ? error.message : 'Unknown error'}
+      </div>
+    );
   }
 
   return (
-    <Card className="w-full">
-      <CardHeader className="flex justify-between items-center">
-        <CardTitle>Datasets</CardTitle>
-        <Button onClick={handleCreateDialogOpen}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Dataset
+    <div>
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Database className="h-6 w-6" />
+            Datasets
+          </h2>
+          <p className="text-muted-foreground">Create and manage your Iceberg datasets</p>
+        </div>
+        <Button onClick={handleCreate} size="lg">
+          <Plus className="mr-2 h-4 w-4" /> Create Dataset
         </Button>
-      </CardHeader>
-      <CardContent>
-        {datasets.length > 0 ? (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Query Type</TableHead>
-                  <TableHead>Created At</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {datasets.map((dataset) => (
-                  <TableRow key={dataset.id}>
-                    <TableCell>{dataset.name}</TableCell>
-                    <TableCell>
-                      {dataset.source_name ? (
-                        <div className="flex items-center gap-2">
-                          {dataset.source_type && <DataSourceIcon type={dataset.source_type} className="h-4 w-4" />}
-                          {dataset.source_name}
-                        </div>
-                      ) : (
-                        dataset.source_id
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="capitalize">{dataset.query_type}</span>
-                    </TableCell>
-                    <TableCell>{new Date(dataset.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(dataset)}>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(dataset.id)}>
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <div>No datasets found.</div>
-        )}
-      </CardContent>
+      </div>
 
-      {/* Dialog for creating/editing dataset */}
-      {isCreateDialogOpen && (
-        <div className="fixed inset-0 z-50 overflow-auto bg-black/50">
-          <div className="relative m-auto mt-20 max-w-4xl rounded-lg bg-white p-6">
-            <DatasetForm
-              dataset={editingDataset || undefined}
-              onSuccess={() => {
-                refetch();
-                handleDialogClose();
-              }}
-              onCancel={handleDialogClose}
+      {datasets && datasets.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {datasets.map((dataset) => (
+            <DatasetCard 
+              key={dataset.id} 
+              dataset={dataset} 
+              onEdit={() => handleEdit(dataset)}
+              onDelete={() => handleDelete(dataset)}
+              onPreview={() => handlePreview(dataset)}
             />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+          <div className="bg-muted h-16 w-16 rounded-full flex items-center justify-center mb-6">
+            <Database className="h-8 w-8 text-muted-foreground" />
           </div>
+          <h3 className="text-xl font-semibold mb-2">No Datasets</h3>
+          <p className="text-muted-foreground mb-6 max-w-md">
+            Create your first Iceberg dataset to start analyzing your data. Connect to data sources and transform your data into queryable tables.
+          </p>
+          <Button onClick={handleCreate} size="lg">
+            <Plus className="mr-2 h-4 w-4" /> Create Your First Dataset
+          </Button>
         </div>
       )}
-    </Card>
+
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">
+              {editingDataset ? 'Edit Dataset' : 'Create New Dataset'}
+            </DialogTitle>
+          </DialogHeader>
+          <DatasetForm 
+            dataset={editingDataset ?? undefined} 
+            onSuccess={handleFormSuccess}
+            onCancel={() => setIsCreateDialogOpen(false)} 
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 
