@@ -1,247 +1,224 @@
-
-from pyiceberg.catalog import load_catalog
-from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
-from pyiceberg.schema import Schema
-from pyiceberg.types import (
-    NestedField, StringType, IntegerType, FloatType, BooleanType, 
-    TimestampType, DateType, LongType
-)
-from pyiceberg.table import Table
-from pyiceberg.partitioning import PartitionSpec
-import pandas as pd
-import logging
 import os
+import boto3
 from typing import Dict, Any, List, Optional
-from .vault_service import VaultService
+import logging
+from pyiceberg.catalog import load_catalog
+from pyiceberg.exceptions import NamespaceNotFoundError, TableNotFoundError
+from pyiceberg.schema import Schema
+from pyiceberg.types import NestedField, StringType, IntegerType, FloatType, BooleanType
+import pandas as pd
 from .minio_service import MinioService
+import tempfile
 
 logger = logging.getLogger(__name__)
 
 class IcebergService:
     def __init__(self):
-        self.vault = VaultService()
         self.minio_service = MinioService()
-        self._catalog = None
         
-    def _get_catalog(self):
-        """Initialize and return Iceberg catalog"""
-        if self._catalog is None:
-            access_key, secret_key = self.vault.get_minio_creds()
-            
-            catalog_config = {
-                "type": "rest",
-                "uri": os.environ.get("ICEBERG_CATALOG_URI", "http://iceberg-catalog:8181"),
-                "s3.endpoint": f"https://{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}",
-                "s3.access-key-id": access_key,
-                "s3.secret-access-key": secret_key,
-                "s3.path-style-access": "true",
-                "warehouse": f"s3://iceberg-warehouse/"
-            }
-            
-            self._catalog = load_catalog("minio_catalog", **catalog_config)
+        # Configure catalog
+        catalog_config = {
+            'type': 'rest',
+            'uri': os.environ.get('ICEBERG_CATALOG_URI', 'http://localhost:8181'),
+            's3.endpoint': f"https://{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}",
+            's3.access-key-id': os.environ.get('MINIO_ACCESS_KEY', 'minioadmin'),
+            's3.secret-access-key': os.environ.get('MINIO_SECRET_KEY', 'minioadmin'),
+            's3.path-style-access': 'true'
+        }
         
-        return self._catalog
-    
-    def list_namespaces(self) -> List[str]:
-        """List all namespaces in the catalog"""
         try:
-            catalog = self._get_catalog()
-            return [str(ns) for ns in catalog.list_namespaces()]
+            self.catalog = load_catalog('iceberg_catalog', **catalog_config)
+            logger.info("Iceberg catalog initialized successfully")
         except Exception as e:
-            logger.error(f"Error listing namespaces: {e}")
-            return []
-    
-    def list_tables(self, namespace: str = "default") -> List[str]:
-        """List all tables in a namespace"""
-        try:
-            catalog = self._get_catalog()
-            return [str(table) for table in catalog.list_tables(namespace)]
-        except Exception as e:
-            logger.error(f"Error listing tables in namespace {namespace}: {e}")
-            return []
-    
+            logger.error(f"Failed to initialize Iceberg catalog: {e}")
+            self.catalog = None
+
     def create_table_from_csv(
-        self, 
-        namespace: str, 
-        table_name: str, 
-        bucket: str, 
+        self,
+        namespace: str,
+        table_name: str,
+        bucket: str,
         csv_path: str,
         base_path: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Create an Iceberg table from CSV files in MinIO"""
+        """Create an Iceberg table from a CSV file in MinIO"""
         try:
-            catalog = self._get_catalog()
-            
-            # Ensure namespace exists
-            try:
-                catalog.create_namespace(namespace)
-            except Exception:
-                pass  # Namespace might already exist
-            
-            # Read sample CSV to infer schema
-            full_path = f"{base_path}/{csv_path}" if base_path else csv_path
-            objects = list(self.minio_service.client.list_objects(bucket, prefix=full_path))
-            
-            if not objects:
-                raise ValueError(f"No CSV files found at {full_path}")
-            
-            # Read first CSV file to infer schema
-            first_file = objects[0].object_name
-            response = self.minio_service.client.get_object(bucket, first_file)
-            df_sample = pd.read_csv(response, nrows=100)
-            
-            # Convert pandas schema to Iceberg schema
-            schema = self._pandas_to_iceberg_schema(df_sample)
-            
-            # Create table identifier
-            table_identifier = f"{namespace}.{table_name}"
-            
-            # Create the table
-            table = catalog.create_table(
-                identifier=table_identifier,
+            if not self.catalog:
+                raise Exception("Iceberg catalog not initialized")
+
+            # Infer schema from CSV
+            temp_file = self.minio_service.get_file(f"s3://{bucket}/{csv_path}")
+            df = pd.read_csv(temp_file)
+            schema = self._infer_schema(df)
+
+            # Define table location
+            table_location = f"{base_path}/{namespace}/{table_name}" if base_path else f"s3://{bucket}/{namespace}/{table_name}"
+
+            # Create Iceberg table
+            self.catalog.create_table(
+                name=f"{namespace}.{table_name}",
                 schema=schema,
-                location=f"s3://{bucket}/{full_path}"
+                location=table_location
             )
-            
-            # Load all CSV data into the table
-            all_data = []
-            for obj in objects:
-                if obj.object_name.endswith('.csv'):
-                    response = self.minio_service.client.get_object(bucket, obj.object_name)
-                    df = pd.read_csv(response)
-                    all_data.append(df)
-            
-            if all_data:
-                combined_df = pd.concat(all_data, ignore_index=True)
-                table.append(combined_df)
-            
+
+            # Load table and write data
+            table = self.catalog.load_table(f"{namespace}.{table_name}")
+            table.append(df)
+
+            logger.info(f"Created Iceberg table {namespace}.{table_name} from CSV {csv_path}")
+
             return {
-                "table_identifier": table_identifier,
-                "schema": self._iceberg_schema_to_dict(schema),
+                "name": table_name,
+                "namespace": namespace,
                 "location": table.location(),
-                "row_count": len(combined_df) if all_data else 0
+                "schema": str(schema)
             }
-            
+
         except Exception as e:
             logger.error(f"Error creating Iceberg table: {e}")
             raise
-    
+
     def get_table_info(self, namespace: str, table_name: str) -> Dict[str, Any]:
-        """Get detailed information about an Iceberg table"""
+        """Get information about an Iceberg table"""
         try:
-            catalog = self._get_catalog()
-            table_identifier = f"{namespace}.{table_name}"
-            table = catalog.load_table(table_identifier)
-            
+            if not self.catalog:
+                raise Exception("Iceberg catalog not initialized")
+
+            table = self.catalog.load_table(f"{namespace}.{table_name}")
+            schema = table.schema()
+
             return {
-                "identifier": table_identifier,
-                "schema": self._iceberg_schema_to_dict(table.schema()),
+                "name": table_name,
+                "namespace": namespace,
                 "location": table.location(),
-                "snapshot_id": table.current_snapshot().snapshot_id if table.current_snapshot() else None,
-                "metadata_location": table.metadata_location
+                "schema": str(schema)
             }
-        except NoSuchTableError:
-            raise ValueError(f"Table {namespace}.{table_name} not found")
+
+        except TableNotFoundError:
+            logger.warning(f"Iceberg table {namespace}.{table_name} not found")
+            return None
         except Exception as e:
-            logger.error(f"Error getting table info: {e}")
+            logger.error(f"Error getting Iceberg table info: {e}")
             raise
-    
-    def query_table(
-        self, 
-        namespace: str, 
-        table_name: str, 
-        limit: int = 100,
-        columns: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """Query an Iceberg table and return sample data"""
+
+    def query_table(self, namespace: str, table_name: str, limit: int = 100) -> Dict[str, Any]:
+        """Query an Iceberg table and return a sample of the data"""
         try:
-            catalog = self._get_catalog()
-            table_identifier = f"{namespace}.{table_name}"
-            table = catalog.load_table(table_identifier)
-            
-            # Convert to pandas for easier manipulation
-            df = table.scan(limit=limit).to_pandas()
-            
-            if columns:
-                df = df[columns]
-            
+            if not self.catalog:
+                raise Exception("Iceberg catalog not initialized")
+
+            table = self.catalog.load_table(f"{namespace}.{table_name}")
+            df = table.scan().to_arrow().to_pandas()
+            sample_data = df.head(limit).to_dict(orient="records")
+
             return {
-                "columns": [{"name": col, "type": str(df[col].dtype)} for col in df.columns],
-                "sample_data": df.to_dict(orient="records"),
-                "total_rows": len(df)
+                "name": table_name,
+                "namespace": namespace,
+                "sample_data": sample_data
             }
-            
+
+        except TableNotFoundError:
+            logger.warning(f"Iceberg table {namespace}.{table_name} not found")
+            return None
         except Exception as e:
-            logger.error(f"Error querying table: {e}")
+            logger.error(f"Error querying Iceberg table: {e}")
             raise
-    
-    def _pandas_to_iceberg_schema(self, df: pd.DataFrame) -> Schema:
-        """Convert pandas DataFrame schema to Iceberg schema"""
+
+    def _infer_schema(self, df: pd.DataFrame) -> Schema:
+        """Infer Iceberg schema from Pandas DataFrame"""
         fields = []
-        field_id = 1
-        
         for col_name, dtype in df.dtypes.items():
-            if pd.api.types.is_integer_dtype(dtype):
-                iceberg_type = LongType()
-            elif pd.api.types.is_float_dtype(dtype):
-                iceberg_type = FloatType()
-            elif pd.api.types.is_bool_dtype(dtype):
-                iceberg_type = BooleanType()
-            elif pd.api.types.is_datetime64_any_dtype(dtype):
-                iceberg_type = TimestampType()
+            if dtype == "int64":
+                fields.append(NestedField(name=col_name, field_type=IntegerType(), field_id=len(fields) + 1))
+            elif dtype == "float64":
+                fields.append(NestedField(name=col_name, field_type=FloatType(), field_id=len(fields) + 1))
+            elif dtype == "bool":
+                fields.append(NestedField(name=col_name, field_type=BooleanType(), field_id=len(fields) + 1))
             else:
-                iceberg_type = StringType()
-            
-            fields.append(NestedField(
-                field_id=field_id,
-                name=col_name,
-                field_type=iceberg_type,
-                required=not df[col_name].isnull().any()
-            ))
-            field_id += 1
-        
+                fields.append(NestedField(name=col_name, field_type=StringType(), field_id=len(fields) + 1))
+
         return Schema(*fields)
-    
-    def _iceberg_schema_to_dict(self, schema: Schema) -> Dict[str, Any]:
-        """Convert Iceberg schema to dictionary representation"""
-        columns = []
-        for field in schema.fields:
-            columns.append({
-                "name": field.name,
-                "type": str(field.field_type),
-                "nullable": not field.required,
-                "field_id": field.field_id
-            })
-        
-        return {"columns": columns}
-    
-    def evolve_schema(
-        self, 
-        namespace: str, 
-        table_name: str, 
-        schema_changes: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Evolve the schema of an Iceberg table"""
+
+    def create_namespace(self, namespace: str, properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Create a new Iceberg namespace"""
         try:
-            catalog = self._get_catalog()
-            table_identifier = f"{namespace}.{table_name}"
-            table = catalog.load_table(table_identifier)
+            if not self.catalog:
+                raise Exception("Iceberg catalog not initialized")
             
-            # Apply schema evolution based on changes
-            # This is a simplified implementation - in practice, you'd want more sophisticated schema evolution
-            with table.update_schema() as update:
-                for change in schema_changes.get("add_columns", []):
-                    update.add_column(change["name"], change["type"])
-                
-                for change in schema_changes.get("rename_columns", []):
-                    update.rename_column(change["old_name"], change["new_name"])
+            namespace_props = properties or {}
+            self.catalog.create_namespace(namespace, properties=namespace_props)
             
+            logger.info(f"Created Iceberg namespace: {namespace}")
             return {
-                "table_identifier": table_identifier,
-                "new_schema": self._iceberg_schema_to_dict(table.schema()),
-                "message": "Schema evolved successfully"
+                "name": namespace,
+                "properties": namespace_props,
+                "location": namespace_props.get("location", ""),
+                "tables": []
             }
-            
         except Exception as e:
-            logger.error(f"Error evolving schema: {e}")
+            logger.error(f"Error creating namespace {namespace}: {e}")
             raise
+
+    def list_namespaces(self) -> List[Dict[str, Any]]:
+        """List all Iceberg namespaces"""
+        try:
+            if not self.catalog:
+                raise Exception("Iceberg catalog not initialized")
+            
+            namespaces = []
+            for ns in self.catalog.list_namespaces():
+                try:
+                    ns_name = ns[0] if isinstance(ns, tuple) else str(ns)
+                    properties = self.catalog.load_namespace_properties(ns_name)
+                    tables = self.catalog.list_tables(ns_name)
+                    
+                    namespaces.append({
+                        "name": ns_name,
+                        "properties": properties,
+                        "location": properties.get("location", ""),
+                        "tables": [table.name for table in tables] if tables else []
+                    })
+                except Exception as e:
+                    logger.warning(f"Error loading namespace {ns}: {e}")
+                    continue
+            
+            return namespaces
+        except Exception as e:
+            logger.error(f"Error listing namespaces: {e}")
+            return []
+
+    def delete_namespace(self, namespace: str) -> bool:
+        """Delete an Iceberg namespace"""
+        try:
+            if not self.catalog:
+                raise Exception("Iceberg catalog not initialized")
+            
+            # Check if namespace has tables
+            tables = self.catalog.list_tables(namespace)
+            if tables:
+                raise Exception(f"Cannot delete namespace {namespace}: contains {len(tables)} tables")
+            
+            self.catalog.drop_namespace(namespace)
+            logger.info(f"Deleted Iceberg namespace: {namespace}")
+            return True
+        except NamespaceNotFoundError:
+            logger.warning(f"Namespace {namespace} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error deleting namespace {namespace}: {e}")
+            raise
+
+    def list_namespace_tables(self, namespace: str) -> List[str]:
+        """List tables in a specific namespace"""
+        try:
+            if not self.catalog:
+                raise Exception("Iceberg catalog not initialized")
+            
+            tables = self.catalog.list_tables(namespace)
+            return [table.name for table in tables] if tables else []
+        except NamespaceNotFoundError:
+            logger.warning(f"Namespace {namespace} not found")
+            return []
+        except Exception as e:
+            logger.error(f"Error listing tables in namespace {namespace}: {e}")
+            return []

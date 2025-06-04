@@ -8,6 +8,7 @@ from .bi_service import BIService
 from .keycloak_service import KeycloakService
 from .iceberg_service import IcebergService
 from .iceberg_bi_extension import IcebergBIExtension
+from .data_source_service import DataSourceService
 from .api_service import router as api_router
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     'KeycloakService', 
     'IcebergService',
     'IcebergBIExtension',
+    'DataSourceService',
     'api_router'
 ]

@@ -1,311 +1,193 @@
-# Add to your existing data_source_service.py or create a new file
 
-import minio
-from minio.error import S3Error
-from sqlalchemy import create_engine, text
-from typing import Optional, Dict, Any, List, Union
-import pandas as pd
-import io
-import json
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Dict, Any, List, Optional
 import logging
 from .postgres_service import PostgresService
+from .minio_service import MinioService
+from .bi_service import BIService
+from .iceberg_service import IcebergService
+from .data_source_service import DataSourceService
 
 logger = logging.getLogger(__name__)
+router = APIRouter()
+security = HTTPBearer()
 
+# Initialize services
+postgres_service = PostgresService()
+minio_service = MinioService()
+bi_service = BIService()
+iceberg_service = IcebergService()
+data_source_service = DataSourceService()
 
-class DataSourceService:
-    def __init__(self):
-        self.postgres_service = PostgresService()
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Extract user from token"""
+    try:
+        user = bi_service.get_user_from_token(credentials.credentials)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        return user
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
 
-    def create_data_source(self, source_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
-        """Create a new data source"""
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                INSERT INTO data_sources (
-                    name, type, description, connection_string, config, 
-                    created_by, created_at, updated_at, is_active
-                ) VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW(), %s)
-                RETURNING id
-                """
+# Data Sources endpoints
+@router.get("/bi/data-sources")
+async def get_data_sources(current_user: dict = Depends(get_current_user)):
+    """Get all data sources"""
+    try:
+        sources = data_source_service.get_data_sources(current_user.get('sub'))
+        return sources
+    except Exception as e:
+        logger.error(f"Error fetching data sources: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch data sources")
 
-                config = json.dumps(source_data.get('config', {}))
+@router.post("/bi/data-sources")
+async def create_data_source(
+    source_data: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new data source"""
+    try:
+        source = data_source_service.create_data_source(source_data, current_user.get('sub'))
+        return source
+    except Exception as e:
+        logger.error(f"Error creating data source: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create data source")
 
-                cursor = conn.cursor()
-                cursor.execute(query, (
-                    source_data['name'],
-                    source_data['type'],
-                    source_data.get('description'),
-                    source_data['connection_string'],
-                    config,
-                    user_id,
-                    True
-                ))
+@router.put("/bi/data-sources/{source_id}")
+async def update_data_source(
+    source_id: int,
+    source_data: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
+    """Update a data source"""
+    try:
+        source = data_source_service.update_data_source(source_id, source_data, current_user.get('sub'))
+        return source
+    except Exception as e:
+        logger.error(f"Error updating data source: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update data source")
 
-                result = cursor.fetchone()
-                source_id = result[0]
-                conn.commit()
+@router.delete("/bi/data-sources/{source_id}")
+async def delete_data_source(
+    source_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a data source"""
+    try:
+        success = data_source_service.delete_data_source(source_id, current_user.get('sub'))
+        if not success:
+            raise HTTPException(status_code=404, detail="Data source not found")
+        return {"message": "Data source deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting data source: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete data source")
 
-                return self.get_data_source(source_id)
+@router.post("/bi/data-sources/{source_id}/test-connection")
+async def test_data_source_connection(
+    source_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Test connection to a data source"""
+    try:
+        result = data_source_service.test_connection(source_id)
+        return result
+    except Exception as e:
+        logger.error(f"Error testing connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to test connection")
 
-        except Exception as e:
-            logger.error(f"Error creating data source: {str(e)}")
-            raise
+# Iceberg namespace endpoints
+@router.get("/iceberg/namespaces")
+async def get_iceberg_namespaces(current_user: dict = Depends(get_current_user)):
+    """Get all Iceberg namespaces"""
+    try:
+        namespaces = iceberg_service.list_namespaces()
+        return {"namespaces": namespaces}
+    except Exception as e:
+        logger.error(f"Error fetching namespaces: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch namespaces")
 
-    def update_data_source(self, source_id: int, source_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
-        """Update an existing data source"""
-        try:
-            with self.postgres_service._get_connection() as conn:
-                # Add logging to debug the issue
-                logger.info(f"Updating data source {source_id} with data: {source_data}")
-                
-                query = """
-                UPDATE data_sources 
-                SET name = %s, type = %s, description = %s, connection_string = %s,
-                    config = %s, updated_at = NOW()
-                WHERE id = %s AND (created_by = %s OR %s IN (
-                    SELECT sub FROM keycloak_users WHERE realm_access->'roles' ? 'admin'
-                ))
-                RETURNING id
-                """
+@router.post("/iceberg/namespaces")
+async def create_iceberg_namespace(
+    namespace_data: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new Iceberg namespace"""
+    try:
+        namespace = namespace_data.get('namespace')
+        if not namespace:
+            raise HTTPException(status_code=400, detail="Namespace name is required")
+        
+        properties = namespace_data.get('properties', {})
+        result = iceberg_service.create_namespace(namespace, properties)
+        return result
+    except Exception as e:
+        logger.error(f"Error creating namespace: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create namespace")
 
-                config = json.dumps(source_data.get('config', {}))
+@router.delete("/iceberg/namespaces/{namespace}")
+async def delete_iceberg_namespace(
+    namespace: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete an Iceberg namespace"""
+    try:
+        success = iceberg_service.delete_namespace(namespace)
+        if not success:
+            raise HTTPException(status_code=404, detail="Namespace not found")
+        return {"message": "Namespace deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting namespace: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete namespace")
 
-                cursor = conn.cursor()
-                cursor.execute(query, (
-                    source_data['name'],
-                    source_data['type'],
-                    source_data.get('description'),
-                    source_data['connection_string'],
-                    config,
-                    source_id,
-                    user_id,
-                    user_id
-                ))
+@router.get("/iceberg/namespaces/{namespace}/tables")
+async def get_namespace_tables(
+    namespace: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all tables in a namespace"""
+    try:
+        tables = iceberg_service.list_namespace_tables(namespace)
+        return {"tables": tables}
+    except Exception as e:
+        logger.error(f"Error fetching namespace tables: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch namespace tables")
 
-                # Check if any rows were updated
-                result = cursor.fetchone()
-                if not result:
-                    logger.warning(f"No data source updated for ID {source_id} and user {user_id}")
-                    raise ValueError("Data source not found or you don't have permission to update it")
+# Access request endpoints
+@router.get("/access-requests")
+async def get_access_requests(
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get access requests"""
+    try:
+        requests = bi_service.get_access_requests(status)
+        return requests
+    except Exception as e:
+        logger.error(f"Error fetching access requests: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch access requests")
 
-                affected_rows = cursor.rowcount
-                logger.info(f"Updated {affected_rows} rows for data source {source_id}")
-                
-                conn.commit()
+@router.post("/access-requests")
+async def create_access_request(request_data: Dict[str, Any]):
+    """Create a new access request (no auth required)"""
+    try:
+        request = bi_service.create_access_request(request_data)
+        return request
+    except Exception as e:
+        logger.error(f"Error creating access request: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create access request")
 
-                return self.get_data_source(source_id)
-
-        except Exception as e:
-            logger.error(f"Error updating data source: {str(e)}")
-            raise
-
-    
-    def delete_data_source(self, source_id: int, user_id: str) -> bool:
-        """Delete a data source"""
-        try:
-            with self.postgres_service._get_connection() as conn:
-                # Check if any datasets are using this source
-                check_query = "SELECT COUNT(*) FROM datasets WHERE source_id = %s AND is_active = true"
-                cursor = conn.cursor()
-                cursor.execute(check_query, (source_id,))
-                count = cursor.fetchone()[0]
-
-                if count > 0:
-                    raise ValueError(
-                        f"Cannot delete data source. {count} datasets are still using it.")
-
-                # Delete the data source
-                delete_query = """
-                DELETE FROM data_sources 
-                WHERE id = %s AND (created_by = %s OR %s IN (
-                    SELECT sub FROM keycloak_users WHERE realm_access->'roles' ? 'admin'
-                ))
-                """
-
-                cursor.execute(delete_query, (source_id, user_id, user_id))
-                conn.commit()
-
-                return True
-
-        except Exception as e:
-            logger.error(f"Error deleting data source: {str(e)}")
-            return False
-
-    def get_data_source(self, source_id: int) -> Optional[Dict[str, Any]]:
-        """Get a data source by ID"""
-        try:
-            query = """
-            SELECT id, name, type, description, connection_string, config,
-                   created_by, created_at, updated_at, is_active
-            FROM data_sources 
-            WHERE id = %s
-            """
-
-            result = self.postgres_service.execute_query(query, (source_id,))
-
-            if result:
-                source = dict(result[0])
-                # Parse config if it's a string
-                if isinstance(source.get('config'), str):
-                    try:
-                        source['config'] = json.loads(source['config'])
-                    except:
-                        source['config'] = {}
-                return source
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Error getting data source {source_id}: {str(e)}")
-            return None
-
-    def get_data_sources(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get all data sources"""
-        try:
-            query = """
-            SELECT id, name, type, description, connection_string, config,
-                   created_by, created_at, updated_at, is_active
-            FROM data_sources 
-            WHERE is_active = true
-            """
-
-            if user_id:
-                query += " AND (created_by = %s OR %s IN (SELECT sub FROM keycloak_users WHERE realm_access->'roles' ? 'admin'))"
-                params = (user_id, user_id)
-            else:
-                params = ()
-
-            query += " ORDER BY updated_at DESC"
-
-            results = self.postgres_service.execute_query(query, params)
-
-            sources = []
-            for row in results:
-                source = dict(row)
-                # Parse config if it's a string
-                if isinstance(source.get('config'), str):
-                    try:
-                        source['config'] = json.loads(source['config'])
-                    except:
-                        source['config'] = {}
-                sources.append(source)
-
-            return sources
-
-        except Exception as e:
-            logger.error(f"Error getting data sources: {str(e)}")
-            return []
-
-    def get_connection(self, source_id: int) -> Optional[Any]:
-        """Get a connection object for the given source ID"""
-        source = self.get_data_source(source_id)
-        if not source:
-            return None
-
-        try:
-            if source['type'].lower() in ['postgresql', 'postgres']:
-                return create_engine(source['connection_string'])
-            elif source['type'].lower() == 'minio':
-                # Parse MinIO connection string (format: endpoint:port:access_key:secret_key:secure)
-                parts = source['connection_string'].split(':')
-                return minio.Minio(
-                    f"{parts[0]}:{parts[1]}",
-                    access_key=parts[2],
-                    secret_key=parts[3],
-                    secure=parts[4].lower() == 'true'
-                )
-            # Add other database types as needed
-            else:
-                logger.error(f"Unsupported data source type: {source['type']}")
-                return None
-        except Exception as e:
-            logger.error(
-                f"Failed to create connection for source {source_id}: {str(e)}")
-            return None
-
-    def execute_query(self, source_id: int, query: Union[str, Dict]) -> List[Dict]:
-        """Execute a query against the data source"""
-        source = self.get_data_source(source_id)
-        if not source:
-            return []
-
-        try:
-            if source['type'].lower() in ['postgresql', 'postgres', 'mysql', 'sqlserver']:
-                # Handle SQL databases
-                engine = create_engine(source['connection_string'])
-                with engine.connect() as conn:
-                    if isinstance(query, dict):
-                        # Handle parameterized queries
-                        sql = query.get('sql', '')
-                        params = query.get('params', {})
-                        result = conn.execute(text(sql), **params)
-                    else:
-                        result = conn.execute(text(query))
-                    return [dict(row) for row in result.fetchall()]
-
-            elif source['type'].lower() == 'minio':
-                # Handle MinIO queries
-                client = self.get_connection(source_id)
-                if not client:
-                    return []
-
-                if isinstance(query, dict):
-                    bucket = query.get('bucket')
-                    prefix = query.get('prefix', '')
-                    file_type = query.get('file_type', 'csv')
-
-                    objects = client.list_objects(
-                        bucket, prefix=prefix, recursive=True)
-                    data = []
-
-                    for obj in objects:
-                        if obj.object_name.endswith(f'.{file_type}'):
-                            response = client.get_object(
-                                bucket, obj.object_name)
-                            if file_type == 'csv':
-                                df = pd.read_csv(io.BytesIO(response.data))
-                            elif file_type == 'json':
-                                df = pd.read_json(io.BytesIO(response.data))
-                            elif file_type == 'parquet':
-                                df = pd.read_parquet(io.BytesIO(response.data))
-                            else:
-                                continue
-
-                            data.extend(df.to_dict('records'))
-                    return data
-
-            # Add other data source types as needed
-            else:
-                logger.error(
-                    f"Query execution not implemented for type: {source['type']}")
-                return []
-
-        except Exception as e:
-            logger.error(
-                f"Query execution failed for source {source_id}: {str(e)}")
-            return []
-
-    def test_connection(self, source_id: int) -> Dict[str, Any]:
-        """Test connection to a data source"""
-        try:
-            connection = self.get_connection(source_id)
-            if not connection:
-                return {'success': False, 'message': 'Could not create connection'}
-
-            source = self.get_data_source(source_id)
-
-            if source['type'].lower() in ['postgresql', 'postgres']:
-                with connection.connect() as conn:
-                    conn.execute(text("SELECT 1"))
-                return {'success': True, 'message': 'Connection successful'}
-
-            elif source['type'].lower() == 'minio':
-                # Test by listing buckets
-                buckets = list(connection.list_buckets())
-                return {'success': True, 'message': f'Connection successful. Found {len(buckets)} buckets.'}
-
-            return {'success': False, 'message': 'Unsupported connection type'}
-
-        except Exception as e:
-            return {'success': False, 'message': f'Connection failed: {str(e)}'}
+@router.put("/access-requests/{request_id}")
+async def update_access_request(
+    request_id: int,
+    update_data: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
+    """Update an access request"""
+    try:
+        request = bi_service.update_access_request(request_id, update_data)
+        return request
+    except Exception as e:
+        logger.error(f"Error updating access request: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update access request")
