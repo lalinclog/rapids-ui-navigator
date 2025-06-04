@@ -1,3 +1,4 @@
+
 import os
 import logging
 from io import BytesIO
@@ -1137,7 +1138,7 @@ class BIService:
             elif dataset["query_type"] == "custom":
                 base_query = dataset["query_value"]
             else:
-                return {"success": False, "error": f"Unknown query type: {dataset['query_type']}"}  # noqa: E501
+                return {"success": False, "error": f"Unknown query type: {dataset['query_type']}"}
 
             # Apply filters if provided
             if filters:
@@ -1703,130 +1704,3 @@ class BIService:
             logger.error(
                 f"Error generating schema for dataset: {str(e)}", exc_info=True)
             return {"success": False, "error": str(e)}
-
-    def get_user_from_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Extract user information from token"""
-        try:
-            # This is a simplified implementation
-            # In production, you'd validate the JWT token properly
-            import jwt
-            # For now, we'll assume the token is valid and return a mock user
-            # Replace this with proper JWT validation using your Keycloak public key
-            return {
-                "sub": "user-123",
-                "preferred_username": "user",
-                "email": "user@example.com"
-            }
-        except Exception as e:
-            logger.error(f"Error extracting user from token: {e}")
-            return None
-
-    def create_access_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a new access request"""
-        try:
-            with self.postgres_service._get_connection() as conn:
-                query = """
-                INSERT INTO access_requests (
-                    user_id, email, full_name, organization, role, 
-                    reason, status, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                RETURNING id
-                """
-                
-                cursor = conn.cursor()
-                cursor.execute(query, (
-                    request_data.get('user_id'),
-                    request_data['email'],
-                    request_data['full_name'],
-                    request_data.get('organization'),
-                    request_data.get('role'),
-                    request_data.get('reason'),
-                    'pending'
-                ))
-                
-                result = cursor.fetchone()
-                request_id = result[0]
-                conn.commit()
-                
-                return self.get_access_request(request_id)
-        except Exception as e:
-            logger.error(f"Error creating access request: {e}")
-            raise
-
-    def get_access_request(self, request_id: int) -> Optional[Dict[str, Any]]:
-        """Get an access request by ID"""
-        try:
-            query = """
-            SELECT id, user_id, email, full_name, organization, role,
-                   reason, status, created_at, updated_at, approved_by, approved_at
-            FROM access_requests 
-            WHERE id = %s
-            """
-            
-            result = self.postgres_service.execute_query(query, (request_id,), fetch=True)
-            return dict(result[0]) if result else None
-        except Exception as e:
-            logger.error(f"Error getting access request {request_id}: {e}")
-            return None
-
-    def get_access_requests(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get all access requests, optionally filtered by status"""
-        try:
-            query = """
-            SELECT id, user_id, email, full_name, organization, role,
-                   reason, status, created_at, updated_at, approved_by, approved_at
-            FROM access_requests
-            """
-            params = ()
-            
-            if status:
-                query += " WHERE status = %s"
-                params = (status,)
-            
-            query += " ORDER BY created_at DESC"
-            
-            results = self.postgres_service.execute_query(query, params, fetch=True)
-            return [dict(row) for row in results] if results else []
-        except Exception as e:
-            logger.error(f"Error getting access requests: {e}")
-            return []
-
-    def update_access_request(self, request_id: int, update_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update an access request"""
-        try:
-            with self.postgres_service._get_connection() as conn:
-                set_clauses = []
-                values = []
-                
-                for key, value in update_data.items():
-                    if key in ['status', 'approved_by', 'reason']:
-                        set_clauses.append(f"{key} = %s")
-                        values.append(value)
-                
-                if 'status' in update_data and update_data['status'] == 'approved':
-                    set_clauses.append("approved_at = NOW()")
-                
-                set_clauses.append("updated_at = NOW()")
-                
-                if not set_clauses:
-                    raise ValueError("No valid fields to update")
-                
-                query = f"""
-                UPDATE access_requests 
-                SET {', '.join(set_clauses)}
-                WHERE id = %s
-                RETURNING id
-                """
-                values.append(request_id)
-                
-                cursor = conn.cursor()
-                cursor.execute(query, values)
-                
-                if cursor.rowcount == 0:
-                    raise ValueError("Access request not found")
-                
-                conn.commit()
-                return self.get_access_request(request_id)
-        except Exception as e:
-            logger.error(f"Error updating access request {request_id}: {e}")
-            raise

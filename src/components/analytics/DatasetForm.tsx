@@ -232,41 +232,6 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
     }
   }, [dataset, form]);
 
-  // Load Iceberg namespaces on component mount
-  useEffect(() => {
-    const loadNamespaces = async () => {
-      try {
-        const namespaces = await fetchIcebergNamespaces();
-        setIcebergNamespaces(namespaces);
-      } catch (error) {
-        console.error('Error loading Iceberg namespaces:', error);
-      }
-    };
-
-    if (selectedSource?.type === 'minio') {
-      loadNamespaces();
-    }
-  }, [selectedSource]);
-
-  // Load tables when namespace changes
-  useEffect(() => {
-    const loadTables = async () => {
-      if (selectedNamespace) {
-        try {
-          const tables = await fetchIcebergTables(selectedNamespace);
-          setIcebergTables(tables);
-        } catch (error) {
-          console.error('Error loading Iceberg tables:', error);
-          setIcebergTables([]);
-        }
-      } else {
-        setIcebergTables([]);
-      }
-    };
-
-    loadTables();
-  }, [selectedNamespace]);
-
   const handlePreviewSchema = async () => {
     const values = form.getValues();
     
@@ -510,56 +475,55 @@ const DatasetForm: React.FC<DatasetFormProps> = ({ dataset, onSuccess, onCancel 
               ))}
             </SelectContent>
           </Select>
-          {icebergNamespaces.length === 0 && (
-            <div className="text-sm text-muted-foreground mt-1">
-              No namespaces found. Create one in the Data Sources → Iceberg Namespaces tab first.
-            </div>
-          )}
         </div>
 
-        {selectedNamespace && (
-          <div>
-            <Label>Iceberg Table</Label>
-            <Select 
-              value={form.watch("query_value")?.split('.')[1] || ''} 
-              onValueChange={(value) => {
-                form.setValue("query_value", `${selectedNamespace}.${value}`);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select existing table or enter new table name" />
-              </SelectTrigger>
-              <SelectContent>
-                {icebergTables.map((table) => (
-                  <SelectItem key={table} value={table}>
-                    {table}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="text-sm text-muted-foreground mt-1">
-              Select an existing table or manually enter a new table name in the field below.
-            </div>
-          </div>
-        )}
+        <div>
+          <Label>Iceberg Table</Label>
+          <Select 
+            value={form.watch("query_value")?.split('.')[1] || ''} 
+            onValueChange={(value) => {
+              form.setValue("query_value", `${selectedNamespace}.${value}`);
+            }}
+            disabled={!selectedNamespace}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select table" />
+            </SelectTrigger>
+            <SelectContent>
+              {icebergTables.map((table) => (
+                <SelectItem key={table} value={table}>
+                  {table}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        {selectedNamespace && (
-          <div>
-            <Label>Table Name (for new tables)</Label>
-            <Input 
-              placeholder="my_new_table" 
-              value={form.watch("query_value")?.split('.')[1] || ''}
-              onChange={(e) => {
-                if (e.target.value && selectedNamespace) {
-                  form.setValue("query_value", `${selectedNamespace}.${e.target.value}`);
-                }
-              }}
-            />
-            <div className="text-sm text-muted-foreground mt-1">
-              Enter the name for a new Iceberg table to be created from CSV files.
-            </div>
-          </div>
-        )}
+        <div className="text-sm text-muted-foreground">
+          Or create a new table from CSV files by specifying the table name and CSV path below.
+        </div>
+
+        <div>
+          <Label>New Table Name (Optional)</Label>
+          <Input 
+            placeholder="my_new_table" 
+            onChange={(e) => {
+              if (e.target.value && selectedNamespace) {
+                form.setValue("query_value", `${selectedNamespace}.${e.target.value}`);
+              }
+            }}
+          />
+        </div>
+
+        <div>
+          <Label>CSV Path (for new table creation)</Label>
+          <Input 
+            placeholder="data/sales/customers.csv" 
+            onChange={(e) => {
+              // Store CSV path for table creation
+            }}
+          />
+        </div>
       </div>
     );
   };

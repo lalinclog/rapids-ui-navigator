@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,11 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from '@/hooks/use-toast';
-import { Database, Plus, Edit, Trash2, Play, Activity, Layers } from 'lucide-react';
+import { Database, Plus, Edit, Trash2, Play, Activity } from 'lucide-react';
 import DataSourceForm from './DataSourceForm';
-import IcebergNamespaceManager from './IcebergNamespaceManager';
 import { DataSourceIcon } from './DataSourceIcons';
 
 interface DataSource {
@@ -202,35 +199,24 @@ const DataSources: React.FC = () => {
             <Plus className="mr-2 h-4 w-4" /> Add Data Source
           </Button>
         </div>
-        <Tabs defaultValue="sources" className="w-full">
-          <TabsList>
-            <TabsTrigger value="sources">Data Sources</TabsTrigger>
-            <TabsTrigger value="iceberg">Iceberg Namespaces</TabsTrigger>
-          </TabsList>
-          <TabsContent value="sources">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 3 }).map((_, index) => (
-                <Card key={index} className="h-full flex flex-col">
-                  <CardHeader>
-                    <Skeleton className="h-5 w-2/3 mb-2" />
-                    <Skeleton className="h-4 w-1/3" />
-                  </CardHeader>
-                  <CardContent className="flex-grow">
-                    <Skeleton className="h-4 w-full mb-2" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </CardContent>
-                  <CardFooter className="pt-2 flex justify-between">
-                    <Skeleton className="h-9 w-16" />
-                    <Skeleton className="h-9 w-16" />
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-          <TabsContent value="iceberg">
-            <Skeleton className="h-48 w-full" />
-          </TabsContent>
-        </Tabs>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index} className="h-full flex flex-col">
+              <CardHeader>
+                <Skeleton className="h-5 w-2/3 mb-2" />
+                <Skeleton className="h-4 w-1/3" />
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-3 w-1/2" />
+              </CardContent>
+              <CardFooter className="pt-2 flex justify-between">
+                <Skeleton className="h-9 w-16" />
+                <Skeleton className="h-9 w-16" />
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
@@ -258,51 +244,32 @@ const DataSources: React.FC = () => {
         </Button>
       </div>
 
-      <Tabs defaultValue="sources" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="sources" className="flex items-center gap-2">
-            <Database className="h-4 w-4" />
-            Data Sources
-          </TabsTrigger>
-          <TabsTrigger value="iceberg" className="flex items-center gap-2">
-            <Layers className="h-4 w-4" />
-            Iceberg Namespaces
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="sources">
-          {dataSources && dataSources.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {dataSources.map((dataSource) => (
-                <DataSourceCard 
-                  key={dataSource.id} 
-                  dataSource={dataSource} 
-                  onEdit={() => handleEdit(dataSource)}
-                  onDelete={() => handleDelete(dataSource)}
-                  onTestConnection={() => handleTestConnection(dataSource)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              <div className="bg-muted h-16 w-16 rounded-full flex items-center justify-center mb-6">
-                <Database className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">No Data Sources</h3>
-              <p className="text-muted-foreground mb-6 max-w-md">
-                Connect to your first data source to start creating datasets and visualizations. Supported sources include PostgreSQL, MySQL, MinIO, and more.
-              </p>
-              <Button onClick={handleCreate} size="lg">
-                <Plus className="mr-2 h-4 w-4" /> Add Your First Data Source
-              </Button>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="iceberg">
-          <IcebergNamespaceManager />
-        </TabsContent>
-      </Tabs>
+      {dataSources && dataSources.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {dataSources.map((dataSource) => (
+            <DataSourceCard 
+              key={dataSource.id} 
+              dataSource={dataSource} 
+              onEdit={() => handleEdit(dataSource)}
+              onDelete={() => handleDelete(dataSource)}
+              onTestConnection={() => handleTestConnection(dataSource)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+          <div className="bg-muted h-16 w-16 rounded-full flex items-center justify-center mb-6">
+            <Database className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-xl font-semibold mb-2">No Data Sources</h3>
+          <p className="text-muted-foreground mb-6 max-w-md">
+            Connect to your first data source to start creating datasets and visualizations. Supported sources include PostgreSQL, MySQL, MinIO, and more.
+          </p>
+          <Button onClick={handleCreate} size="lg">
+            <Plus className="mr-2 h-4 w-4" /> Add Your First Data Source
+          </Button>
+        </div>
+      )}
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="max-w-2xl">
