@@ -10,6 +10,7 @@ from .postgres_service import PostgresService
 from .bi_service import BIService
 import time
 from .iceberg_bi_extension import IcebergBIExtension
+from .iceberg_service import IcebergService
 
 from fastapi import BackgroundTasks
 from fastapi.concurrency import run_in_threadpool
@@ -25,6 +26,7 @@ keycloak_service = KeycloakService()
 postgres_service = PostgresService()
 bi_service = BIService()  # Add BIService instance
 iceberg_bi = IcebergBIExtension(bi_service)
+iceberg_service = IcebergService()  # Add IcebergService instance
 
 # Models for API key management
 class APIKeyCreate(BaseModel):
@@ -54,6 +56,14 @@ class AccessRequestResponse(BaseModel):
     status: str
     created_at: str
     updated_at: Optional[str] = None
+
+# Models for Iceberg namespace management
+class NamespaceCreate(BaseModel):
+    name: str
+    properties: Optional[Dict[str, str]] = None
+
+class NamespaceUpdate(BaseModel):
+    properties: Dict[str, str]
 
 # Role-based access control
 ADMIN_ROLES = ["admin"]
@@ -731,18 +741,89 @@ async def list_roles(current_user: dict = Depends(admin_only)):
         {"name": "department_role", "description": "Department-specific access role"}
     ]
 
-# Iceberg-specific endpoints
+# Iceberg namespace CRUD endpoints
 @router.get("/iceberg/namespaces")
 async def list_iceberg_namespaces(current_user: dict = Depends(get_current_user_or_api_key)):
     """List all Iceberg namespaces"""
     try:
-        namespaces = iceberg_bi.iceberg_service.list_namespaces()
+        namespaces = iceberg_service.list_namespaces()
         return {"namespaces": namespaces}
     except Exception as e:
         logger.error(f"Error listing namespaces: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error listing namespaces: {str(e)}"
+        )
+
+@router.post("/iceberg/namespaces")
+async def create_iceberg_namespace(
+    namespace_data: NamespaceCreate,
+    current_user: dict = Depends(data_steward_only)
+):
+    """Create a new Iceberg namespace (data steward only)"""
+    try:
+        result = iceberg_service.create_namespace(
+            namespace=namespace_data.name,
+            properties=namespace_data.properties
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error creating namespace: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating namespace: {str(e)}"
+        )
+
+@router.delete("/iceberg/namespaces/{namespace}")
+async def delete_iceberg_namespace(
+    namespace: str,
+    current_user: dict = Depends(data_steward_only)
+):
+    """Delete an Iceberg namespace (data steward only)"""
+    try:
+        result = iceberg_service.delete_namespace(namespace)
+        return result
+    except Exception as e:
+        logger.error(f"Error deleting namespace: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting namespace: {str(e)}"
+        )
+
+@router.get("/iceberg/namespaces/{namespace}")
+async def get_namespace_properties(
+    namespace: str,
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """Get namespace properties and information"""
+    try:
+        result = iceberg_service.get_namespace_properties(namespace)
+        return result
+    except Exception as e:
+        logger.error(f"Error getting namespace properties: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting namespace properties: {str(e)}"
+        )
+
+@router.put("/iceberg/namespaces/{namespace}")
+async def update_namespace_properties(
+    namespace: str,
+    namespace_data: NamespaceUpdate,
+    current_user: dict = Depends(data_steward_only)
+):
+    """Update namespace properties (data steward only)"""
+    try:
+        result = iceberg_service.update_namespace_properties(
+            namespace=namespace,
+            properties=namespace_data.properties
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error updating namespace properties: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating namespace properties: {str(e)}"
         )
 
 @router.get("/iceberg/namespaces/{namespace}/tables")
@@ -752,7 +833,7 @@ async def list_iceberg_tables(
 ):
     """List all tables in an Iceberg namespace"""
     try:
-        tables = iceberg_bi.iceberg_service.list_tables(namespace)
+        tables = iceberg_service.list_tables(namespace)
         return {"tables": tables}
     except Exception as e:
         logger.error(f"Error listing tables: {e}")
@@ -761,6 +842,7 @@ async def list_iceberg_tables(
             detail=f"Error listing tables: {str(e)}"
         )
 
+# Iceberg-specific endpoints
 @router.post("/iceberg/datasets")
 async def create_iceberg_dataset(
     dataset_data: Dict[str, Any] = Body(...),

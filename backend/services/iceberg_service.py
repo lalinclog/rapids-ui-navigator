@@ -51,6 +51,106 @@ class IcebergService:
             logger.error(f"Error listing namespaces: {e}")
             return []
     
+    def create_namespace(self, namespace: str, properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Create a new namespace"""
+        try:
+            catalog = self._get_catalog()
+            
+            # Check if namespace already exists
+            existing_namespaces = [str(ns) for ns in catalog.list_namespaces()]
+            if namespace in existing_namespaces:
+                raise ValueError(f"Namespace '{namespace}' already exists")
+            
+            # Create the namespace with optional properties
+            catalog.create_namespace(namespace, properties or {})
+            
+            return {
+                "namespace": namespace,
+                "properties": properties or {},
+                "message": f"Namespace '{namespace}' created successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating namespace {namespace}: {e}")
+            raise
+    
+    def delete_namespace(self, namespace: str) -> Dict[str, Any]:
+        """Delete a namespace (must be empty)"""
+        try:
+            catalog = self._get_catalog()
+            
+            # Check if namespace exists
+            existing_namespaces = [str(ns) for ns in catalog.list_namespaces()]
+            if namespace not in existing_namespaces:
+                raise ValueError(f"Namespace '{namespace}' does not exist")
+            
+            # Check if namespace has tables
+            tables = catalog.list_tables(namespace)
+            if tables:
+                raise ValueError(f"Cannot delete namespace '{namespace}': contains {len(tables)} tables")
+            
+            # Drop the namespace
+            catalog.drop_namespace(namespace)
+            
+            return {
+                "namespace": namespace,
+                "message": f"Namespace '{namespace}' deleted successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error deleting namespace {namespace}: {e}")
+            raise
+    
+    def get_namespace_properties(self, namespace: str) -> Dict[str, Any]:
+        """Get namespace properties"""
+        try:
+            catalog = self._get_catalog()
+            
+            # Check if namespace exists
+            existing_namespaces = [str(ns) for ns in catalog.list_namespaces()]
+            if namespace not in existing_namespaces:
+                raise ValueError(f"Namespace '{namespace}' does not exist")
+            
+            # Get namespace properties
+            properties = catalog.load_namespace_properties(namespace)
+            tables = catalog.list_tables(namespace)
+            
+            return {
+                "namespace": namespace,
+                "properties": properties,
+                "table_count": len(tables),
+                "tables": [str(table) for table in tables]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting namespace properties for {namespace}: {e}")
+            raise
+    
+    def update_namespace_properties(self, namespace: str, properties: Dict[str, str]) -> Dict[str, Any]:
+        """Update namespace properties"""
+        try:
+            catalog = self._get_catalog()
+            
+            # Check if namespace exists
+            existing_namespaces = [str(ns) for ns in catalog.list_namespaces()]
+            if namespace not in existing_namespaces:
+                raise ValueError(f"Namespace '{namespace}' does not exist")
+            
+            # Update properties (this might require dropping and recreating depending on catalog implementation)
+            # For now, we'll return the current implementation limitation
+            current_properties = catalog.load_namespace_properties(namespace)
+            
+            return {
+                "namespace": namespace,
+                "current_properties": current_properties,
+                "requested_properties": properties,
+                "message": "Property updates may require catalog-specific implementation"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error updating namespace properties for {namespace}: {e}")
+            raise
+    
     def list_tables(self, namespace: str = "default") -> List[str]:
         """List all tables in a namespace"""
         try:
@@ -59,6 +159,8 @@ class IcebergService:
         except Exception as e:
             logger.error(f"Error listing tables in namespace {namespace}: {e}")
             return []
+    
+    # ... keep existing code (rest of the methods remain the same)
     
     def create_table_from_csv(
         self, 

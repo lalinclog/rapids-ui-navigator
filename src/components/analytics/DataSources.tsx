@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -5,9 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import { Database, Plus, Edit, Trash2, Play, Activity } from 'lucide-react';
 import DataSourceForm from './DataSourceForm';
+import IcebergNamespaceManager from './IcebergNamespaceManager';
 import { DataSourceIcon } from './DataSourceIcons';
 
 interface DataSource {
@@ -237,39 +240,55 @@ const DataSources: React.FC = () => {
             <Database className="h-6 w-6" />
             Data Sources
           </h2>
-          <p className="text-muted-foreground">Connect to databases and storage systems</p>
+          <p className="text-muted-foreground">Connect to databases, storage systems, and manage namespaces</p>
         </div>
-        <Button onClick={handleCreate} size="lg">
-          <Plus className="mr-2 h-4 w-4" /> Add Data Source
-        </Button>
       </div>
 
-      {dataSources && dataSources.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {dataSources.map((dataSource) => (
-            <DataSourceCard 
-              key={dataSource.id} 
-              dataSource={dataSource} 
-              onEdit={() => handleEdit(dataSource)}
-              onDelete={() => handleDelete(dataSource)}
-              onTestConnection={() => handleTestConnection(dataSource)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-          <div className="bg-muted h-16 w-16 rounded-full flex items-center justify-center mb-6">
-            <Database className="h-8 w-8 text-muted-foreground" />
+      <Tabs defaultValue="connections" className="w-full">
+        <TabsList className="grid grid-cols-2 mb-6 w-fit">
+          <TabsTrigger value="connections">Connections</TabsTrigger>
+          <TabsTrigger value="namespaces">Iceberg Namespaces</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="connections">
+          <div className="mb-6 flex justify-end">
+            <Button onClick={handleCreate} size="lg">
+              <Plus className="mr-2 h-4 w-4" /> Add Data Source
+            </Button>
           </div>
-          <h3 className="text-xl font-semibold mb-2">No Data Sources</h3>
-          <p className="text-muted-foreground mb-6 max-w-md">
-            Connect to your first data source to start creating datasets and visualizations. Supported sources include PostgreSQL, MySQL, MinIO, and more.
-          </p>
-          <Button onClick={handleCreate} size="lg">
-            <Plus className="mr-2 h-4 w-4" /> Add Your First Data Source
-          </Button>
-        </div>
-      )}
+
+          {dataSources && dataSources.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {dataSources.map((dataSource) => (
+                <DataSourceCard 
+                  key={dataSource.id} 
+                  dataSource={dataSource} 
+                  onEdit={() => handleEdit(dataSource)}
+                  onDelete={() => handleDelete(dataSource)}
+                  onTestConnection={() => handleTestConnection(dataSource)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+              <div className="bg-muted h-16 w-16 rounded-full flex items-center justify-center mb-6">
+                <Database className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">No Data Sources</h3>
+              <p className="text-muted-foreground mb-6 max-w-md">
+                Connect to your first data source to start creating datasets and visualizations. Supported sources include PostgreSQL, MySQL, MinIO, and more.
+              </p>
+              <Button onClick={handleCreate} size="lg">
+                <Plus className="mr-2 h-4 w-4" /> Add Your First Data Source
+              </Button>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="namespaces">
+          <IcebergNamespaceManager />
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="max-w-2xl">
