@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +8,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
 import { Database, Plus, Edit, Trash2, Play, FileText } from 'lucide-react';
 import DatasetForm from './DatasetForm';
+import authService from '@/services/AuthService';
 
-// Define the Dataset interface locally to avoid conflicts
+// Define the Dataset interface locally to match the backend
 interface Dataset {
   id: number;
   name: string;
@@ -23,10 +23,18 @@ interface Dataset {
   row_count?: number;
   file_size?: number;
   last_updated?: string;
+  source_id: number;
+  query_type: string;
+  query_definition: any;
 }
 
 const fetchDatasets = async (): Promise<Dataset[]> => {
-  const response = await fetch('/api/bi/datasets');
+  const token = await authService.getValidToken();
+  const response = await fetch('/api/bi/datasets', {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch datasets');
   }
@@ -118,8 +126,12 @@ const Datasets: React.FC = () => {
 
   const deleteDatasetMutation = useMutation({
     mutationFn: async (datasetId: number) => {
+      const token = await authService.getValidToken();
       const response = await fetch(`/api/bi/datasets/${datasetId}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
       if (!response.ok) {
         throw new Error('Failed to delete dataset');
@@ -159,7 +171,6 @@ const Datasets: React.FC = () => {
   };
 
   const handlePreview = (dataset: Dataset) => {
-    // TODO: Implement dataset preview functionality
     toast({
       title: 'Preview coming soon',
       description: 'Dataset preview functionality will be available soon',
