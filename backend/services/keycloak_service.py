@@ -28,8 +28,8 @@ class KeycloakService:
             logger.error(f"Keycloak connection failed: {e}")
             return False
 
-    async def get_token(self, username: str, password: str) -> Dict[str, Any]:
-        """Get access token from Keycloak"""
+    def get_token(self, username: str, password: str) -> Dict[str, Any]:
+        """Get access token from Keycloak - synchronous method"""
         try:
             token_url = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/token"
             
@@ -62,7 +62,7 @@ class KeycloakService:
             }
 
     def refresh_token(self, refresh_token: str) -> Dict[str, Any]:
-        """Refresh access token"""
+        """Refresh access token - synchronous method"""
         try:
             token_url = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/token"
             
@@ -93,8 +93,8 @@ class KeycloakService:
                 "error_description": "Token refresh service unavailable"
             }
 
-    async def validate_token(self, token: str) -> Dict[str, Any]:
-        """Validate and decode JWT token"""
+    def validate_token(self, token: str) -> Dict[str, Any]:
+        """Validate and decode JWT token - synchronous method"""
         try:
             userinfo_url = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/userinfo"
             
@@ -165,8 +165,8 @@ class KeycloakService:
             logger.error(f"User creation failed: {e}")
             return False
 
-    async def get_user_info(self, user_id: str) -> Dict[str, Any]:
-        """Get user information from Keycloak"""
+    def get_user_info(self, user_id: str) -> Dict[str, Any]:
+        """Get user information from Keycloak - synchronous method"""
         try:
             admin_token = self._get_admin_token()
             if not admin_token:
