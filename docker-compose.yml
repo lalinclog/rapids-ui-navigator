@@ -16,8 +16,6 @@ services:
       - minio
       - postgres
       - keycloak
-      iceberg-catalog:
-        condition: service_healthy
     environment:
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
@@ -31,7 +29,6 @@ services:
       - PYTHONPATH=/app
       - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
       - KEYCLOAK_URL=http://keycloak:8080
-      - ICEBERG_CATALOG_URI=http://iceberg-catalog:8181
     command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080","--log-level", "debug"] #, "--reload"]
 
   keycloak:
@@ -69,34 +66,6 @@ services:
       interval: 60s
       timeout: 20s
       start_period: 180s  # Added to give more startup time
-      retries: 5
-
-  iceberg-catalog:
-    image: apache/gravitino-iceberg-rest:0.7.0-incubating
-    restart: always
-    ports:
-      - "8181:8181"
-    depends_on:
-      minio:
-        condition: service_healthy
-      postgres:
-        condition: service_started
-    environment:
-      - GRAVITINO_ICEBERG_REST_WAREHOUSE=s3://iceberg-warehouse/
-      - GRAVITINO_ICEBERG_REST_S3_ENDPOINT=http://minio:9000
-      - GRAVITINO_ICEBERG_REST_S3_ACCESS_KEY_ID_FILE=/run/secrets/minio_root_user
-      - GRAVITINO_ICEBERG_REST_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/minio_root_password
-      - GRAVITINO_ICEBERG_REST_S3_PATH_STYLE_ACCESS=true
-      - GRAVITINO_ICEBERG_REST_HOST=0.0.0.0
-      - GRAVITINO_ICEBERG_REST_PORT=8181
-    secrets:
-      - minio_root_user
-      - minio_root_password
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8181/v1/config"]
-      interval: 30s
-      timeout: 20s
-      start_period: 120s  # Give more time for initial startup
       retries: 5
 
   minio:

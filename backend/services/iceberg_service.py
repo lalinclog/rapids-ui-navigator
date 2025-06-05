@@ -1,5 +1,5 @@
 
-from pyiceberg.catalog import load_catalog
+from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
 from pyiceberg.types import (
@@ -24,21 +24,28 @@ class IcebergService:
         self._catalog = None
         
     def _get_catalog(self):
-        """Initialize and return Iceberg catalog"""
+        """Initialize and return Iceberg SQL catalog"""
         if self._catalog is None:
             access_key, secret_key = self.vault.get_minio_creds()
             
+            # Use SQL catalog with PostgreSQL backend
+            postgres_host = os.environ.get("POSTGRES_HOST", "postgres")
+            postgres_port = os.environ.get("POSTGRES_PORT", "5432")
+            postgres_user = os.environ.get("POSTGRES_USER", "postgres")
+            postgres_password = os.environ.get("POSTGRES_PASSWORD", "postgres")
+            postgres_db = os.environ.get("POSTGRES_DB", "spark_rapids")
+            
             catalog_config = {
-                "type": "rest",
-                "uri": os.environ.get("ICEBERG_CATALOG_URI", "http://iceberg-catalog:8181"),
-                "s3.endpoint": f"https://{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}",
+                "uri": f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}",
+                "warehouse": f"s3://iceberg-warehouse/",
+                "s3.endpoint": f"http://{os.environ.get('MINIO_ENDPOINT', 'minio')}:{os.environ.get('MINIO_PORT', '9000')}",
                 "s3.access-key-id": access_key,
                 "s3.secret-access-key": secret_key,
                 "s3.path-style-access": "true",
-                "warehouse": f"s3://iceberg-warehouse/"
+                "s3.region": "us-east-1"  # Required for MinIO
             }
             
-            self._catalog = load_catalog("minio_catalog", **catalog_config)
+            self._catalog = SqlCatalog("sql_catalog", **catalog_config)
         
         return self._catalog
     
@@ -46,7 +53,7 @@ class IcebergService:
         """List all namespaces in the catalog"""
         try:
             catalog = self._get_catalog()
-            return [str(ns) for ns in catalog.list_namespaces()]
+            return [".".join(ns) for ns in catalog.list_namespaces()]
         except Exception as e:
             logger.error(f"Error listing namespaces: {e}")
             return []
@@ -57,7 +64,7 @@ class IcebergService:
             catalog = self._get_catalog()
             
             # Check if namespace already exists
-            existing_namespaces = [str(ns) for ns in catalog.list_namespaces()]
+            existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace in existing_namespaces:
                 raise ValueError(f"Namespace '{namespace}' already exists")
             
@@ -80,7 +87,7 @@ class IcebergService:
             catalog = self._get_catalog()
             
             # Check if namespace exists
-            existing_namespaces = [str(ns) for ns in catalog.list_namespaces()]
+            existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace not in existing_namespaces:
                 raise ValueError(f"Namespace '{namespace}' does not exist")
             
@@ -107,7 +114,7 @@ class IcebergService:
             catalog = self._get_catalog()
             
             # Check if namespace exists
-            existing_namespaces = [str(ns) for ns in catalog.list_namespaces()]
+            existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace not in existing_namespaces:
                 raise ValueError(f"Namespace '{namespace}' does not exist")
             
@@ -132,19 +139,18 @@ class IcebergService:
             catalog = self._get_catalog()
             
             # Check if namespace exists
-            existing_namespaces = [str(ns) for ns in catalog.list_namespaces()]
+            existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace not in existing_namespaces:
                 raise ValueError(f"Namespace '{namespace}' does not exist")
             
-            # Update properties (this might require dropping and recreating depending on catalog implementation)
-            # For now, we'll return the current implementation limitation
+            # Update properties
+            catalog.update_namespace_properties(namespace, properties)
             current_properties = catalog.load_namespace_properties(namespace)
             
             return {
                 "namespace": namespace,
-                "current_properties": current_properties,
-                "requested_properties": properties,
-                "message": "Property updates may require catalog-specific implementation"
+                "properties": current_properties,
+                "message": f"Namespace '{namespace}' properties updated successfully"
             }
             
         except Exception as e:
