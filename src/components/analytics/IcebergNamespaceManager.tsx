@@ -22,7 +22,7 @@ interface NamespaceCreate {
   properties: Record<string, string>;
 }
 
-const fetchNamespaces = async (): Promise<Namespace[]> => {
+const fetchNamespaces = async (): Promise<string[]> => {
   const token = await authService.getValidToken();
   const response = await fetch('/api/iceberg/namespaces', {
     headers: {
@@ -33,6 +33,7 @@ const fetchNamespaces = async (): Promise<Namespace[]> => {
     throw new Error('Failed to fetch namespaces');
   }
   const data = await response.json();
+  console.log('Fetched namespaces data:', data);
   return data.namespaces || [];
 };
 
@@ -154,6 +155,8 @@ const IcebergNamespaceManager: React.FC = () => {
     });
   };
 
+  console.log('Component state - namespaces:', namespaces, 'isLoading:', isLoading, 'error:', error);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -178,6 +181,7 @@ const IcebergNamespaceManager: React.FC = () => {
   }
 
   if (error) {
+    console.error('Error in IcebergNamespaceManager:', error);
     return (
       <div className="p-4 border border-red-200 bg-red-50 text-red-700 rounded-md">
         Error loading namespaces: {error instanceof Error ? error.message : 'Unknown error'}
@@ -275,47 +279,33 @@ const IcebergNamespaceManager: React.FC = () => {
 
       {namespaces && namespaces.length > 0 ? (
         <div className="grid gap-4">
-          {namespaces.map((namespace) => {
-            const namespaceName = Array.isArray(namespace.namespace) 
-              ? namespace.namespace.join('.') 
-              : namespace.namespace;
-            
-            return (
-              <Card key={namespaceName}>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Database className="h-4 w-4" />
-                        {namespaceName}
-                      </CardTitle>
-                      {Object.keys(namespace.properties).length > 0 && (
-                        <CardDescription className="mt-2">
-                          <div className="flex flex-wrap gap-1">
-                            {Object.entries(namespace.properties).map(([key, value]) => (
-                              <Badge key={key} variant="outline" className="text-xs">
-                                {key}: {value}
-                              </Badge>
-                            ))}
-                          </div>
-                        </CardDescription>
-                      )}
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteNamespace(namespaceName)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+          {namespaces.map((namespaceName) => (
+            <Card key={namespaceName}>
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Database className="h-4 w-4" />
+                      {namespaceName}
+                    </CardTitle>
+                    <CardDescription className="mt-1 text-xs text-muted-foreground">
+                      Iceberg namespace
+                    </CardDescription>
                   </div>
-                </CardHeader>
-              </Card>
-            );
-          })}
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteNamespace(namespaceName)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+          ))}
         </div>
       ) : (
         <div className="text-center py-8">
