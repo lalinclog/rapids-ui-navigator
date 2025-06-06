@@ -914,11 +914,13 @@ def health_check():
     """Check if the API service is healthy"""
     return {"status": "ok", "timestamp": datetime.datetime.now().isoformat()}
 
+# Helper function to get KeycloakService instance
+def get_keycloak_service():
+    return keycloak_service
 
 # Add the Keycloak user and group endpoints to the router
 @router.get("/keycloak/users")
 async def get_users(
-    keycloak_service: KeycloakService = Depends(get_keycloak_service),
     current_user: dict = Depends(get_current_user)
 ):
     """Get all users from Keycloak"""
@@ -933,7 +935,6 @@ async def get_users(
 
 @router.get("/keycloak/groups")
 async def get_groups(
-    keycloak_service: KeycloakService = Depends(get_keycloak_service),
     current_user: dict = Depends(get_current_user)
 ):
     """Get all groups from Keycloak"""
@@ -945,3 +946,4 @@ async def get_groups(
     except Exception as e:
         logger.error(f"Failed to get groups: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
