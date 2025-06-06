@@ -43,6 +43,8 @@ class KeycloakService:
         logger.info(
             f"KeycloakService initialized with base URL: {self.keycloak_url}")
 
+    # ... keep existing code (all existing methods remain the same)
+
     def check_connection(self) -> bool:
         """Check if Keycloak is accessible"""
         try:
@@ -233,6 +235,72 @@ class KeycloakService:
             logger.error(
                 f"Failed to get user info for ID {user_id}: {str(e)}", exc_info=True)
             return {"preferred_username": "Unknown User", "email": "No email"}
+
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        """Get all users from Keycloak"""
+        admin_token = self._get_admin_token()
+        if not admin_token:
+            logger.error("Failed to get admin token, cannot get users")
+            return []
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {admin_token}",
+                "Content-Type": "application/json"
+            }
+
+            url = f"{self.keycloak_url}/admin/realms/{self.realm}/users"
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to get users: {response.status_code} {response.text}")
+                return []
+
+            users = response.json()
+            return [{
+                "id": user.get("id"),
+                "username": user.get("username"),
+                "email": user.get("email", ""),
+                "firstName": user.get("firstName", ""),
+                "lastName": user.get("lastName", ""),
+                "enabled": user.get("enabled", False)
+            } for user in users]
+            
+        except Exception as e:
+            logger.error(f"Failed to get users: {str(e)}", exc_info=True)
+            return []
+
+    def get_all_groups(self) -> List[Dict[str, Any]]:
+        """Get all groups from Keycloak"""
+        admin_token = self._get_admin_token()
+        if not admin_token:
+            logger.error("Failed to get admin token, cannot get groups")
+            return []
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {admin_token}",
+                "Content-Type": "application/json"
+            }
+
+            url = f"{self.keycloak_url}/admin/realms/{self.realm}/groups"
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                logger.error(f"Failed to get groups: {response.status_code} {response.text}")
+                return []
+
+            groups = response.json()
+            return [{
+                "id": group.get("id"),
+                "name": group.get("name"),
+                "path": group.get("path", ""),
+                "subGroups": group.get("subGroups", [])
+            } for group in groups]
+            
+        except Exception as e:
+            logger.error(f"Failed to get groups: {str(e)}", exc_info=True)
+            return []
 
     def get_user_roles(self, username: str) -> List[Dict[str, Any]]:
         """Get a user's roles"""

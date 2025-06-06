@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
-import { Plus, Database, Trash2, Settings } from 'lucide-react';
+import { Plus, Database, Trash2, X } from 'lucide-react';
 import authService from '@/services/AuthService';
 
 interface Namespace {
@@ -21,6 +21,20 @@ interface Namespace {
 interface NamespaceCreate {
   name: string;
   properties: Record<string, string>;
+}
+
+interface KeycloakUser {
+  id: string;
+  username: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
+interface KeycloakGroup {
+  id: string;
+  name: string;
+  path: string;
 }
 
 const fetchNamespaces = async (): Promise<string[]> => {
@@ -38,9 +52,50 @@ const fetchNamespaces = async (): Promise<string[]> => {
   return data.namespaces || [];
 };
 
+const fetchKeycloakUsers = async (): Promise<KeycloakUser[]> => {
+  try {
+    const token = await authService.getValidToken();
+    const response = await fetch('/api/auth/users', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) {
+      console.warn('Failed to fetch users');
+      return [];
+    }
+    const data = await response.json();
+    return data.users || [];
+  } catch (error) {
+    console.warn('Error fetching users:', error);
+    return [];
+  }
+};
+
+const fetchKeycloakGroups = async (): Promise<KeycloakGroup[]> => {
+  try {
+    const token = await authService.getValidToken();
+    const response = await fetch('/api/auth/groups', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) {
+      console.warn('Failed to fetch groups');
+      return [];
+    }
+    const data = await response.json();
+    return data.groups || [];
+  } catch (error) {
+    console.warn('Error fetching groups:', error);
+    return [];
+  }
+};
+
 const IcebergNamespaceManager: React.FC = () => {
   const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedOwners, setSelectedOwners] = useState<string[]>([]);
   const [newNamespace, setNewNamespace] = useState<NamespaceCreate>({
     name: '',
     properties: {
@@ -48,7 +103,8 @@ const IcebergNamespaceManager: React.FC = () => {
       owner: '',
       description: '',
       retention_policy: '365d',
-      compression: 'snappy'
+      compression: 'snappy',
+      pii_classification: ''
     }
   });
   const [propertyKey, setPropertyKey] = useState('');
@@ -57,6 +113,18 @@ const IcebergNamespaceManager: React.FC = () => {
   const { data: namespaces, isLoading, error } = useQuery({
     queryKey: ['iceberg-namespaces'],
     queryFn: fetchNamespaces,
+  });
+
+  const { data: keycloakUsers } = useQuery({
+    queryKey: ['keycloak-users'],
+    queryFn: fetchKeycloakUsers,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  const { data: keycloakGroups } = useQuery({
+    queryKey: ['keycloak-groups'],
+    queryFn: fetchKeycloakGroups,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   const createNamespaceMutation = useMutation({
@@ -133,9 +201,11 @@ const IcebergNamespaceManager: React.FC = () => {
         owner: '',
         description: '',
         retention_policy: '365d',
-        compression: 'snappy'
+        compression: 'snappy',
+        pii_classification: ''
       }
     });
+    setSelectedOwners([]);
     setPropertyKey('');
     setPropertyValue('');
   };
@@ -151,11 +221,11 @@ const IcebergNamespaceManager: React.FC = () => {
       return;
     }
 
-    if (!newNamespace.properties.owner?.trim()) {
+    if (selectedOwners.length === 0) {
       toast({
         variant: 'destructive',
         title: 'Validation Error',
-        description: 'Owner is required',
+        description: 'At least one owner is required',
       });
       return;
     }
@@ -169,11 +239,21 @@ const IcebergNamespaceManager: React.FC = () => {
       return;
     }
 
-    // Update location to include namespace
+    if (!newNamespace.properties.pii_classification?.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: 'PII Classification is required',
+      });
+      return;
+    }
+
+    // Update owner to be comma-separated list and location to include namespace
     const updatedNamespace = {
       ...newNamespace,
       properties: {
         ...newNamespace.properties,
+        owner: selectedOwners.join(', '),
         location: `s3://iceberg-warehouse/${newNamespace.name}/`
       }
     };
@@ -207,7 +287,7 @@ const IcebergNamespaceManager: React.FC = () => {
 
   const removeProperty = (key: string) => {
     // Don't allow removing mandatory properties
-    const mandatoryProps = ['location', 'owner', 'description', 'retention_policy', 'compression'];
+    const mandatoryProps = ['location', 'owner', 'description', 'retention_policy', 'compression', 'pii_classification'];
     if (mandatoryProps.includes(key)) {
       toast({
         variant: 'destructive',
@@ -221,6 +301,34 @@ const IcebergNamespaceManager: React.FC = () => {
       const { [key]: removed, ...rest } = prev.properties;
       return { ...prev, properties: rest };
     });
+  };
+
+  const handleOwnerSelection = (ownerId: string, ownerDisplay: string) => {
+    if (selectedOwners.includes(ownerId)) {
+      setSelectedOwners(prev => prev.filter(id => id !== ownerId));
+    } else {
+      setSelectedOwners(prev => [...prev, ownerId]);
+    }
+  };
+
+  const removeOwner = (ownerId: string) => {
+    setSelectedOwners(prev => prev.filter(id => id !== ownerId));
+  };
+
+  const getOwnerDisplayName = (ownerId: string) => {
+    // Check if it's a user
+    const user = keycloakUsers?.find(u => u.id === ownerId || u.username === ownerId);
+    if (user) {
+      return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+    }
+
+    // Check if it's a group
+    const group = keycloakGroups?.find(g => g.id === ownerId || g.name === ownerId);
+    if (group) {
+      return `Group: ${group.name}`;
+    }
+
+    return ownerId;
   };
 
   console.log('Component state - namespaces:', namespaces, 'isLoading:', isLoading, 'error:', error);
@@ -275,7 +383,7 @@ const IcebergNamespaceManager: React.FC = () => {
               <Plus className="mr-2 h-4 w-4" /> Create Namespace
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Namespace</DialogTitle>
             </DialogHeader>
@@ -294,13 +402,69 @@ const IcebergNamespaceManager: React.FC = () => {
               </div>
               
               <div>
-                <Label htmlFor="owner">Owner *</Label>
-                <Input
-                  id="owner"
-                  value={newNamespace.properties.owner || ''}
-                  onChange={(e) => updateProperty('owner', e.target.value)}
-                  placeholder="Enter owner name or team"
-                />
+                <Label>Owners * (Select multiple users/groups)</Label>
+                <div className="space-y-3">
+                  {/* Selected owners display */}
+                  {selectedOwners.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedOwners.map((ownerId) => (
+                        <Badge key={ownerId} variant="secondary" className="flex items-center gap-1">
+                          {getOwnerDisplayName(ownerId)}
+                          <X 
+                            className="h-3 w-3 cursor-pointer" 
+                            onClick={() => removeOwner(ownerId)}
+                          />
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Users selection */}
+                  <div>
+                    <Label className="text-sm font-medium">Users</Label>
+                    <div className="max-h-32 overflow-y-auto border rounded-md p-2 space-y-1">
+                      {keycloakUsers?.map((user) => (
+                        <div key={user.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`user-${user.id}`}
+                            checked={selectedOwners.includes(user.id)}
+                            onCheckedChange={() => handleOwnerSelection(user.id, `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username)}
+                          />
+                          <Label htmlFor={`user-${user.id}`} className="text-sm cursor-pointer">
+                            {`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username}
+                            {user.email && <span className="text-muted-foreground ml-1">({user.email})</span>}
+                          </Label>
+                        </div>
+                      ))}
+                      {(!keycloakUsers || keycloakUsers.length === 0) && (
+                        <p className="text-sm text-muted-foreground">No users available</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Groups selection */}
+                  <div>
+                    <Label className="text-sm font-medium">Groups</Label>
+                    <div className="max-h-32 overflow-y-auto border rounded-md p-2 space-y-1">
+                      {keycloakGroups?.map((group) => (
+                        <div key={group.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`group-${group.id}`}
+                            checked={selectedOwners.includes(group.id)}
+                            onCheckedChange={() => handleOwnerSelection(group.id, `Group: ${group.name}`)}
+                          />
+                          <Label htmlFor={`group-${group.id}`} className="text-sm cursor-pointer">
+                            {group.name}
+                            <span className="text-muted-foreground ml-1">({group.path})</span>
+                          </Label>
+                        </div>
+                      ))}
+                      {(!keycloakGroups || keycloakGroups.length === 0) && (
+                        <p className="text-sm text-muted-foreground">No groups available</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -312,6 +476,27 @@ const IcebergNamespaceManager: React.FC = () => {
                   placeholder="Describe the purpose of this namespace"
                   rows={2}
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="pii_classification">PII Classification *</Label>
+                <Select 
+                  value={newNamespace.properties.pii_classification || ''} 
+                  onValueChange={(value) => updateProperty('pii_classification', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select PII classification level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="public">Public - No PII</SelectItem>
+                    <SelectItem value="internal">Internal - Non-sensitive PII</SelectItem>
+                    <SelectItem value="confidential">Confidential - Sensitive PII</SelectItem>
+                    <SelectItem value="restricted">Restricted - Highly sensitive PII</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Classification helps determine data handling requirements and access controls
+                </p>
               </div>
 
               <div>
@@ -374,7 +559,7 @@ const IcebergNamespaceManager: React.FC = () => {
                   
                   <div className="space-y-1">
                     {Object.entries(newNamespace.properties).map(([key, value]) => {
-                      const isMandatory = ['location', 'owner', 'description', 'retention_policy', 'compression'].includes(key);
+                      const isMandatory = ['location', 'owner', 'description', 'retention_policy', 'compression', 'pii_classification'].includes(key);
                       return (
                         <div key={key} className="flex items-center justify-between p-2 bg-muted rounded">
                           <span className="text-sm">

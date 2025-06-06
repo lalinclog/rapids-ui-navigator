@@ -119,13 +119,18 @@ class IcebergService:
                 raise ValueError("Failed to create or access the iceberg-warehouse bucket")
             
             # Validate required properties
-            required_props = ['owner', 'description']
+            required_props = ['owner', 'description', 'pii_classification']
             if properties:
                 missing_props = [prop for prop in required_props if not properties.get(prop)]
                 if missing_props:
                     raise ValueError(f"Missing required properties: {', '.join(missing_props)}")
             else:
                 raise ValueError(f"Properties are required. Missing: {', '.join(required_props)}")
+            
+            # Validate PII classification values
+            valid_pii_classifications = ['public', 'internal', 'confidential', 'restricted']
+            if properties.get('pii_classification') not in valid_pii_classifications:
+                raise ValueError(f"Invalid PII classification. Must be one of: {', '.join(valid_pii_classifications)}")
             
             # Set default location if not provided
             if 'location' not in properties:
@@ -146,6 +151,8 @@ class IcebergService:
         except Exception as e:
             logger.error(f"Error creating namespace {namespace}: {e}")
             raise
+    
+    # ... keep existing code (rest of the methods remain the same)
     
     def delete_namespace(self, namespace: str) -> Dict[str, Any]:
         """Delete a namespace (must be empty)"""
@@ -177,8 +184,6 @@ class IcebergService:
         except Exception as e:
             logger.error(f"Error deleting namespace {namespace}: {e}")
             raise
-    
-    # ... keep existing code (rest of the methods remain the same)
     
     def get_namespace_properties(self, namespace: str) -> Dict[str, Any]:
         """Get namespace properties"""
