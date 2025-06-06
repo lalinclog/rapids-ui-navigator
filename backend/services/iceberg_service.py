@@ -1,4 +1,3 @@
-
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -56,6 +55,9 @@ class IcebergService:
             if not self.minio_service.client.bucket_exists(bucket_name):
                 logger.info(f"Creating bucket: {bucket_name}")
                 self.minio_service.client.make_bucket(bucket_name)
+                
+                # Create placeholder file to make bucket visible
+                self.minio_service._create_placeholder_file(bucket_name)
                 
                 # Set bucket policy for Iceberg operations
                 policy = {
@@ -151,8 +153,6 @@ class IcebergService:
         except Exception as e:
             logger.error(f"Error creating namespace {namespace}: {e}")
             raise
-    
-    # ... keep existing code (rest of the methods remain the same)
     
     def delete_namespace(self, namespace: str) -> Dict[str, Any]:
         """Delete a namespace (must be empty)"""

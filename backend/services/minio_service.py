@@ -1,4 +1,3 @@
-
 from minio import Minio
 from minio.error import S3Error
 from fastapi import UploadFile
@@ -20,8 +19,6 @@ logger = logging.getLogger(__name__)
 class MinioService:
     def __init__(self):
         endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}"
-        #access_key = os.environ.get('MINIO_ACCESS_KEY', 'minioadmin')
-        #secret_key = os.environ.get('MINIO_SECRET_KEY', 'minioadmin')
 
         vault = VaultService()
         access_key, secret_key = vault.get_minio_creds()
@@ -41,7 +38,32 @@ class MinioService:
             http_client=http_client
         )
 
-        #self._ensure_buckets()
+    def _create_placeholder_file(self, bucket_name: str):
+        """Create a placeholder file in the bucket to make it visible"""
+        try:
+            placeholder_content = f"""# {bucket_name} Bucket
+
+This is a placeholder file created to ensure the bucket is visible.
+You can safely delete this file once you start adding your own data.
+
+Created: {os.environ.get('HOSTNAME', 'unknown')}
+Purpose: Iceberg table storage
+"""
+            
+            content_stream = io.BytesIO(placeholder_content.encode('utf-8'))
+            
+            self.client.put_object(
+                bucket_name=bucket_name,
+                object_name=".bucket-info/README.md",
+                data=content_stream,
+                length=len(placeholder_content.encode('utf-8')),
+                content_type="text/markdown"
+            )
+            
+            logger.info(f"Created placeholder file in bucket: {bucket_name}")
+            
+        except Exception as e:
+            logger.warning(f"Could not create placeholder file in {bucket_name}: {e}")
 
     def _ensure_buckets(self):
         """Create necessary buckets if they don't exist"""

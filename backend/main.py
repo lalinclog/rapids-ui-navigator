@@ -42,7 +42,8 @@ from .services.postgres_service import PostgresService
 from .services.python_service import PythonService
 from .services.stats_service import StatsService
 from .services.bi_service import BIService
-#from .services.keycloak_service import KeycloakService
+from .services.iceberg_service import IcebergService
+from .services.keycloak_service import KeycloakService
 from .services.api_service import router as api_router, get_current_user
 
 app = FastAPI(
@@ -86,6 +87,9 @@ def get_stats_service():
 
 def get_bi_service():
     return BIService()
+
+def get_iceberg_service():
+    return IcebergService()
 
 # Models
 class QualificationParams(BaseModel):
@@ -852,3 +856,24 @@ async def delete_dashboard(dashboard_id: int, bi_service: BIService = Depends(ge
 
 # Serve static files
 app.mount("/", StaticFiles(directory="dist", html=True), name="static")
+
+# Add new endpoints for users and groups
+@app.get("/api/keycloak/users")
+async def get_users():
+    """Get all users from Keycloak"""
+    try:
+        users = keycloak_service.get_all_users()
+        return {"users": users}
+    except Exception as e:
+        logger.error(f"Failed to get users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/keycloak/groups")
+async def get_groups():
+    """Get all groups from Keycloak"""
+    try:
+        groups = keycloak_service.get_all_groups()
+        return {"groups": groups}
+    except Exception as e:
+        logger.error(f"Failed to get groups: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
