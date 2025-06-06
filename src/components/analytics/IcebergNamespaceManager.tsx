@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Plus, X } from 'lucide-react';
+import { Trash2, Plus, X, Edit2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 import AuthService from '@/services/AuthService';
@@ -32,6 +32,14 @@ interface Owner {
   name: string;
 }
 
+interface NamespaceProperties {
+  description: string;
+  owner: string;
+  pii_classification: string;
+  retention_policy: string;
+  location: string;
+}
+
 const IcebergNamespaceManager = () => {
   const { toast } = useToast();
   const [namespaces, setNamespaces] = useState<string[]>([]);
@@ -39,8 +47,18 @@ const IcebergNamespaceManager = () => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [selectedNamespace, setSelectedNamespace] = useState<string>('');
+  const [namespaceProperties, setNamespaceProperties] = useState<NamespaceProperties | null>(null);
   const [newNamespace, setNewNamespace] = useState({
     name: '',
+    description: '',
+    owners: [] as Owner[],
+    pii_classification: '',
+    retention_policy: '',
+    location: ''
+  });
+  const [editNamespace, setEditNamespace] = useState({
     description: '',
     owners: [] as Owner[],
     pii_classification: '',
@@ -116,6 +134,57 @@ const IcebergNamespaceManager = () => {
     }
   };
 
+  const fetchNamespaceProperties = async (namespace: string) => {
+    setLoading(true);
+    try {
+      const token = await AuthService.getValidToken();
+      
+      const headers = token ? {
+        Authorization: `Bearer ${token}`
+      } : undefined;
+
+      const response = await axios.get(`/api/iceberg/namespaces/${namespace}`, { headers });
+      const properties = response.data.properties || {};
+      
+      // Parse owner information
+      const owners: Owner[] = [];
+      if (properties.owner) {
+        const ownerEntries = properties.owner.split(',').map(owner => owner.trim());
+        for (const entry of ownerEntries) {
+          const [type, id] = entry.split(':');
+          if (type === 'user') {
+            const user = users.find(u => u.id === id);
+            if (user) owners.push({ type: 'user', id, name: user.username });
+          } else if (type === 'group') {
+            const group = groups.find(g => g.id === id);
+            if (group) owners.push({ type: 'group', id, name: group.name });
+          }
+        }
+      }
+
+      setEditNamespace({
+        description: properties.description || '',
+        owners,
+        pii_classification: properties.pii_classification || '',
+        retention_policy: properties.retention_policy || '',
+        location: properties.location || ''
+      });
+      
+      setNamespaceProperties(properties);
+      setSelectedNamespace(namespace);
+      setShowEditForm(true);
+    } catch (error) {
+      console.error('Error fetching namespace properties:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load namespace properties",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCreateNamespace = async () => {
     setLoading(true);
     try {
@@ -127,7 +196,7 @@ const IcebergNamespaceManager = () => {
       } : undefined;
 
       const response = await axios.post('/api/iceberg/namespaces', {
-        namespace: newNamespace.name,
+        name: newNamespace.name,
         properties: {
           description: newNamespace.description,
           owner: newNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
@@ -149,6 +218,44 @@ const IcebergNamespaceManager = () => {
       toast({
         title: "Error",
         description: error.response?.data?.detail || 'Failed to create namespace',
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateNamespace = async () => {
+    setLoading(true);
+    try {
+      // Get auth token for API request
+      const token = await AuthService.getValidToken();
+      
+      const headers = token ? {
+        Authorization: `Bearer ${token}`
+      } : undefined;
+
+      await axios.put(`/api/iceberg/namespaces/${selectedNamespace}`, {
+        properties: {
+          description: editNamespace.description,
+          owner: editNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
+          pii_classification: editNamespace.pii_classification,
+          retention_policy: editNamespace.retention_policy,
+          location: editNamespace.location
+        }
+      }, { headers });
+
+      toast({
+        title: "Success",
+        description: `Namespace "${selectedNamespace}" updated successfully`,
+      });
+      fetchNamespaces();
+      setShowEditForm(false);
+    } catch (error: any) {
+      console.error('Error updating namespace:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || 'Failed to update namespace',
         variant: "destructive"
       });
     } finally {
@@ -186,21 +293,91 @@ const IcebergNamespaceManager = () => {
     }
   };
 
-  const addOwner = (type: 'user' | 'group', id: string, name: string) => {
-    const ownerExists = newNamespace.owners.some(owner => owner.type === type && owner.id === id);
-    if (!ownerExists) {
+  const addOwner = (type: 'user' | 'group', id: string, name: string, isEdit: boolean = false) => {
+    if (isEdit) {
+      const ownerExists = editNamespace.owners.some(owner => owner.type === type && owner.id === id);
+      if (!ownerExists) {
+        setEditNamespace(prev => ({
+          ...prev,
+          owners: [...prev.owners, { type, id, name }]
+        }));
+      }
+    } else {
+      const ownerExists = newNamespace.owners.some(owner => owner.type === type && owner.id === id);
+      if (!ownerExists) {
+        setNewNamespace(prev => ({
+          ...prev,
+          owners: [...prev.owners, { type, id, name }]
+        }));
+      }
+    }
+  };
+
+  const removeOwner = (index: number, isEdit: boolean = false) => {
+    if (isEdit) {
+      setEditNamespace(prev => ({
+        ...prev,
+        owners: prev.owners.filter((_, i) => i !== index)
+      }));
+    } else {
       setNewNamespace(prev => ({
         ...prev,
-        owners: [...prev.owners, { type, id, name }]
+        owners: prev.owners.filter((_, i) => i !== index)
       }));
     }
   };
 
-  const removeOwner = (index: number) => {
-    setNewNamespace(prev => ({
-      ...prev,
-      owners: prev.owners.filter((_, i) => i !== index)
-    }));
+  const renderOwnerSelector = (isEdit: boolean = false) => {
+    return (
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Select onValueChange={(value) => {
+            const [type, id] = value.split(':');
+            if (type === 'user') {
+              const user = users.find(u => u.id === id);
+              if (user) addOwner('user', id, user.username, isEdit);
+            } else {
+              const group = groups.find(g => g.id === id);
+              if (group) addOwner('group', id, group.name, isEdit);
+            }
+          }}>
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder="Select user or group" />
+            </SelectTrigger>
+            <SelectContent>
+              <div className="px-2 py-1 text-sm font-medium text-gray-500">Users</div>
+              {users.map(user => (
+                <SelectItem key={`user:${user.id}`} value={`user:${user.id}`}>
+                  {user.username} ({user.email})
+                </SelectItem>
+              ))}
+              <div className="px-2 py-1 text-sm font-medium text-gray-500 border-t mt-2 pt-2">Groups</div>
+              {groups.map(group => (
+                <SelectItem key={`group:${group.id}`} value={`group:${group.id}`}>
+                  {group.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div className="flex flex-wrap gap-2">
+          {(isEdit ? editNamespace.owners : newNamespace.owners).map((owner, index) => (
+            <Badge key={index} variant="secondary" className="flex items-center gap-1">
+              {owner.type === 'user' ? '👤' : '👥'} {owner.name}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-4 w-4 p-0 hover:bg-red-100"
+                onClick={() => removeOwner(index, isEdit)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </Badge>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -242,54 +419,7 @@ const IcebergNamespaceManager = () => {
 
             <div>
               <Label>Owners *</Label>
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <Select onValueChange={(value) => {
-                    const [type, id] = value.split(':');
-                    if (type === 'user') {
-                      const user = users.find(u => u.id === id);
-                      if (user) addOwner('user', id, user.username);
-                    } else {
-                      const group = groups.find(g => g.id === id);
-                      if (group) addOwner('group', id, group.name);
-                    }
-                  }}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select user or group" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <div className="px-2 py-1 text-sm font-medium text-gray-500">Users</div>
-                      {users.map(user => (
-                        <SelectItem key={`user:${user.id}`} value={`user:${user.id}`}>
-                          {user.username} ({user.email})
-                        </SelectItem>
-                      ))}
-                      <div className="px-2 py-1 text-sm font-medium text-gray-500 border-t mt-2 pt-2">Groups</div>
-                      {groups.map(group => (
-                        <SelectItem key={`group:${group.id}`} value={`group:${group.id}`}>
-                          {group.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="flex flex-wrap gap-2">
-                  {newNamespace.owners.map((owner, index) => (
-                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                      {owner.type === 'user' ? '👤' : '👥'} {owner.name}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-4 w-4 p-0 hover:bg-red-100"
-                        onClick={() => removeOwner(index)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+              {renderOwnerSelector()}
             </div>
 
             <div>
@@ -339,6 +469,78 @@ const IcebergNamespaceManager = () => {
         </Card>
       )}
 
+      {showEditForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Edit Namespace: {selectedNamespace}</CardTitle>
+            <CardDescription>Update namespace properties</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="edit-description">Description *</Label>
+              <Textarea
+                id="edit-description"
+                value={editNamespace.description}
+                onChange={(e) => setEditNamespace(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Describe the purpose of this namespace"
+              />
+            </div>
+
+            <div>
+              <Label>Owners *</Label>
+              {renderOwnerSelector(true)}
+            </div>
+
+            <div>
+              <Label htmlFor="edit-pii-classification">PII Classification *</Label>
+              <Select 
+                value={editNamespace.pii_classification}
+                onValueChange={(value) => setEditNamespace(prev => ({ ...prev, pii_classification: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select PII classification" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">Public</SelectItem>
+                  <SelectItem value="internal">Internal</SelectItem>
+                  <SelectItem value="confidential">Confidential</SelectItem>
+                  <SelectItem value="restricted">Restricted</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="edit-retention-policy">Retention Policy</Label>
+              <Input
+                id="edit-retention-policy"
+                value={editNamespace.retention_policy}
+                onChange={(e) => setEditNamespace(prev => ({ ...prev, retention_policy: e.target.value }))}
+                placeholder="e.g., 7 years"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="edit-location">Custom Location (optional)</Label>
+              <Input
+                id="edit-location"
+                value={editNamespace.location}
+                onChange={(e) => setEditNamespace(prev => ({ ...prev, location: e.target.value }))}
+                placeholder="s3://custom-bucket/path/"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowEditForm(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateNamespace} disabled={loading}>
+                {loading ? 'Updating...' : 'Update Namespace'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div>
         <h3 className="text-xl font-semibold">Existing Namespaces</h3>
         {loading ? (
@@ -348,14 +550,24 @@ const IcebergNamespaceManager = () => {
             {namespaces.map(namespace => (
               <li key={namespace} className="flex items-center justify-between py-2">
                 <span>{namespace}</span>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => handleDeleteNamespace(namespace)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchNamespaceProperties(namespace)}
+                  >
+                    <Edit2 className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleDeleteNamespace(namespace)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
