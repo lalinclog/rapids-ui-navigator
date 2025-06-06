@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Trash2, Plus, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
+import AuthService from '@/services/AuthService';
 
 interface User {
   id: string;
@@ -53,10 +55,30 @@ const IcebergNamespaceManager = () => {
 
   const fetchUsersAndGroups = async () => {
     try {
+      // Get auth token for API requests
+      const token = await AuthService.getValidToken();
+      
+      if (!token) {
+        console.error('No authentication token available');
+        toast({
+          title: "Authentication Error",
+          description: "Could not authenticate request to fetch users and groups",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const headers = {
+        Authorization: `Bearer ${token}`
+      };
+
       const [usersResponse, groupsResponse] = await Promise.all([
-        axios.get('/api/keycloak/users'),
-        axios.get('/api/keycloak/groups')
+        axios.get('/api/keycloak/users', { headers }),
+        axios.get('/api/keycloak/groups', { headers })
       ]);
+      
+      console.log('Users response:', usersResponse.data);
+      console.log('Groups response:', groupsResponse.data);
       
       setUsers(usersResponse.data.users || []);
       setGroups(groupsResponse.data.groups || []);
@@ -73,7 +95,14 @@ const IcebergNamespaceManager = () => {
   const fetchNamespaces = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/api/iceberg/namespaces');
+      // Get auth token for API requests
+      const token = await AuthService.getValidToken();
+      
+      const headers = token ? {
+        Authorization: `Bearer ${token}`
+      } : undefined;
+
+      const response = await axios.get('/api/iceberg/namespaces', { headers });
       setNamespaces(response.data.namespaces || []);
     } catch (error) {
       console.error('Error fetching namespaces:', error);
@@ -90,6 +119,13 @@ const IcebergNamespaceManager = () => {
   const handleCreateNamespace = async () => {
     setLoading(true);
     try {
+      // Get auth token for API request
+      const token = await AuthService.getValidToken();
+      
+      const headers = token ? {
+        Authorization: `Bearer ${token}`
+      } : undefined;
+
       const response = await axios.post('/api/iceberg/namespaces', {
         namespace: newNamespace.name,
         properties: {
@@ -99,7 +135,7 @@ const IcebergNamespaceManager = () => {
           retention_policy: newNamespace.retention_policy,
           location: newNamespace.location
         }
-      });
+      }, { headers });
 
       toast({
         title: "Success",
@@ -124,7 +160,14 @@ const IcebergNamespaceManager = () => {
     if (window.confirm(`Are you sure you want to delete namespace "${namespace}"?`)) {
       setLoading(true);
       try {
-        await axios.delete(`/api/iceberg/namespaces/${namespace}`);
+        // Get auth token for API request
+        const token = await AuthService.getValidToken();
+        
+        const headers = token ? {
+          Authorization: `Bearer ${token}`
+        } : undefined;
+        
+        await axios.delete(`/api/iceberg/namespaces/${namespace}`, { headers });
         toast({
           title: "Success",
           description: `Namespace "${namespace}" deleted successfully`,

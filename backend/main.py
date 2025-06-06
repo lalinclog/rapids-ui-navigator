@@ -864,7 +864,8 @@ app.mount("/", StaticFiles(directory="dist", html=True), name="static")
 
 # Endpoints for users and groups
 @app.get("/api/keycloak/users")
-async def get_users(keycloak_service: KeycloakService = Depends(get_keycloak_service)):
+async def get_users(keycloak_service: KeycloakService = Depends(get_keycloak_service),
+                    current_user: dict = Depends(get_current_user)):  # Add authentication dependency
     """Get all users from Keycloak"""
     try:
         users = keycloak_service.get_all_users()
@@ -874,7 +875,8 @@ async def get_users(keycloak_service: KeycloakService = Depends(get_keycloak_ser
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/keycloak/groups")
-async def get_groups(keycloak_service: KeycloakService = Depends(get_keycloak_service)):
+async def get_groups(keycloak_service: KeycloakService = Depends(get_keycloak_service),
+                     current_user: dict = Depends(get_current_user)):  # Add authentication dependency
     """Get all groups from Keycloak"""
     try:
         groups = keycloak_service.get_all_groups()
