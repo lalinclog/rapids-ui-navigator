@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { Plus, Database, Trash2, Settings } from 'lucide-react';
 import authService from '@/services/AuthService';
@@ -42,7 +43,13 @@ const IcebergNamespaceManager: React.FC = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newNamespace, setNewNamespace] = useState<NamespaceCreate>({
     name: '',
-    properties: {}
+    properties: {
+      location: 's3://iceberg-warehouse/',
+      owner: '',
+      description: '',
+      retention_policy: '365d',
+      compression: 'snappy'
+    }
   });
   const [propertyKey, setPropertyKey] = useState('');
   const [propertyValue, setPropertyValue] = useState('');
@@ -64,17 +71,18 @@ const IcebergNamespaceManager: React.FC = () => {
         body: JSON.stringify(namespaceData),
       });
       if (!response.ok) {
-        throw new Error('Failed to create namespace');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create namespace');
       }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['iceberg-namespaces'] });
       setIsCreateDialogOpen(false);
-      setNewNamespace({ name: '', properties: {} });
+      resetForm();
       toast({
         title: 'Namespace created',
-        description: 'Iceberg namespace has been successfully created',
+        description: 'Iceberg namespace and bucket have been successfully created',
       });
     },
     onError: (error) => {
@@ -96,7 +104,8 @@ const IcebergNamespaceManager: React.FC = () => {
         }
       });
       if (!response.ok) {
-        throw new Error('Failed to delete namespace');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete namespace');
       }
       return response.json();
     },
@@ -116,7 +125,23 @@ const IcebergNamespaceManager: React.FC = () => {
     }
   });
 
+  const resetForm = () => {
+    setNewNamespace({
+      name: '',
+      properties: {
+        location: 's3://iceberg-warehouse/',
+        owner: '',
+        description: '',
+        retention_policy: '365d',
+        compression: 'snappy'
+      }
+    });
+    setPropertyKey('');
+    setPropertyValue('');
+  };
+
   const handleCreateNamespace = () => {
+    // Validate required fields
     if (!newNamespace.name.trim()) {
       toast({
         variant: 'destructive',
@@ -125,30 +150,73 @@ const IcebergNamespaceManager: React.FC = () => {
       });
       return;
     }
-    createNamespaceMutation.mutate(newNamespace);
+
+    if (!newNamespace.properties.owner?.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: 'Owner is required',
+      });
+      return;
+    }
+
+    if (!newNamespace.properties.description?.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: 'Description is required',
+      });
+      return;
+    }
+
+    // Update location to include namespace
+    const updatedNamespace = {
+      ...newNamespace,
+      properties: {
+        ...newNamespace.properties,
+        location: `s3://iceberg-warehouse/${newNamespace.name}/`
+      }
+    };
+
+    createNamespaceMutation.mutate(updatedNamespace);
   };
 
   const handleDeleteNamespace = (namespaceName: string) => {
-    if (confirm(`Are you sure you want to delete the namespace "${namespaceName}"?`)) {
+    if (confirm(`Are you sure you want to delete the namespace "${namespaceName}"? This action cannot be undone.`)) {
       deleteNamespaceMutation.mutate(namespaceName);
     }
   };
 
-  const addProperty = () => {
+  const updateProperty = (key: string, value: string) => {
+    setNewNamespace(prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        [key]: value
+      }
+    }));
+  };
+
+  const addCustomProperty = () => {
     if (propertyKey && propertyValue) {
-      setNewNamespace(prev => ({
-        ...prev,
-        properties: {
-          ...prev.properties,
-          [propertyKey]: propertyValue
-        }
-      }));
+      updateProperty(propertyKey, propertyValue);
       setPropertyKey('');
       setPropertyValue('');
     }
   };
 
   const removeProperty = (key: string) => {
+    // Don't allow removing mandatory properties
+    const mandatoryProps = ['location', 'owner', 'description', 'retention_policy', 'compression'];
+    if (mandatoryProps.includes(key)) {
+      toast({
+        variant: 'destructive',
+        title: 'Cannot Remove',
+        description: 'This is a mandatory property and cannot be removed',
+      });
+      return;
+    }
+
     setNewNamespace(prev => {
       const { [key]: removed, ...rest } = prev.properties;
       return { ...prev, properties: rest };
@@ -198,7 +266,7 @@ const IcebergNamespaceManager: React.FC = () => {
             Iceberg Namespaces
           </h3>
           <p className="text-sm text-muted-foreground">
-            Manage Iceberg namespaces for organizing your tables
+            Manage Iceberg namespaces for organizing your tables. Buckets will be created automatically.
           </p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -207,23 +275,86 @@ const IcebergNamespaceManager: React.FC = () => {
               <Plus className="mr-2 h-4 w-4" /> Create Namespace
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Namespace</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name">Namespace Name</Label>
+                <Label htmlFor="name">Namespace Name *</Label>
                 <Input
                   id="name"
                   value={newNamespace.name}
                   onChange={(e) => setNewNamespace(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Enter namespace name"
+                  placeholder="e.g., analytics, sales, marketing"
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Will create bucket: iceberg-warehouse/{newNamespace.name || 'namespace'}/
+                </p>
               </div>
               
               <div>
-                <Label>Properties</Label>
+                <Label htmlFor="owner">Owner *</Label>
+                <Input
+                  id="owner"
+                  value={newNamespace.properties.owner || ''}
+                  onChange={(e) => updateProperty('owner', e.target.value)}
+                  placeholder="Enter owner name or team"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="description">Description *</Label>
+                <Textarea
+                  id="description"
+                  value={newNamespace.properties.description || ''}
+                  onChange={(e) => updateProperty('description', e.target.value)}
+                  placeholder="Describe the purpose of this namespace"
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="retention">Retention Policy</Label>
+                <Select 
+                  value={newNamespace.properties.retention_policy || '365d'} 
+                  onValueChange={(value) => updateProperty('retention_policy', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select retention period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30d">30 days</SelectItem>
+                    <SelectItem value="90d">90 days</SelectItem>
+                    <SelectItem value="180d">180 days</SelectItem>
+                    <SelectItem value="365d">1 year</SelectItem>
+                    <SelectItem value="1095d">3 years</SelectItem>
+                    <SelectItem value="unlimited">Unlimited</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="compression">Default Compression</Label>
+                <Select 
+                  value={newNamespace.properties.compression || 'snappy'} 
+                  onValueChange={(value) => updateProperty('compression', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select compression" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="snappy">Snappy (recommended)</SelectItem>
+                    <SelectItem value="gzip">GZIP</SelectItem>
+                    <SelectItem value="lz4">LZ4</SelectItem>
+                    <SelectItem value="zstd">ZSTD</SelectItem>
+                    <SelectItem value="uncompressed">Uncompressed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label>Additional Properties</Label>
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <Input
@@ -236,31 +367,44 @@ const IcebergNamespaceManager: React.FC = () => {
                       value={propertyValue}
                       onChange={(e) => setPropertyValue(e.target.value)}
                     />
-                    <Button type="button" onClick={addProperty} size="sm">
+                    <Button type="button" onClick={addCustomProperty} size="sm">
                       Add
                     </Button>
                   </div>
-                  {Object.entries(newNamespace.properties).map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between p-2 bg-muted rounded">
-                      <span className="text-sm">{key}: {value}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeProperty(key)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
+                  
+                  <div className="space-y-1">
+                    {Object.entries(newNamespace.properties).map(([key, value]) => {
+                      const isMandatory = ['location', 'owner', 'description', 'retention_policy', 'compression'].includes(key);
+                      return (
+                        <div key={key} className="flex items-center justify-between p-2 bg-muted rounded">
+                          <span className="text-sm">
+                            {key}: {value}
+                            {isMandatory && <Badge variant="secondary" className="ml-2 text-xs">Required</Badge>}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeProperty(key)}
+                            disabled={isMandatory}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
               
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsCreateDialogOpen(false)}
+                  onClick={() => {
+                    setIsCreateDialogOpen(false);
+                    resetForm();
+                  }}
                 >
                   Cancel
                 </Button>
@@ -269,7 +413,7 @@ const IcebergNamespaceManager: React.FC = () => {
                   onClick={handleCreateNamespace}
                   disabled={createNamespaceMutation.isPending}
                 >
-                  {createNamespaceMutation.isPending ? 'Creating...' : 'Create'}
+                  {createNamespaceMutation.isPending ? 'Creating...' : 'Create Namespace & Bucket'}
                 </Button>
               </div>
             </div>
@@ -289,7 +433,7 @@ const IcebergNamespaceManager: React.FC = () => {
                       {namespaceName}
                     </CardTitle>
                     <CardDescription className="mt-1 text-xs text-muted-foreground">
-                      Iceberg namespace
+                      Iceberg namespace • s3://iceberg-warehouse/{namespaceName}/
                     </CardDescription>
                   </div>
                   <div className="flex gap-1">

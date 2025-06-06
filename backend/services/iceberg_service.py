@@ -12,6 +12,7 @@ import pandas as pd
 import logging
 import os
 from typing import Dict, Any, List, Optional
+from minio.error import S3Error
 from .vault_service import VaultService
 from .minio_service import MinioService
 
@@ -49,6 +50,51 @@ class IcebergService:
         
         return self._catalog
     
+    def _ensure_bucket_exists(self, bucket_name: str) -> bool:
+        """Ensure the MinIO bucket exists, create it if not"""
+        try:
+            if not self.minio_service.client.bucket_exists(bucket_name):
+                logger.info(f"Creating bucket: {bucket_name}")
+                self.minio_service.client.make_bucket(bucket_name)
+                
+                # Set bucket policy for Iceberg operations
+                policy = {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "*"},
+                            "Action": ["s3:GetObject"],
+                            "Resource": [f"arn:aws:s3:::{bucket_name}/*"]
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "*"},
+                            "Action": ["s3:ListBucket"],
+                            "Resource": [f"arn:aws:s3:::{bucket_name}"]
+                        }
+                    ]
+                }
+                
+                try:
+                    import json
+                    self.minio_service.client.set_bucket_policy(bucket_name, json.dumps(policy))
+                    logger.info(f"Set bucket policy for {bucket_name}")
+                except Exception as e:
+                    logger.warning(f"Could not set bucket policy for {bucket_name}: {e}")
+                
+                logger.info(f"Successfully created bucket: {bucket_name}")
+            else:
+                logger.info(f"Bucket {bucket_name} already exists")
+            return True
+            
+        except S3Error as e:
+            logger.error(f"Error ensuring bucket {bucket_name} exists: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error with bucket {bucket_name}: {e}")
+            return False
+    
     def list_namespaces(self) -> List[str]:
         """List all namespaces in the catalog"""
         try:
@@ -59,7 +105,7 @@ class IcebergService:
             return []
     
     def create_namespace(self, namespace: str, properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-        """Create a new namespace"""
+        """Create a new namespace with bucket management"""
         try:
             catalog = self._get_catalog()
             
@@ -68,13 +114,33 @@ class IcebergService:
             if namespace in existing_namespaces:
                 raise ValueError(f"Namespace '{namespace}' already exists")
             
-            # Create the namespace with optional properties
-            catalog.create_namespace(namespace, properties or {})
+            # Ensure the iceberg-warehouse bucket exists
+            if not self._ensure_bucket_exists("iceberg-warehouse"):
+                raise ValueError("Failed to create or access the iceberg-warehouse bucket")
+            
+            # Validate required properties
+            required_props = ['owner', 'description']
+            if properties:
+                missing_props = [prop for prop in required_props if not properties.get(prop)]
+                if missing_props:
+                    raise ValueError(f"Missing required properties: {', '.join(missing_props)}")
+            else:
+                raise ValueError(f"Properties are required. Missing: {', '.join(required_props)}")
+            
+            # Set default location if not provided
+            if 'location' not in properties:
+                properties['location'] = f's3://iceberg-warehouse/{namespace}/'
+            
+            # Create the namespace with properties
+            catalog.create_namespace(namespace, properties)
+            
+            logger.info(f"Created namespace '{namespace}' with bucket management")
             
             return {
                 "namespace": namespace,
-                "properties": properties or {},
-                "message": f"Namespace '{namespace}' created successfully"
+                "properties": properties,
+                "bucket_created": True,
+                "message": f"Namespace '{namespace}' and bucket created successfully"
             }
             
         except Exception as e:
@@ -99,14 +165,20 @@ class IcebergService:
             # Drop the namespace
             catalog.drop_namespace(namespace)
             
+            # Note: We don't delete the bucket as it might contain other data
+            # or be used by other applications
+            logger.info(f"Deleted namespace '{namespace}' (bucket preserved)")
+            
             return {
                 "namespace": namespace,
-                "message": f"Namespace '{namespace}' deleted successfully"
+                "message": f"Namespace '{namespace}' deleted successfully (bucket preserved)"
             }
             
         except Exception as e:
             logger.error(f"Error deleting namespace {namespace}: {e}")
             raise
+    
+    # ... keep existing code (rest of the methods remain the same)
     
     def get_namespace_properties(self, namespace: str) -> Dict[str, Any]:
         """Get namespace properties"""
@@ -165,8 +237,6 @@ class IcebergService:
         except Exception as e:
             logger.error(f"Error listing tables in namespace {namespace}: {e}")
             return []
-    
-    # ... keep existing code (rest of the methods remain the same)
     
     def create_table_from_csv(
         self, 
