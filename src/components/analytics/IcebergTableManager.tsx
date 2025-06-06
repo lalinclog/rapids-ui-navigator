@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -87,20 +86,45 @@ const IcebergTableManager = () => {
     setLoading(true);
     try {
       const token = await AuthService.getValidToken();
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      if (!token) {
+        throw new Error('No valid token available');
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
+      console.log('Fetching namespaces with token');
 
       const response = await axios.get('/api/iceberg/namespaces', { headers });
-      // Transform the response to include namespace details
-      const namespacesWithInfo = response.data.namespaces?.map((ns: any) => ({
-        name: typeof ns === 'string' ? ns : ns.name,
-        properties: typeof ns === 'object' ? ns.properties || {} : {}
-      })) || [];
+      console.log('Namespaces response:', response.data);
+      
+      // Transform the response to ensure proper format
+      const namespacesWithInfo = response.data.namespaces?.map((ns: any) => {
+        // Ensure we have a proper object structure
+        if (typeof ns === 'string') {
+          return {
+            name: ns,
+            properties: {}
+          };
+        } else if (ns && typeof ns === 'object') {
+          return {
+            name: ns.name || '',
+            properties: ns.properties || {}
+          };
+        } else {
+          console.warn('Invalid namespace format:', ns);
+          return {
+            name: 'unknown',
+            properties: {}
+          };
+        }
+      }) || [];
+      
+      console.log('Processed namespaces:', namespacesWithInfo);
       setNamespaces(namespacesWithInfo);
     } catch (error) {
       console.error('Error fetching namespaces:', error);
       toast({
         title: "Error",
-        description: "Failed to load namespaces",
+        description: "Failed to load namespaces. Please check your authentication.",
         variant: "destructive"
       });
     } finally {
@@ -112,9 +136,16 @@ const IcebergTableManager = () => {
     setLoading(true);
     try {
       const token = await AuthService.getValidToken();
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      if (!token) {
+        throw new Error('No valid token available');
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
+      console.log('Fetching tables for namespace:', namespace);
 
       const response = await axios.get(`/api/iceberg/namespaces/${namespace}/tables`, { headers });
+      console.log('Tables response:', response.data);
+      
       setTables(response.data.tables || []);
       setSelectedTable('');
       setTableInfo(null);
@@ -123,7 +154,7 @@ const IcebergTableManager = () => {
       console.error('Error fetching tables:', error);
       toast({
         title: "Error",
-        description: "Failed to load tables",
+        description: "Failed to load tables. Please check your authentication.",
         variant: "destructive"
       });
     } finally {
@@ -135,7 +166,11 @@ const IcebergTableManager = () => {
     setLoading(true);
     try {
       const token = await AuthService.getValidToken();
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      if (!token) {
+        throw new Error('No valid token available');
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
 
       const response = await axios.get(`/api/iceberg/namespaces/${namespace}/tables/${tableName}`, { headers });
       setTableInfo(response.data);
@@ -156,7 +191,11 @@ const IcebergTableManager = () => {
     setLoading(true);
     try {
       const token = await AuthService.getValidToken();
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      if (!token) {
+        throw new Error('No valid token available');
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
 
       const response = await axios.get(
         `/api/iceberg/namespaces/${namespace}/tables/${tableName}/preview?limit=100`, 
@@ -189,7 +228,11 @@ const IcebergTableManager = () => {
     setLoading(true);
     try {
       const token = await AuthService.getValidToken();
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      if (!token) {
+        throw new Error('No valid token available');
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
 
       const response = await axios.post('/api/iceberg/tables', {
         namespace: selectedNamespace,
@@ -229,7 +272,11 @@ const IcebergTableManager = () => {
       setLoading(true);
       try {
         const token = await AuthService.getValidToken();
-        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+        if (!token) {
+          throw new Error('No valid token available');
+        }
+        
+        const headers = { Authorization: `Bearer ${token}` };
 
         await axios.delete(`/api/iceberg/namespaces/${namespace}/tables/${tableName}`, { headers });
         
