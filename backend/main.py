@@ -91,6 +91,9 @@ def get_bi_service():
 def get_iceberg_service():
     return IcebergService()
 
+def get_keycloak_service():
+    return KeycloakService()
+
 # Models
 class QualificationParams(BaseModel):
     eventLogPath: str
@@ -861,20 +864,20 @@ app.mount("/", StaticFiles(directory="dist", html=True), name="static")
 
 # Endpoints for users and groups
 @app.get("/api/keycloak/users")
-async def get_users():
+async def get_users(keycloak_service: KeycloakService = Depends(get_keycloak_service)):
     """Get all users from Keycloak"""
     try:
-        users = KeycloakService.get_all_users()
+        users = keycloak_service.get_all_users()
         return {"users": users}
     except Exception as e:
         logger.error(f"Failed to get users: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/keycloak/groups")
-async def get_groups():
+async def get_groups(keycloak_service: KeycloakService = Depends(get_keycloak_service)):
     """Get all groups from Keycloak"""
     try:
-        groups = KeycloakService.get_all_groups()
+        groups = keycloak_service.get_all_groups()
         return {"groups": groups}
     except Exception as e:
         logger.error(f"Failed to get groups: {e}")
