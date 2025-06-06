@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
@@ -31,32 +31,102 @@ function App() {
             <Toaster />
             <Sonner />
             <Routes>
-              {/* Public routes */}
+              {/* Public routes - no layout */}
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />
               
-              {/* Protected routes */}
+              {/* Protected routes with layout */}
               <Route 
-                path="/*" 
+                path="/" 
                 element={
                   <ProtectedRoute>
                     <AppLayout>
-                      <Routes>
-                        <Route path="/" element={<Index />} />
-                        <Route path="/qualification" element={<Qualification />} />
-                        <Route path="/profiling" element={<Profiling />} />
-                        <Route path="/job-history" element={<JobHistory />} />
-                        <Route path="/job/:id" element={<JobDetails />} />
-                        <Route path="/analytics" element={<Analytics />} />
-                        <Route path="/profile" element={<Profile />} />
-                        <Route path="/settings" element={<Settings />} />
-                        <Route path="/admin" element={<Admin />} />
-                        <Route path="*" element={<NotFound />} />
-                      </Routes>
+                      <Index />
                     </AppLayout>
                   </ProtectedRoute>
                 } 
               />
+              <Route 
+                path="/qualification" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Qualification />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/profiling" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Profiling />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/job-history" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <JobHistory />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/job/:id" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <JobDetails />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/analytics" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Analytics />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/profile" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Profile />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/settings" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Settings />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin" 
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Admin />
+                    </AppLayout>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>
         </AuthProvider>
