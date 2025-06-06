@@ -202,7 +202,7 @@ const IcebergNamespaceManager = () => {
           owner: newNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
           pii_classification: newNamespace.pii_classification,
           retention_policy: newNamespace.retention_policy,
-          location: newNamespace.location
+          location: newNamespace.location || `s3://iceberg-warehouse/${newNamespace.name}/`
         }
       }, { headers });
 
@@ -438,13 +438,23 @@ const IcebergNamespaceManager = () => {
             </div>
 
             <div>
-              <Label htmlFor="retention-policy">Retention Policy</Label>
-              <Input
-                id="retention-policy"
-                value={newNamespace.retention_policy}
-                onChange={(e) => setNewNamespace(prev => ({ ...prev, retention_policy: e.target.value }))}
-                placeholder="e.g., 7 years"
-              />
+              <Label htmlFor="retention-policy">Data Retention Policy</Label>
+              <Select onValueChange={(value) => setNewNamespace(prev => ({ ...prev, retention_policy: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select retention period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30d">30 days (Development/Testing)</SelectItem>
+                  <SelectItem value="90d">90 days (Short-term analytics)</SelectItem>
+                  <SelectItem value="1y">1 year (Standard business data)</SelectItem>
+                  <SelectItem value="3y">3 years (Financial/Compliance)</SelectItem>
+                  <SelectItem value="7y">7 years (Legal/Regulatory)</SelectItem>
+                  <SelectItem value="indefinite">Indefinite (Archive/Historical)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-gray-500 mt-1">
+                Choose how long data should be retained based on business and compliance requirements
+              </p>
             </div>
 
             <div>
@@ -453,8 +463,11 @@ const IcebergNamespaceManager = () => {
                 id="location"
                 value={newNamespace.location}
                 onChange={(e) => setNewNamespace(prev => ({ ...prev, location: e.target.value }))}
-                placeholder="s3://custom-bucket/path/"
+                placeholder={`Default: s3://iceberg-warehouse/${newNamespace.name || 'namespace-name'}/`}
               />
+              <p className="text-sm text-gray-500 mt-1">
+                Leave empty to use default location: s3://iceberg-warehouse/{newNamespace.name || 'namespace-name'}/
+              </p>
             </div>
 
             <div className="flex justify-end gap-2">
@@ -510,13 +523,26 @@ const IcebergNamespaceManager = () => {
             </div>
 
             <div>
-              <Label htmlFor="edit-retention-policy">Retention Policy</Label>
-              <Input
-                id="edit-retention-policy"
+              <Label htmlFor="edit-retention-policy">Data Retention Policy</Label>
+              <Select 
                 value={editNamespace.retention_policy}
-                onChange={(e) => setEditNamespace(prev => ({ ...prev, retention_policy: e.target.value }))}
-                placeholder="e.g., 7 years"
-              />
+                onValueChange={(value) => setEditNamespace(prev => ({ ...prev, retention_policy: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select retention period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30d">30 days (Development/Testing)</SelectItem>
+                  <SelectItem value="90d">90 days (Short-term analytics)</SelectItem>
+                  <SelectItem value="1y">1 year (Standard business data)</SelectItem>
+                  <SelectItem value="3y">3 years (Financial/Compliance)</SelectItem>
+                  <SelectItem value="7y">7 years (Legal/Regulatory)</SelectItem>
+                  <SelectItem value="indefinite">Indefinite (Archive/Historical)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-gray-500 mt-1">
+                Choose how long data should be retained based on business and compliance requirements
+              </p>
             </div>
 
             <div>

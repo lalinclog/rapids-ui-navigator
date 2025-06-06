@@ -134,20 +134,63 @@ class IcebergService:
             if properties.get('pii_classification') not in valid_pii_classifications:
                 raise ValueError(f"Invalid PII classification. Must be one of: {', '.join(valid_pii_classifications)}")
             
-            # Set default location if not provided
-            if 'location' not in properties:
+            # Set default location if not provided or empty
+            if not properties.get('location') or properties.get('location').strip() == '':
                 properties['location'] = f's3://iceberg-warehouse/{namespace}/'
+                logger.info(f"Using default location for namespace '{namespace}': {properties['location']}")
+            else:
+                logger.info(f"Using custom location for namespace '{namespace}': {properties['location']}")
             
             # Create the namespace with properties
             catalog.create_namespace(namespace, properties)
             
-            logger.info(f"Created namespace '{namespace}' with bucket management")
+            # Create the namespace folder in MinIO with README.md
+            namespace_path = f"{namespace}/"
+            readme_content = f"""# {namespace} Namespace
+
+**Description:** {properties.get('description', 'No description provided')}
+**Owner(s):** {properties.get('owner', 'Not specified')}
+**PII Classification:** {properties.get('pii_classification', 'Not specified')}
+**Retention Policy:** {properties.get('retention_policy', 'Not specified')}
+**Location:** {properties.get('location')}
+
+## Purpose
+This namespace contains Iceberg tables for {namespace} data.
+
+## Data Governance
+- **Created:** {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+- **Classification:** {properties.get('pii_classification', 'Not specified')}
+- **Retention:** {properties.get('retention_policy', 'Not specified')}
+
+## Tables
+Tables will be listed here as they are created within this namespace.
+"""
+            
+            try:
+                import io
+                content_stream = io.BytesIO(readme_content.encode('utf-8'))
+                
+                self.minio_service.client.put_object(
+                    bucket_name="iceberg-warehouse",
+                    object_name=f"{namespace_path}README.md",
+                    data=content_stream,
+                    length=len(readme_content.encode('utf-8')),
+                    content_type="text/markdown"
+                )
+                
+                logger.info(f"Created README.md for namespace '{namespace}' at path: iceberg-warehouse/{namespace_path}README.md")
+                
+            except Exception as e:
+                logger.warning(f"Could not create README.md for namespace {namespace}: {e}")
+            
+            logger.info(f"Created namespace '{namespace}' with location: {properties['location']}")
             
             return {
                 "namespace": namespace,
                 "properties": properties,
                 "bucket_created": True,
-                "message": f"Namespace '{namespace}' and bucket created successfully"
+                "location": properties['location'],
+                "message": f"Namespace '{namespace}' created successfully at {properties['location']}"
             }
             
         except Exception as e:
