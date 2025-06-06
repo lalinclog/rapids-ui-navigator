@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException, status, Form, Body, Header, Security, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, APIKeyHeader
 from .keycloak_service import KeycloakService
@@ -27,6 +28,8 @@ postgres_service = PostgresService()
 bi_service = BIService()  # Add BIService instance
 iceberg_bi = IcebergBIExtension(bi_service)
 iceberg_service = IcebergService()  # Add IcebergService instance
+
+# ... keep existing code (Models for API key management and other models)
 
 # Models for API key management
 class APIKeyCreate(BaseModel):
@@ -109,11 +112,9 @@ def create_tables():
 create_tables()
 
 # Security dependencies
-async def get_current_user(
-    token: str = Depends(oauth2_scheme)
-):
+def get_current_user(token: str = Depends(oauth2_scheme)):
     """Verify JWT token and extract user info"""
-    user_info = await keycloak_service.validate_token(token)
+    user_info = keycloak_service.validate_token(token)
     if "error" in user_info:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -122,9 +123,7 @@ async def get_current_user(
         )
     return user_info
 
-async def get_api_key_user(
-    api_key: str = Security(api_key_header)
-):
+def get_api_key_user(api_key: str = Security(api_key_header)):
     """Verify API key and return the associated user"""
     if not api_key:
         raise HTTPException(
@@ -163,15 +162,15 @@ async def get_api_key_user(
     # In a real app, you would fetch the user details from Keycloak
     return {"sub": user_id, "api_key_user": True}
 
-async def get_current_user_or_api_key(
+def get_current_user_or_api_key(
     token: Optional[str] = Depends(oauth2_scheme),
     api_key: Optional[str] = Security(api_key_header)
 ):
     """Get the current user from either a JWT token or an API key"""
     if token:
-        return await get_current_user(token)
+        return get_current_user(token)
     elif api_key:
-        return await get_api_key_user(api_key)
+        return get_api_key_user(api_key)
     else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -179,7 +178,7 @@ async def get_current_user_or_api_key(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-async def has_role(user_info: dict, required_roles: List[str]) -> bool:
+def has_role(user_info: dict, required_roles: List[str]) -> bool:
     """Check if user has any of the required roles"""
     # Extract roles from user info or JWT token
     user_roles = []
@@ -196,9 +195,9 @@ async def has_role(user_info: dict, required_roles: List[str]) -> bool:
     # Check if any required role is in the user's roles
     return any(role in user_roles for role in required_roles)
 
-async def require_roles(user: dict = Depends(get_current_user_or_api_key), required_roles: List[str] = []):
+def require_roles(user: dict = Depends(get_current_user_or_api_key), required_roles: List[str] = []):
     """Dependency to require specific roles for an endpoint"""
-    if not await has_role(user, required_roles):
+    if not has_role(user, required_roles):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Insufficient permissions. Required roles: {required_roles}",
@@ -206,9 +205,9 @@ async def require_roles(user: dict = Depends(get_current_user_or_api_key), requi
     return user
 
 # Admin-only dependency
-async def admin_only(user: dict = Depends(get_current_user_or_api_key)):
+def admin_only(user: dict = Depends(get_current_user_or_api_key)):
     """Require admin role for this endpoint"""
-    if not await has_role(user, ADMIN_ROLES):
+    if not has_role(user, ADMIN_ROLES):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Administrator privileges required",
@@ -216,9 +215,9 @@ async def admin_only(user: dict = Depends(get_current_user_or_api_key)):
     return user
 
 # Engineering-only dependency
-async def engineer_only(user: dict = Depends(get_current_user_or_api_key)):
+def engineer_only(user: dict = Depends(get_current_user_or_api_key)):
     """Require engineer role for this endpoint"""
-    if not await has_role(user, ENGINEER_ROLES + ADMIN_ROLES):
+    if not has_role(user, ENGINEER_ROLES + ADMIN_ROLES):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Engineer privileges required",
@@ -226,9 +225,9 @@ async def engineer_only(user: dict = Depends(get_current_user_or_api_key)):
     return user
 
 # Data steward dependency
-async def data_steward_only(user: dict = Depends(get_current_user_or_api_key)):
+def data_steward_only(user: dict = Depends(get_current_user_or_api_key)):
     """Require data_steward role for this endpoint"""
-    if not await has_role(user, DATA_STEWARD_ROLES + ADMIN_ROLES):
+    if not has_role(user, DATA_STEWARD_ROLES + ADMIN_ROLES):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Data steward privileges required",
@@ -237,10 +236,10 @@ async def data_steward_only(user: dict = Depends(get_current_user_or_api_key)):
 
 # Authentication endpoints
 @router.post("/auth/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """Forward login request to Keycloak and return the token response"""
     try:
-        token_response = await keycloak_service.get_token(
+        token_response = keycloak_service.get_token(
             username=form_data.username,
             password=form_data.password
         )
@@ -264,7 +263,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 token_refresh_times = {}
 
 @router.post("/auth/refresh")
-async def refresh_token(refresh_token: str = Form(...)):
+def refresh_token(refresh_token: str = Form(...)):
     """Refresh an access token using a refresh token"""
     try:
         # Rate limiting check
@@ -279,11 +278,8 @@ async def refresh_token(refresh_token: str = Form(...)):
         # Track token usage
         token_refresh_times[refresh_token] = current_time
         
-        # Run in thread pool to avoid blocking
-        token_response = await run_in_threadpool(
-            keycloak_service.refresh_token, 
-            refresh_token
-        )
+        # Call synchronous refresh_token method
+        token_response = keycloak_service.refresh_token(refresh_token)
         
         if "error" in token_response:
             raise HTTPException(
@@ -305,9 +301,8 @@ async def refresh_token(refresh_token: str = Form(...)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-
 @router.get("/auth/user")
-async def get_user_info(current_user: dict = Depends(get_current_user_or_api_key)):
+def get_user_info(current_user: dict = Depends(get_current_user_or_api_key)):
     """Get information about the current user"""
     # For API key users, we need to enhance the user info
     if current_user.get("api_key_user", False):
@@ -322,7 +317,7 @@ async def get_user_info(current_user: dict = Depends(get_current_user_or_api_key
     return current_user
 
 @router.post("/auth/logout")
-async def logout(refresh_token: str = Form(None)):
+def logout(refresh_token: str = Form(None)):
     """Logout from Keycloak by invalidating the session/token"""
     if refresh_token:
         try:
@@ -341,7 +336,7 @@ async def logout(refresh_token: str = Form(None)):
     return {"message": "Logged out successfully"}
 
 @router.post("/auth/users")
-async def create_user(user_data: Dict[str, Any] = Body(...)):
+def create_user(user_data: Dict[str, Any] = Body(...)):
     """Create a new user in Keycloak"""
     try:
         success = keycloak_service.create_user(
@@ -365,9 +360,11 @@ async def create_user(user_data: Dict[str, Any] = Body(...)):
             detail=str(e)
         )
 
+# ... keep existing code (API Key management, Access requests, Admin endpoints, Iceberg endpoints, Version and health check)
+
 # API Key management
 @router.post("/api-keys", response_model=APIKeyResponse)
-async def create_api_key(api_key_data: APIKeyCreate, current_user: dict = Depends(get_current_user)):
+def create_api_key(api_key_data: APIKeyCreate, current_user: dict = Depends(get_current_user)):
     """Create a new API key for the current user"""
     try:
         user_id = current_user["sub"]
@@ -410,7 +407,7 @@ async def create_api_key(api_key_data: APIKeyCreate, current_user: dict = Depend
         )
 
 @router.get("/api-keys")
-async def list_api_keys(current_user: dict = Depends(get_current_user)):
+def list_api_keys(current_user: dict = Depends(get_current_user)):
     """List all API keys for the current user"""
     try:
         user_id = current_user["sub"]
@@ -443,7 +440,7 @@ async def list_api_keys(current_user: dict = Depends(get_current_user)):
         )
 
 @router.delete("/api-keys/{key_id}")
-async def delete_api_key(key_id: str, current_user: dict = Depends(get_current_user)):
+def delete_api_key(key_id: str, current_user: dict = Depends(get_current_user)):
     """Delete an API key"""
     try:
         user_id = current_user["sub"]
@@ -474,7 +471,7 @@ async def delete_api_key(key_id: str, current_user: dict = Depends(get_current_u
 
 # Access requests
 @router.post("/access-requests", response_model=AccessRequestResponse)
-async def create_access_request(
+def create_access_request(
     access_request: AccessRequestCreate, 
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
@@ -522,7 +519,7 @@ async def create_access_request(
         )
 
 @router.delete("/access-requests/{dashboard_id}")
-async def cancel_request(
+def cancel_request(
     dashboard_id: int, 
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
@@ -547,16 +544,16 @@ async def cancel_request(
         )
 
 @router.get("/access-requests")
-async def list_access_requests(
+def list_access_requests(
     request: Request,
     current_user: dict = Depends(get_current_user_or_api_key)
     ):
     """List access requests for the current user or all requests for admins"""
     try:
         user_id = current_user["sub"]
-        is_admin = await has_role(current_user, ADMIN_ROLES)
-        is_data_steward = await has_role(current_user, DATA_STEWARD_ROLES)
-        is_engineer = await has_role(current_user, ENGINEER_ROLES)
+        is_admin = has_role(current_user, ADMIN_ROLES)
+        is_data_steward = has_role(current_user, DATA_STEWARD_ROLES)
+        is_engineer = has_role(current_user, ENGINEER_ROLES)
         
         # Users who can review requests
         can_review = is_admin or is_data_steward or is_engineer
@@ -604,7 +601,7 @@ async def list_access_requests(
         requests = []
         for row in result:
             # Get user info from Keycloak
-            user_info = await keycloak_service.get_user_info(row["user_id"])
+            user_info = keycloak_service.get_user_info(row["user_id"])
             
             request_data = {
                 "id": row["id"],
@@ -634,7 +631,7 @@ async def list_access_requests(
         )
 
 @router.post("/access-requests/{request_id}/approve")
-async def approve_access_request(request_id: int, current_user: dict = Depends(admin_only)):
+def approve_access_request(request_id: int, current_user: dict = Depends(admin_only)):
     """Approve an access request (admin only)"""
     try:
         # First, get the access request details
@@ -687,7 +684,7 @@ async def approve_access_request(request_id: int, current_user: dict = Depends(a
         )
 
 @router.post("/access-requests/{request_id}/reject")
-async def reject_access_request(request_id: int, current_user: dict = Depends(admin_only)):
+def reject_access_request(request_id: int, current_user: dict = Depends(admin_only)):
     """Reject an access request (admin only)"""
     try:
         # Update the request status
@@ -717,7 +714,7 @@ async def reject_access_request(request_id: int, current_user: dict = Depends(ad
 
 # Admin endpoints
 @router.get("/admin/users")
-async def list_users(current_user: dict = Depends(admin_only)):
+def list_users(current_user: dict = Depends(admin_only)):
     """List all users (admin only)"""
     # In a real app, this would query Keycloak for all users
     # For demo purposes, we'll return a fixed list
@@ -731,7 +728,7 @@ async def list_users(current_user: dict = Depends(admin_only)):
     ]
 
 @router.get("/admin/roles")
-async def list_roles(current_user: dict = Depends(admin_only)):
+def list_roles(current_user: dict = Depends(admin_only)):
     """List all roles (admin only)"""
     # In a real app, this would query Keycloak for all roles
     # For demo purposes, we'll return a fixed list
@@ -745,7 +742,7 @@ async def list_roles(current_user: dict = Depends(admin_only)):
 
 # Iceberg namespace CRUD endpoints
 @router.get("/iceberg/namespaces")
-async def list_iceberg_namespaces(): # current_user: dict = Depends(get_current_user_or_api_key)):
+def list_iceberg_namespaces(): # current_user: dict = Depends(get_current_user_or_api_key)):
     """List all Iceberg namespaces"""
     try:
         namespaces = iceberg_service.list_namespaces()
@@ -758,7 +755,7 @@ async def list_iceberg_namespaces(): # current_user: dict = Depends(get_current_
         )
 
 @router.post("/iceberg/namespaces")
-async def create_iceberg_namespace(
+def create_iceberg_namespace(
     namespace_data: NamespaceCreate,
     #current_user: dict = Depends(data_steward_only)
     current_user: dict = Depends(admin_only)
@@ -778,7 +775,7 @@ async def create_iceberg_namespace(
         )
 
 @router.delete("/iceberg/namespaces/{namespace}")
-async def delete_iceberg_namespace(
+def delete_iceberg_namespace(
     namespace: str,
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
@@ -794,7 +791,7 @@ async def delete_iceberg_namespace(
         )
 
 @router.get("/iceberg/namespaces/{namespace}")
-async def get_namespace_properties(
+def get_namespace_properties(
     namespace: str,
     current_user: dict = Depends(admin_only)
 ):
@@ -810,7 +807,7 @@ async def get_namespace_properties(
         )
 
 @router.put("/iceberg/namespaces/{namespace}")
-async def update_namespace_properties(
+def update_namespace_properties(
     namespace: str,
     namespace_update: NamespaceUpdate,
     current_user: dict = Depends(admin_only)
@@ -830,7 +827,7 @@ async def update_namespace_properties(
         )
 
 @router.get("/iceberg/namespaces/{namespace}/tables")
-async def list_iceberg_tables(
+def list_iceberg_tables(
     namespace: str, 
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
@@ -847,7 +844,7 @@ async def list_iceberg_tables(
 
 # Iceberg-specific endpoints
 @router.post("/iceberg/datasets")
-async def create_iceberg_dataset(
+def create_iceberg_dataset(
     dataset_data: Dict[str, Any] = Body(...),
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
@@ -877,7 +874,7 @@ async def create_iceberg_dataset(
         )
 
 @router.post("/iceberg/preview")
-async def preview_iceberg_table(
+def preview_iceberg_table(
     preview_data: Dict[str, Any] = Body(...),
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
@@ -904,7 +901,7 @@ async def preview_iceberg_table(
 
 # Version and health check
 @router.get("/version")
-async def get_version():
+def get_version():
     """Get the API version and service info"""
     return {
         "version": "1.0.0",
@@ -913,6 +910,6 @@ async def get_version():
     }
 
 @router.get("/health")
-async def health_check():
+def health_check():
     """Check if the API service is healthy"""
     return {"status": "ok", "timestamp": datetime.datetime.now().isoformat()}
