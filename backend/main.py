@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,9 +8,11 @@ import os
 
 # Import all route modules
 from routes import (
-    auth, bi, iceberg_namespaces, iceberg_tables, datasets, 
+    auth, bi, iceberg_namespaces, datasets, 
     dashboards, access_requests, stats, python_execution
 )
+from services import api_service
+
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
@@ -50,12 +53,12 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(bi.router)
 app.include_router(iceberg_namespaces.router)
-app.include_router(iceberg_tables.router)
 app.include_router(datasets.router)
 app.include_router(dashboards.router)
 app.include_router(access_requests.router)
 app.include_router(stats.router)
 app.include_router(python_execution.router)
+app.include_router(api_service.router)
 
 @app.get("/health")
 async def health_check():

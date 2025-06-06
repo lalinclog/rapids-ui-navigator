@@ -12,6 +12,7 @@ from .bi_service import BIService
 import time
 from .iceberg_bi_extension import IcebergBIExtension
 from .iceberg_service import IcebergService
+from .iceberg_table_service import IcebergTableService
 from .keycloak_service import KeycloakService
 
 from fastapi import BackgroundTasks
@@ -29,6 +30,7 @@ postgres_service = PostgresService()
 bi_service = BIService()  # Add BIService instance
 iceberg_bi = IcebergBIExtension(bi_service)
 iceberg_service = IcebergService()  # Add IcebergService instance
+iceberg_table_service = IcebergTableService()  # Add IcebergTableService instance
 
 # Models for API key management
 class APIKeyCreate(BaseModel):
@@ -66,6 +68,16 @@ class NamespaceCreate(BaseModel):
 
 class NamespaceUpdate(BaseModel):
     properties: Dict[str, str]
+
+# Models for Iceberg table management
+class CreateTableRequest(BaseModel):
+    namespace: str
+    table_name: str
+    bucket: str
+    parquet_path: str
+    base_path: Optional[str] = None
+
+# ... keep existing code (role definitions, create_tables function, security dependencies, etc)
 
 # Role-based access control
 ADMIN_ROLES = ["admin"]
@@ -233,6 +245,8 @@ def data_steward_only(user: dict = Depends(get_current_user_or_api_key)):
         )
     return user
 
+# ... keep existing code (authentication endpoints, API key management, access requests, admin endpoints)
+
 # Authentication endpoints
 @router.post("/auth/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -362,6 +376,8 @@ def create_user(user_data: Dict[str, Any] = Body(...)):
             detail=str(e)
         )
 
+# ... keep existing code (API Key management endpoints)
+
 # API Key management
 @router.post("/api-keys", response_model=APIKeyResponse)
 def create_api_key(api_key_data: APIKeyCreate, current_user: dict = Depends(get_current_user)):
@@ -468,6 +484,8 @@ def delete_api_key(key_id: str, current_user: dict = Depends(get_current_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting API key: {str(e)}"
         )
+
+# ... keep existing code (access requests endpoints)
 
 # Access requests
 @router.post("/access-requests", response_model=AccessRequestResponse)
@@ -712,6 +730,8 @@ def reject_access_request(request_id: int, current_user: dict = Depends(admin_on
             detail=f"Error rejecting access request: {str(e)}"
         )
 
+# ... keep existing code (admin endpoints, iceberg namespace endpoints)
+
 # Admin endpoints
 @router.get("/admin/users")
 def list_users(current_user: dict = Depends(admin_only)):
@@ -741,7 +761,7 @@ def list_roles(current_user: dict = Depends(admin_only)):
     ]
 
 # Iceberg namespace CRUD endpoints
-@router.get("/iceberg/namespaces")
+@router.get("/api/iceberg/namespaces")
 def list_iceberg_namespaces(): # current_user: dict = Depends(get_current_user_or_api_key)):
     """List all Iceberg namespaces"""
     try:
@@ -754,7 +774,7 @@ def list_iceberg_namespaces(): # current_user: dict = Depends(get_current_user_o
             detail=f"Error listing namespaces: {str(e)}"
         )
 
-@router.post("/iceberg/namespaces")
+@router.post("/api/iceberg/namespaces")
 def create_iceberg_namespace(
     namespace_data: NamespaceCreate,
     #current_user: dict = Depends(data_steward_only)
@@ -774,7 +794,7 @@ def create_iceberg_namespace(
             detail=f"Error creating namespace: {str(e)}"
         )
 
-@router.delete("/iceberg/namespaces/{namespace}")
+@router.delete("/api/iceberg/namespaces/{namespace}")
 def delete_iceberg_namespace(
     namespace: str,
     current_user: dict = Depends(get_current_user_or_api_key)
@@ -790,7 +810,7 @@ def delete_iceberg_namespace(
             detail=f"Error deleting namespace: {str(e)}"
         )
 
-@router.get("/iceberg/namespaces/{namespace}")
+@router.get("/api/iceberg/namespaces/{namespace}")
 def get_namespace_properties(
     namespace: str,
     current_user: dict = Depends(admin_only)
@@ -806,7 +826,7 @@ def get_namespace_properties(
             detail=f"Error getting namespace properties: {str(e)}"
         )
 
-@router.put("/iceberg/namespaces/{namespace}")
+@router.put("/api/iceberg/namespaces/{namespace}")
 def update_namespace_properties(
     namespace: str,
     namespace_update: NamespaceUpdate,
@@ -826,21 +846,115 @@ def update_namespace_properties(
             detail=f"Error updating namespace properties: {str(e)}"
         )
 
-@router.get("/iceberg/namespaces/{namespace}/tables")
+# Iceberg table management endpoints (NEW)
+@router.get("/api/iceberg/namespaces/{namespace}/tables")
 def list_iceberg_tables(
     namespace: str, 
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
     """List all tables in an Iceberg namespace"""
     try:
-        tables = iceberg_service.list_tables(namespace)
-        return {"tables": tables}
+        result = iceberg_table_service.list_tables_in_namespace(namespace)
+        return result
     except Exception as e:
-        logger.error(f"Error listing tables: {e}")
+        logger.error(f"Error listing tables in namespace {namespace}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing tables: {str(e)}"
+            detail=str(e)
         )
+
+@router.get("/api/iceberg/namespaces/{namespace}/tables/{table_name}")
+def get_iceberg_table_info(
+    namespace: str, 
+    table_name: str, 
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """Get detailed information about a table"""
+    try:
+        result = iceberg_table_service.get_table_details(namespace, table_name)
+        return result
+    except Exception as e:
+        logger.error(f"Error getting table info for {namespace}.{table_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/api/iceberg/namespaces/{namespace}/tables/{table_name}/preview")
+def preview_iceberg_table(
+    namespace: str, 
+    table_name: str, 
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """Preview table data"""
+    try:
+        result = iceberg_table_service.preview_table(namespace, table_name, limit)
+        return result
+    except Exception as e:
+        logger.error(f"Error previewing table {namespace}.{table_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/api/iceberg/tables")
+def create_iceberg_table(
+    request: CreateTableRequest, 
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """Create an Iceberg table from Parquet files"""
+    try:
+        result = iceberg_table_service.create_table_from_parquet(
+            namespace=request.namespace,
+            table_name=request.table_name,
+            bucket=request.bucket,
+            parquet_path=request.parquet_path,
+            base_path=request.base_path
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error creating table: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.delete("/api/iceberg/namespaces/{namespace}/tables/{table_name}")
+def delete_iceberg_table(
+    namespace: str, 
+    table_name: str, 
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """Delete an Iceberg table"""
+    try:
+        result = iceberg_table_service.delete_table(namespace, table_name)
+        return result
+    except Exception as e:
+        logger.error(f"Error deleting table {namespace}.{table_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/api/iceberg/namespaces/{namespace}/tables/{table_name}/statistics")
+def get_iceberg_table_statistics(
+    namespace: str, 
+    table_name: str, 
+    current_user: dict = Depends(get_current_user_or_api_key)
+):
+    """Get table statistics and metadata"""
+    try:
+        result = iceberg_table_service.get_table_statistics(namespace, table_name)
+        return result
+    except Exception as e:
+        logger.error(f"Error getting table statistics for {namespace}.{table_name}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+# ... keep existing code (iceberg-specific endpoints, version and health check)
 
 # Iceberg-specific endpoints
 @router.post("/iceberg/datasets")
@@ -874,7 +988,7 @@ def create_iceberg_dataset(
         )
 
 @router.post("/iceberg/preview")
-def preview_iceberg_table(
+def preview_iceberg_table_data(
     preview_data: Dict[str, Any] = Body(...),
     current_user: dict = Depends(get_current_user_or_api_key)
 ):
@@ -946,4 +1060,3 @@ async def get_groups(
     except Exception as e:
         logger.error(f"Failed to get groups: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
