@@ -1,4 +1,3 @@
-
 import logging
 from typing import Dict, Any, List, Optional
 import os
@@ -43,7 +42,7 @@ class IcebergService:
             logger.error(f"Error listing namespaces: {e}")
             raise
     
-    def list_tables(self, namespace: str) -> List[str]:
+    def list_tables(self, namespace: str) -> Dict[str, Any]:
         """List all tables in a namespace"""
         try:
             catalog = self._get_catalog()
@@ -53,21 +52,26 @@ class IcebergService:
             tables = catalog.list_tables(namespace_tuple)
             # Extract table names from identifiers
             table_names = []
-            for table in tables:
-                if isinstance(table, tuple):
-                    # Handle tuple format (namespace, table_name)
-                    table_names.append(table[-1])  # Get the last part (table name)
-                elif hasattr(table, 'name'):
-                    # Handle object with name attribute
-                    table_names.append(table.name)
-                else:
-                    # Handle string format
-                    table_names.append(str(table).split('.')[-1])
             
-            return table_names
+            if tables:  # Only process if tables exist
+                for table in tables:
+                    if isinstance(table, tuple):
+                        # Handle tuple format (namespace, table_name)
+                        table_names.append(table[-1])  # Get the last part (table name)
+                    elif hasattr(table, 'name'):
+                        # Handle object with name attribute
+                        table_names.append(table.name)
+                    else:
+                        # Handle string format
+                        table_names.append(str(table).split('.')[-1])
+            
+            # Always return a dictionary with "tables" key
+            return {"tables": table_names}
+            
         except Exception as e:
             logger.error(f"Error listing tables for namespace {namespace}: {e}")
-            raise
+            # Return empty tables list on error
+            return {"tables": []}
     
     def create_namespace(self, namespace: str, properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Create a new namespace"""
