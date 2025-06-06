@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from typing import Optional, List, Dict, Any
 import jwt
@@ -59,10 +60,11 @@ async def get_current_user(authorization: str = Header(None)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-# Add the Keycloak user and group endpoints to the router
+# Keycloak service dependency
 def get_keycloak_service():
     return KeycloakService()
 
+# Add the Keycloak user and group endpoints to the router
 @router.get("/keycloak/users")
 async def get_users(
     keycloak_service: KeycloakService = Depends(get_keycloak_service),
