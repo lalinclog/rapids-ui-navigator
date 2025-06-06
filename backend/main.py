@@ -516,9 +516,9 @@ async def get_dataset(dataset_id: int, bi_service: BIService = Depends(get_bi_se
         logger.error(f"Error getting dataset {dataset_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/bi/datasets/preview")
+@app.post("/api/bi/datasets/{dataset_id}/preview")
 async def preview_dataset_schema(preview_data: dict, bi_service: BIService = Depends(get_bi_service)):
-    logger.info("Generating dataset schema preview")
+    logger.info("Generating dataset schema preview Payload: {preview_data}")
     try:
         result = bi_service.preview_dataset_schema(
             preview_data.get('source_id'),
@@ -526,6 +526,8 @@ async def preview_dataset_schema(preview_data: dict, bi_service: BIService = Dep
             preview_data.get('query_value')
         )
         
+        print(f"📤 Returning preview result: {result}")
+
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
         
@@ -857,12 +859,12 @@ async def delete_dashboard(dashboard_id: int, bi_service: BIService = Depends(ge
 # Serve static files
 app.mount("/", StaticFiles(directory="dist", html=True), name="static")
 
-# Add new endpoints for users and groups
+# Endpoints for users and groups
 @app.get("/api/keycloak/users")
 async def get_users():
     """Get all users from Keycloak"""
     try:
-        users = keycloak_service.get_all_users()
+        users = KeycloakService.get_all_users()
         return {"users": users}
     except Exception as e:
         logger.error(f"Failed to get users: {e}")
@@ -872,7 +874,7 @@ async def get_users():
 async def get_groups():
     """Get all groups from Keycloak"""
     try:
-        groups = keycloak_service.get_all_groups()
+        groups = KeycloakService.get_all_groups()
         return {"groups": groups}
     except Exception as e:
         logger.error(f"Failed to get groups: {e}")
