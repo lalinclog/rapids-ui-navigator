@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Plus, Eye, Database, FileText } from 'lucide-react';
+import { Trash2, Plus, Eye, Database, FileText, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 import AuthService from '@/services/AuthService';
@@ -36,10 +36,19 @@ interface TableData {
   total_rows: number;
 }
 
+interface NamespaceInfo {
+  name: string;
+  properties: {
+    warehouse?: string;
+    bucket?: string;
+  };
+}
+
 const IcebergTableManager = () => {
   const { toast } = useToast();
-  const [namespaces, setNamespaces] = useState<string[]>([]);
+  const [namespaces, setNamespaces] = useState<NamespaceInfo[]>([]);
   const [selectedNamespace, setSelectedNamespace] = useState<string>('');
+  const [selectedNamespaceInfo, setSelectedNamespaceInfo] = useState<NamespaceInfo | null>(null);
   const [tables, setTables] = useState<string[]>([]);
   const [selectedTable, setSelectedTable] = useState<string>('');
   const [tableInfo, setTableInfo] = useState<TableInfo | null>(null);
@@ -49,7 +58,7 @@ const IcebergTableManager = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [newTable, setNewTable] = useState({
     name: '',
-    bucket: 'iceberg-warehouse',
+    bucket: '',
     parquet_path: '',
     base_path: ''
   });
@@ -61,8 +70,18 @@ const IcebergTableManager = () => {
   useEffect(() => {
     if (selectedNamespace) {
       fetchTables(selectedNamespace);
+      // Find the selected namespace info and set bucket automatically
+      const namespaceInfo = namespaces.find(ns => ns.name === selectedNamespace);
+      setSelectedNamespaceInfo(namespaceInfo || null);
+      if (namespaceInfo) {
+        setNewTable(prev => ({
+          ...prev,
+          bucket: namespaceInfo.properties.bucket || namespaceInfo.properties.warehouse || 'iceberg-warehouse',
+          parquet_path: `${selectedNamespace}/`
+        }));
+      }
     }
-  }, [selectedNamespace]);
+  }, [selectedNamespace, namespaces]);
 
   const fetchNamespaces = async () => {
     setLoading(true);
@@ -71,7 +90,12 @@ const IcebergTableManager = () => {
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
       const response = await axios.get('/api/iceberg/namespaces', { headers });
-      setNamespaces(response.data.namespaces || []);
+      // Transform the response to include namespace details
+      const namespacesWithInfo = response.data.namespaces?.map((ns: any) => ({
+        name: typeof ns === 'string' ? ns : ns.name,
+        properties: typeof ns === 'object' ? ns.properties || {} : {}
+      })) || [];
+      setNamespaces(namespacesWithInfo);
     } catch (error) {
       console.error('Error fetching namespaces:', error);
       toast({
@@ -182,7 +206,12 @@ const IcebergTableManager = () => {
 
       fetchTables(selectedNamespace);
       setShowCreateForm(false);
-      setNewTable({ name: '', bucket: 'iceberg-warehouse', parquet_path: '', base_path: '' });
+      setNewTable({ 
+        name: '', 
+        bucket: selectedNamespaceInfo?.properties.bucket || 'iceberg-warehouse', 
+        parquet_path: `${selectedNamespace}/`, 
+        base_path: '' 
+      });
     } catch (error: any) {
       console.error('Error creating table:', error);
       toast({
@@ -228,6 +257,14 @@ const IcebergTableManager = () => {
     }
   };
 
+  const getPathSuggestions = (namespace: string) => [
+    `${namespace}/data.parquet`,
+    `${namespace}/table_data/`,
+    `${namespace}/year=2024/month=01/`,
+    `${namespace}/year=2024/month=01/day=15/`,
+    `${namespace}/region=johannesburg/year=2024/`
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -249,18 +286,35 @@ const IcebergTableManager = () => {
           <CardDescription>Choose a namespace to manage its tables</CardDescription>
         </CardHeader>
         <CardContent>
-          <Select value={selectedNamespace} onValueChange={setSelectedNamespace}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a namespace" />
-            </SelectTrigger>
-            <SelectContent>
-              {namespaces.map(namespace => (
-                <SelectItem key={namespace} value={namespace}>
-                  {namespace}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="space-y-4">
+            <Select value={selectedNamespace} onValueChange={setSelectedNamespace}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a namespace" />
+              </SelectTrigger>
+              <SelectContent>
+                {namespaces.map(namespace => (
+                  <SelectItem key={namespace.name} value={namespace.name}>
+                    {namespace.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            {selectedNamespaceInfo && (
+              <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Info className="h-4 w-4" />
+                  <span className="font-medium">Namespace Details</span>
+                </div>
+                <div className="text-sm space-y-1">
+                  <p><strong>Bucket:</strong> {selectedNamespaceInfo.properties.bucket || selectedNamespaceInfo.properties.warehouse || 'iceberg-warehouse'}</p>
+                  {selectedNamespaceInfo.properties.warehouse && (
+                    <p><strong>Warehouse:</strong> {selectedNamespaceInfo.properties.warehouse}</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -269,7 +323,7 @@ const IcebergTableManager = () => {
         <Card>
           <CardHeader>
             <CardTitle>Create New Table</CardTitle>
-            <CardDescription>Create an Iceberg table from Parquet files</CardDescription>
+            <CardDescription>Create an Iceberg table from Parquet files in {selectedNamespace}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -283,12 +337,14 @@ const IcebergTableManager = () => {
             </div>
 
             <div>
-              <Label htmlFor="bucket">Bucket</Label>
+              <Label htmlFor="bucket">Bucket (auto-set from namespace)</Label>
               <Input
                 id="bucket"
                 value={newTable.bucket}
                 onChange={(e) => setNewTable(prev => ({ ...prev, bucket: e.target.value }))}
                 placeholder="iceberg-warehouse"
+                disabled={true}
+                className="bg-muted"
               />
             </div>
 
@@ -298,12 +354,27 @@ const IcebergTableManager = () => {
                 id="parquet-path"
                 value={newTable.parquet_path}
                 onChange={(e) => setNewTable(prev => ({ ...prev, parquet_path: e.target.value }))}
-                placeholder="e.g., electric_vehicles/johannesburg_ev_charging_2024_2025.parquet"
+                placeholder={`${selectedNamespace}/your_file.parquet`}
               />
-              <div className="text-sm text-gray-500 mt-1 space-y-1">
-                <p>• For single file: <code>namespace/file.parquet</code></p>
-                <p>• For directory with partitions: <code>namespace/table_data/</code></p>
-                <p>• For nested structure: <code>namespace/year=2024/month=01/</code></p>
+              <div className="text-sm text-muted-foreground mt-2 space-y-2">
+                <p className="font-medium">Common patterns:</p>
+                <div className="grid grid-cols-1 gap-1 text-xs">
+                  {getPathSuggestions(selectedNamespace).map((suggestion, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setNewTable(prev => ({ ...prev, parquet_path: suggestion }))}
+                      className="text-left p-2 rounded bg-muted/50 hover:bg-muted transition-colors"
+                    >
+                      <code>{suggestion}</code>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 text-xs space-y-1">
+                  <p>• <strong>Single file:</strong> <code>{selectedNamespace}/file.parquet</code></p>
+                  <p>• <strong>Directory:</strong> <code>{selectedNamespace}/table_data/</code></p>
+                  <p>• <strong>Partitioned:</strong> <code>{selectedNamespace}/year=2024/month=01/</code></p>
+                </div>
               </div>
             </div>
 
@@ -315,7 +386,7 @@ const IcebergTableManager = () => {
                 onChange={(e) => setNewTable(prev => ({ ...prev, base_path: e.target.value }))}
                 placeholder="Optional base path prefix"
               />
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 If specified, will be prepended to the Parquet path
               </p>
             </div>
@@ -348,7 +419,7 @@ const IcebergTableManager = () => {
             {loading ? (
               <p>Loading tables...</p>
             ) : tables.length === 0 ? (
-              <p className="text-gray-500">No tables found in this namespace</p>
+              <p className="text-muted-foreground">No tables found in this namespace</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -407,7 +478,7 @@ const IcebergTableManager = () => {
           <CardContent className="space-y-4">
             <div>
               <Label>Location</Label>
-              <p className="text-sm bg-gray-100 p-2 rounded">{tableInfo.location}</p>
+              <p className="text-sm bg-muted p-2 rounded">{tableInfo.location}</p>
             </div>
             
             <div>
@@ -441,7 +512,7 @@ const IcebergTableManager = () => {
             {tableInfo.snapshot_id && (
               <div>
                 <Label>Current Snapshot ID</Label>
-                <p className="text-sm bg-gray-100 p-2 rounded">{tableInfo.snapshot_id}</p>
+                <p className="text-sm bg-muted p-2 rounded">{tableInfo.snapshot_id}</p>
               </div>
             )}
           </CardContent>
@@ -466,7 +537,7 @@ const IcebergTableManager = () => {
                       <TableHead key={column.name}>
                         {column.name}
                         <br />
-                        <span className="text-xs text-gray-500">({column.type})</span>
+                        <span className="text-xs text-muted-foreground">({column.type})</span>
                       </TableHead>
                     ))}
                   </TableRow>
@@ -478,7 +549,7 @@ const IcebergTableManager = () => {
                         <TableCell key={column.name}>
                           {row[column.name] !== null && row[column.name] !== undefined 
                             ? String(row[column.name]) 
-                            : <span className="text-gray-400">null</span>
+                            : <span className="text-muted-foreground">null</span>
                           }
                         </TableCell>
                       ))}

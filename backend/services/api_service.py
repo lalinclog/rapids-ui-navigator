@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, HTTPException, status, Form, Body, Header, Security, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, APIKeyHeader
 from .keycloak_service import KeycloakService
@@ -76,8 +75,6 @@ class CreateTableRequest(BaseModel):
     bucket: str
     parquet_path: str
     base_path: Optional[str] = None
-
-# ... keep existing code (role definitions, create_tables function, security dependencies, etc)
 
 # Role-based access control
 ADMIN_ROLES = ["admin"]
@@ -245,8 +242,6 @@ def data_steward_only(user: dict = Depends(get_current_user_or_api_key)):
         )
     return user
 
-# ... keep existing code (authentication endpoints, API key management, access requests, admin endpoints)
-
 # Authentication endpoints
 @router.post("/auth/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -376,8 +371,6 @@ def create_user(user_data: Dict[str, Any] = Body(...)):
             detail=str(e)
         )
 
-# ... keep existing code (API Key management endpoints)
-
 # API Key management
 @router.post("/api-keys", response_model=APIKeyResponse)
 def create_api_key(api_key_data: APIKeyCreate, current_user: dict = Depends(get_current_user)):
@@ -484,8 +477,6 @@ def delete_api_key(key_id: str, current_user: dict = Depends(get_current_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting API key: {str(e)}"
         )
-
-# ... keep existing code (access requests endpoints)
 
 # Access requests
 @router.post("/access-requests", response_model=AccessRequestResponse)
@@ -730,8 +721,6 @@ def reject_access_request(request_id: int, current_user: dict = Depends(admin_on
             detail=f"Error rejecting access request: {str(e)}"
         )
 
-# ... keep existing code (admin endpoints, iceberg namespace endpoints)
-
 # Admin endpoints
 @router.get("/admin/users")
 def list_users(current_user: dict = Depends(admin_only)):
@@ -762,17 +751,46 @@ def list_roles(current_user: dict = Depends(admin_only)):
 
 # Iceberg namespace CRUD endpoints
 @router.get("/api/iceberg/namespaces")
-def list_iceberg_namespaces(): # current_user: dict = Depends(get_current_user_or_api_key)):
-    """List all Iceberg namespaces"""
+async def list_namespaces(current_user: dict = Depends(get_current_user)):
+    """List all Iceberg namespaces with their properties"""
     try:
-        namespaces = iceberg_service.list_namespaces()
-        return {"namespaces": namespaces}
+        iceberg_service = IcebergService()
+        namespaces_list = iceberg_service.list_namespaces()
+        
+        # Get detailed information for each namespace
+        detailed_namespaces = []
+        for namespace in namespaces_list:
+            try:
+                # Get namespace properties
+                catalog = iceberg_service._get_catalog()
+                namespace_props = catalog.load_namespace_properties(namespace)
+                
+                detailed_namespaces.append({
+                    "name": namespace,
+                    "properties": {
+                        "warehouse": namespace_props.get("warehouse", "s3://iceberg-warehouse"),
+                        "bucket": namespace_props.get("bucket", "iceberg-warehouse"),
+                        **namespace_props  # Include any other properties
+                    }
+                })
+            except Exception as e:
+                logger.warning(f"Could not get properties for namespace {namespace}: {e}")
+                # Fallback to basic namespace info
+                detailed_namespaces.append({
+                    "name": namespace,
+                    "properties": {
+                        "warehouse": "s3://iceberg-warehouse",
+                        "bucket": "iceberg-warehouse"
+                    }
+                })
+        
+        return {
+            "namespaces": detailed_namespaces,
+            "count": len(detailed_namespaces)
+        }
     except Exception as e:
-        logger.error(f"Error listing namespaces: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing namespaces: {str(e)}"
-        )
+        logger.error(f"Error listing namespaces: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/iceberg/namespaces")
 def create_iceberg_namespace(
@@ -953,8 +971,6 @@ def get_iceberg_table_statistics(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
-
-# ... keep existing code (iceberg-specific endpoints, version and health check)
 
 # Iceberg-specific endpoints
 @router.post("/iceberg/datasets")
