@@ -35,97 +35,26 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />
               
-              {/* Protected routes with layout */}
+              {/* Protected routes with shared layout */}
               <Route 
                 path="/" 
                 element={
                   <ProtectedRoute>
-                    <AppLayout>
-                      <Index />
-                    </AppLayout>
+                    <AppLayout />
                   </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/qualification" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Qualification />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/profiling" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Profiling />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/job-history" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <JobHistory />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/job/:id" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <JobDetails />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/analytics" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Analytics />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/profile" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Profile />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/settings" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Settings />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/admin" 
-                element={
-                  <ProtectedRoute>
-                    <AppLayout>
-                      <Admin />
-                    </AppLayout>
-                  </ProtectedRoute>
-                } 
-              />
+                }
+              >
+                <Route index element={<Index />} />
+                <Route path="qualification" element={<Qualification />} />
+                <Route path="profiling" element={<Profiling />} />
+                <Route path="job-history" element={<JobHistory />} />
+                <Route path="job/:id" element={<JobDetails />} />
+                <Route path="analytics" element={<Analytics />} />
+                <Route path="profile" element={<Profile />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="admin" element={<Admin />} />
+              </Route>
+              
               <Route path="*" element={<NotFound />} />
             </Routes>
           </TooltipProvider>

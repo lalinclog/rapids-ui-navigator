@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import { SideNav } from './SideNav';
 
 interface AppLayoutProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
@@ -23,7 +24,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         <main className="relative flex-1 overflow-y-auto focus:outline-none">
           <div className="py-6">
             <div className="px-4 sm:px-6 md:px-8">
-              {children}
+              {children || <Outlet />}
             </div>
           </div>
         </main>
