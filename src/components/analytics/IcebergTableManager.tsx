@@ -300,9 +300,11 @@ const IcebergTableManager = () => {
                 onChange={(e) => setNewTable(prev => ({ ...prev, parquet_path: e.target.value }))}
                 placeholder="e.g., electric_vehicles/johannesburg_ev_charging_2024_2025.parquet"
               />
-              <p className="text-sm text-gray-500 mt-1">
-                Path to the Parquet file(s) within the bucket
-              </p>
+              <div className="text-sm text-gray-500 mt-1 space-y-1">
+                <p>• For single file: <code>namespace/file.parquet</code></p>
+                <p>• For directory with partitions: <code>namespace/table_data/</code></p>
+                <p>• For nested structure: <code>namespace/year=2024/month=01/</code></p>
+              </div>
             </div>
 
             <div>
@@ -313,6 +315,9 @@ const IcebergTableManager = () => {
                 onChange={(e) => setNewTable(prev => ({ ...prev, base_path: e.target.value }))}
                 placeholder="Optional base path prefix"
               />
+              <p className="text-sm text-gray-500 mt-1">
+                If specified, will be prepended to the Parquet path
+              </p>
             </div>
 
             <div className="flex justify-end gap-2">

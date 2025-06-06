@@ -2,6 +2,7 @@
 from .iceberg_service import IcebergService
 from typing import Dict, Any, List, Optional
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +58,29 @@ class IcebergTableService:
         parquet_path: str,
         base_path: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Create an Iceberg table from Parquet files"""
+        """Create an Iceberg table from Parquet files with flexible path handling"""
         try:
-            # For now, we'll use the existing CSV method as a template
-            # In a real implementation, you'd want a dedicated Parquet reader
-            return self.iceberg_service.create_table_from_csv(
+            # Build the full path dynamically
+            if base_path:
+                full_path = f"{base_path.rstrip('/')}/{parquet_path.lstrip('/')}"
+            else:
+                full_path = parquet_path.lstrip('/')
+            
+            # Log the path being used
+            logger.info(f"Creating table {namespace}.{table_name} from path: s3://{bucket}/{full_path}")
+            
+            # Use the existing create_table_from_parquet method from iceberg_service
+            result = self.iceberg_service.create_table_from_parquet(
                 namespace=namespace,
                 table_name=table_name,
                 bucket=bucket,
-                csv_path=parquet_path,  # This would need to be adapted for Parquet
-                base_path=base_path
+                parquet_path=full_path
             )
+            
+            logger.info(f"Successfully created table {namespace}.{table_name} at location: {result.get('location', 'unknown')}")
+            
+            return result
+            
         except Exception as e:
             logger.error(f"Error creating table from Parquet: {e}")
             raise

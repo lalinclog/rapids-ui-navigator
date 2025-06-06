@@ -378,6 +378,110 @@ Tables will be listed here as they are created within this namespace.
             logger.error(f"Error creating Iceberg table: {e}")
             raise
     
+    def create_table_from_parquet(
+        self, 
+        namespace: str, 
+        table_name: str, 
+        bucket: str, 
+        parquet_path: str
+    ) -> Dict[str, Any]:
+        """Create an Iceberg table from Parquet files in MinIO"""
+        try:
+            catalog = self._get_catalog()
+            
+            # Ensure namespace exists
+            try:
+                catalog.create_namespace(namespace)
+                logger.info(f"Created namespace {namespace}")
+            except Exception as e:
+                logger.info(f"Namespace {namespace} already exists or creation failed: {e}")
+            
+            # Check if parquet files exist at the specified path
+            objects = list(self.minio_service.client.list_objects(bucket, prefix=parquet_path))
+            
+            if not objects:
+                # Try to find parquet files in the directory
+                directory_path = parquet_path.rstrip('/') + '/'
+                objects = list(self.minio_service.client.list_objects(bucket, prefix=directory_path))
+                objects = [obj for obj in objects if obj.object_name.endswith('.parquet')]
+            
+            if not objects:
+                raise ValueError(f"No Parquet files found at {parquet_path} or {directory_path}")
+            
+            logger.info(f"Found {len(objects)} objects at path {parquet_path}")
+            
+            # Read first Parquet file to infer schema
+            first_file = None
+            for obj in objects:
+                if obj.object_name.endswith('.parquet'):
+                    first_file = obj.object_name
+                    break
+            
+            if not first_file:
+                raise ValueError(f"No Parquet files found in the specified path: {parquet_path}")
+            
+            logger.info(f"Using {first_file} to infer schema")
+            
+            # Read parquet file using pandas
+            import pandas as pd
+            import io
+            
+            response = self.minio_service.client.get_object(bucket, first_file)
+            parquet_data = response.read()
+            df_sample = pd.read_parquet(io.BytesIO(parquet_data))
+            
+            logger.info(f"Sample DataFrame shape: {df_sample.shape}")
+            logger.info(f"Sample DataFrame columns: {list(df_sample.columns)}")
+            
+            # Convert pandas schema to Iceberg schema
+            schema = self._pandas_to_iceberg_schema(df_sample)
+            
+            # Create table identifier
+            table_identifier = f"{namespace}.{table_name}"
+            
+            # Set table location in the bucket
+            table_location = f"s3://{bucket}/{namespace}/{table_name}/"
+            
+            logger.info(f"Creating table {table_identifier} at location {table_location}")
+            
+            # Create the table
+            table = catalog.create_table(
+                identifier=table_identifier,
+                schema=schema,
+                location=table_location
+            )
+            
+            # Load all Parquet data into the table
+            all_data = []
+            for obj in objects:
+                if obj.object_name.endswith('.parquet'):
+                    logger.info(f"Loading data from {obj.object_name}")
+                    response = self.minio_service.client.get_object(bucket, obj.object_name)
+                    parquet_data = response.read()
+                    df = pd.read_parquet(io.BytesIO(parquet_data))
+                    all_data.append(df)
+            
+            total_rows = 0
+            if all_data:
+                combined_df = pd.concat(all_data, ignore_index=True)
+                total_rows = len(combined_df)
+                logger.info(f"Appending {total_rows} rows to table {table_identifier}")
+                table.append(combined_df)
+            
+            logger.info(f"Successfully created table {table_identifier} with {total_rows} rows")
+            
+            return {
+                "table_identifier": table_identifier,
+                "schema": self._iceberg_schema_to_dict(schema),
+                "location": table.location(),
+                "row_count": total_rows,
+                "source_files": len([obj for obj in objects if obj.object_name.endswith('.parquet')])
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating Iceberg table from Parquet: {e}")
+            raise
+    
     def get_table_info(self, namespace: str, table_name: str) -> Dict[str, Any]:
         """Get detailed information about an Iceberg table"""
         try:
