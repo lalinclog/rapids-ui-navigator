@@ -6,10 +6,10 @@ logging.basicConfig(
     level=logging.DEBUG,                   # capture DEBUG+ logs
     stream=sys.stdout,                     # send logs to stdout
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    force=True,                            # override any existing handlers (including Uvicorn’s)
+    force=True,                            # override any existing handlers (including Uvicorn's)
 )
 
-# Make Uvicorn’s own logger propagate into our root handler
+# Make Uvicorn's own logger propagate into our root handler
 uvicorn_logger = logging.getLogger("uvicorn")
 uvicorn_logger.setLevel(logging.DEBUG)
 uvicorn_logger.propagate = True
@@ -861,26 +861,3 @@ async def delete_dashboard(dashboard_id: int, bi_service: BIService = Depends(ge
 
 # Serve static files
 app.mount("/", StaticFiles(directory="dist", html=True), name="static")
-
-# Endpoints for users and groups
-@app.get("/api/keycloak/users")
-async def get_users(keycloak_service: KeycloakService = Depends(get_keycloak_service),
-                    current_user: dict = Depends(get_current_user)):  # Add authentication dependency
-    """Get all users from Keycloak"""
-    try:
-        users = keycloak_service.get_all_users()
-        return {"users": users}
-    except Exception as e:
-        logger.error(f"Failed to get users: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/keycloak/groups")
-async def get_groups(keycloak_service: KeycloakService = Depends(get_keycloak_service),
-                     current_user: dict = Depends(get_current_user)):  # Add authentication dependency
-    """Get all groups from Keycloak"""
-    try:
-        groups = keycloak_service.get_all_groups()
-        return {"groups": groups}
-    except Exception as e:
-        logger.error(f"Failed to get groups: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
