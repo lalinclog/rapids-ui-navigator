@@ -220,13 +220,39 @@ class IcebergService:
             if namespace not in existing_namespaces:
                 raise ValueError(f"Namespace '{namespace}' does not exist")
             
-            # Update properties
-            catalog.update_namespace_properties(namespace, properties)
+            # Get current properties first
             current_properties = catalog.load_namespace_properties(namespace)
+            logger.info(f"Current properties for {namespace}: {current_properties}")
+            logger.info(f"New properties to update: {properties}")
+            
+            # Validate PII classification if provided
+            if 'pii_classification' in properties and properties['pii_classification']:
+                valid_pii_classifications = ['public', 'internal', 'confidential', 'restricted']
+                if properties['pii_classification'] not in valid_pii_classifications:
+                    raise ValueError(f"Invalid PII classification. Must be one of: {', '.join(valid_pii_classifications)}")
+            
+            # PyIceberg expects updates as a set of properties to remove and a dict of properties to update
+            # We'll update all provided properties and remove none
+            removals = set()  # Properties to remove (empty set means remove nothing)
+            updates = {}
+            
+            # Only include non-empty properties in updates
+            for key, value in properties.items():
+                if value is not None and str(value).strip():  # Only add non-empty values
+                    updates[key] = str(value).strip()
+            
+            logger.info(f"Properties to update: {updates}")
+            logger.info(f"Properties to remove: {removals}")
+            
+            # Update properties using the correct PyIceberg API
+            catalog.update_namespace_properties(namespace, removals, updates)
+            
+            # Get updated properties to return
+            updated_properties = catalog.load_namespace_properties(namespace)
             
             return {
                 "namespace": namespace,
-                "properties": current_properties,
+                "properties": updated_properties,
                 "message": f"Namespace '{namespace}' properties updated successfully"
             }
             
