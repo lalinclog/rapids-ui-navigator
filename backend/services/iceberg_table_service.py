@@ -1,5 +1,4 @@
 
-
 from .iceberg_service import IcebergService
 from typing import Dict, Any, List, Optional
 import logging
@@ -9,6 +8,8 @@ from pyiceberg.types import (
     NestedField, StringType, LongType, IntegerType, DoubleType, 
     BooleanType, TimestampType, DateType, DecimalType
 )
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ class IcebergTableService:
         parquet_path: str,
         base_path: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Create an Iceberg table from Parquet files with flexible path handling"""
+        """Create an Iceberg table from Parquet files with proper metadata creation"""
         try:
             # Build the full path dynamically
             if base_path:
@@ -208,24 +209,182 @@ class IcebergTableService:
             else:
                 full_path = parquet_path.lstrip('/')
             
-            # Log the path being used
-            logger.info(f"Creating table {namespace}.{table_name} from path: s3://{bucket}/{full_path}")
+            # Build the S3 path for reading Parquet
+            s3_parquet_path = f"s3://{bucket}/{full_path}"
             
-            # Use the existing create_table_from_parquet method from iceberg_service
-            result = self.iceberg_service.create_table_from_parquet(
-                namespace=namespace,
-                table_name=table_name,
-                bucket=bucket,
-                parquet_path=full_path
+            logger.info(f"Creating table {namespace}.{table_name} from Parquet path: {s3_parquet_path}")
+            
+            # Read the Parquet schema to understand the data structure
+            try:
+                # Try to read a sample to get schema
+                parquet_table = pq.read_table(s3_parquet_path, filesystem=self._get_s3_filesystem())
+                arrow_schema = parquet_table.schema
+                logger.info(f"Successfully read Parquet schema with {len(arrow_schema)} columns")
+            except Exception as schema_error:
+                logger.error(f"Failed to read Parquet schema: {schema_error}")
+                # If we can't read the Parquet file, try to handle different path patterns
+                return self._handle_parquet_path_discovery(namespace, table_name, bucket, full_path)
+            
+            # Convert PyArrow schema to Iceberg schema
+            iceberg_schema = self._convert_arrow_schema_to_iceberg(arrow_schema)
+            
+            # Create the table location
+            table_location = f"s3://{bucket}/{namespace}/{table_name}/"
+            
+            catalog = self.iceberg_service._get_catalog()
+            table_identifier = f"{namespace}.{table_name}"
+            
+            # Create the Iceberg table with the inferred schema
+            table = catalog.create_table(
+                identifier=table_identifier,
+                schema=iceberg_schema,
+                location=table_location
             )
             
-            logger.info(f"Successfully created table {namespace}.{table_name} at location: {result.get('location', 'unknown')}")
+            logger.info(f"Created Iceberg table '{table_identifier}' at location: {table_location}")
             
-            return result
+            # Now load the Parquet data into the table
+            table.append(parquet_table)
+            
+            logger.info(f"Successfully loaded Parquet data into table '{table_identifier}'")
+            
+            return {
+                "table_identifier": table_identifier,
+                "location": table_location,
+                "schema": self.iceberg_service._iceberg_schema_to_dict(iceberg_schema),
+                "parquet_source": s3_parquet_path,
+                "rows_loaded": len(parquet_table),
+                "message": f"Table '{table_identifier}' created successfully from Parquet data"
+            }
             
         except Exception as e:
             logger.error(f"Error creating table from Parquet: {e}")
             raise
+    
+    def _get_s3_filesystem(self):
+        """Get S3 filesystem for PyArrow operations"""
+        import pyarrow.fs as fs
+        return fs.S3FileSystem()
+    
+    def _handle_parquet_path_discovery(self, namespace: str, table_name: str, bucket: str, path: str) -> Dict[str, Any]:
+        """Handle discovery of Parquet files when direct path access fails"""
+        try:
+            filesystem = self._get_s3_filesystem()
+            
+            # Try to list files in the path
+            if path.endswith('/'):
+                # Directory path - look for .parquet files
+                try:
+                    file_info = filesystem.get_file_info(f"{bucket}/{path}")
+                    if file_info.type == fs.FileType.Directory:
+                        files = filesystem.get_file_info(fs.FileSelector(f"{bucket}/{path}", recursive=True))
+                        parquet_files = [f.path for f in files if f.path.endswith('.parquet')]
+                        
+                        if parquet_files:
+                            # Use the first Parquet file to get schema
+                            first_file = f"s3://{parquet_files[0]}"
+                            parquet_table = pq.read_table(first_file, filesystem=filesystem)
+                            return self._create_table_from_discovered_files(
+                                namespace, table_name, bucket, parquet_files, parquet_table
+                            )
+                except Exception as e:
+                    logger.warning(f"Directory listing failed: {e}")
+            
+            # If all else fails, create an empty table and let user load data later
+            raise FileNotFoundError(f"Could not find or access Parquet files at path: s3://{bucket}/{path}")
+            
+        except Exception as e:
+            logger.error(f"Error in Parquet path discovery: {e}")
+            raise
+    
+    def _create_table_from_discovered_files(
+        self, 
+        namespace: str, 
+        table_name: str, 
+        bucket: str, 
+        parquet_files: List[str], 
+        sample_table: pa.Table
+    ) -> Dict[str, Any]:
+        """Create Iceberg table from discovered Parquet files"""
+        try:
+            # Convert schema
+            iceberg_schema = self._convert_arrow_schema_to_iceberg(sample_table.schema)
+            
+            # Create table
+            table_location = f"s3://{bucket}/{namespace}/{table_name}/"
+            catalog = self.iceberg_service._get_catalog()
+            table_identifier = f"{namespace}.{table_name}"
+            
+            table = catalog.create_table(
+                identifier=table_identifier,
+                schema=iceberg_schema,
+                location=table_location
+            )
+            
+            # Load data from all discovered files
+            total_rows = 0
+            filesystem = self._get_s3_filesystem()
+            
+            for file_path in parquet_files:
+                file_table = pq.read_table(f"s3://{file_path}", filesystem=filesystem)
+                table.append(file_table)
+                total_rows += len(file_table)
+            
+            return {
+                "table_identifier": table_identifier,
+                "location": table_location,
+                "schema": self.iceberg_service._iceberg_schema_to_dict(iceberg_schema),
+                "parquet_files": parquet_files,
+                "total_rows": total_rows,
+                "message": f"Table '{table_identifier}' created from {len(parquet_files)} Parquet files"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating table from discovered files: {e}")
+            raise
+    
+    def _convert_arrow_schema_to_iceberg(self, arrow_schema: pa.Schema) -> Schema:
+        """Convert PyArrow schema to Iceberg schema"""
+        fields = []
+        
+        for i, field in enumerate(arrow_schema):
+            field_id = i + 1
+            name = field.name
+            arrow_type = field.type
+            nullable = field.nullable
+            
+            # Convert PyArrow types to Iceberg types
+            if pa.types.is_string(arrow_type) or pa.types.is_large_string(arrow_type):
+                iceberg_type = StringType()
+            elif pa.types.is_integer(arrow_type):
+                if arrow_type.bit_width <= 32:
+                    iceberg_type = IntegerType()
+                else:
+                    iceberg_type = LongType()
+            elif pa.types.is_floating(arrow_type):
+                iceberg_type = DoubleType()
+            elif pa.types.is_boolean(arrow_type):
+                iceberg_type = BooleanType()
+            elif pa.types.is_timestamp(arrow_type):
+                iceberg_type = TimestampType()
+            elif pa.types.is_date(arrow_type):
+                iceberg_type = DateType()
+            elif pa.types.is_decimal(arrow_type):
+                iceberg_type = DecimalType(precision=arrow_type.precision, scale=arrow_type.scale)
+            else:
+                # Default to string for unknown types
+                iceberg_type = StringType()
+                logger.warning(f"Unknown PyArrow type '{arrow_type}' for field '{name}', defaulting to string")
+            
+            iceberg_field = NestedField(
+                field_id=field_id,
+                name=name,
+                field_type=iceberg_type,
+                required=not nullable
+            )
+            fields.append(iceberg_field)
+        
+        return Schema(*fields)
     
     def delete_table(self, namespace: str, table_name: str) -> Dict[str, Any]:
         """Delete an Iceberg table"""
