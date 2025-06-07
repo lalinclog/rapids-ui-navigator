@@ -20,7 +20,7 @@ import authService from '@/services/AuthService';
 
 import SchemaManager from './IcebergSchemaManager';
 import SnapshotManager from './IcebergSnapshotManager';
-import { deleteTable } from '@/lib/api/iceberg';
+import { listNamespaces, listTables, deleteTable } from '@/lib/api/iceberg';
 
 interface Table {
   name: string;
@@ -41,8 +41,7 @@ const IcebergTableManager: React.FC = () => {
     queryKey: ['iceberg-namespaces'],
     queryFn: async () => {
       const token = await authService.getValidToken();
-      const response = await getIcebergNamespaces();
-      return response;
+      return await listNamespaces(token || undefined);
     },
   });
 
@@ -51,8 +50,7 @@ const IcebergTableManager: React.FC = () => {
     queryFn: async () => {
       if (!selectedNamespace) return [];
       const token = await authService.getValidToken();
-      const response = await getIcebergTables(selectedNamespace);
-      return response;
+      return await listTables(selectedNamespace, token || undefined);
     },
     enabled: !!selectedNamespace,
   });
@@ -60,7 +58,7 @@ const IcebergTableManager: React.FC = () => {
   const deleteTableMutation = useMutation({
     mutationFn: async ({ namespace, tableName }: { namespace: string; tableName: string }) => {
       const token = await authService.getValidToken();
-      return await deleteTable(namespace, tableName);
+      return await deleteTable(namespace, tableName, token || undefined);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['iceberg-tables', selectedNamespace] });
