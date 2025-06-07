@@ -1,4 +1,4 @@
-from pyiceberg.catalog.sql import SqlCatalog
+from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
 from pyiceberg.types import (
@@ -28,28 +28,17 @@ class IcebergService:
         self._catalog = None
         
     def _get_catalog(self):
-        """Initialize and return Iceberg SQL catalog"""
+        """Initialize and return Iceberg REST catalog"""
         if self._catalog is None:
-            access_key, secret_key = self.vault.get_minio_creds()
-
-            # Use SQL catalog with PostgreSQL backend
-            postgres_host = os.environ.get("POSTGRES_HOST", "postgres")
-            postgres_port = os.environ.get("POSTGRES_PORT", "5432")
-            postgres_user = os.environ.get("POSTGRES_USER", "postgres")
-            postgres_password = os.environ.get("POSTGRES_PASSWORD", "postgres")
-            postgres_db = os.environ.get("POSTGRES_DB", "spark_rapids")
+            # Use REST catalog instead of SQL catalog
+            rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
             
-            catalog_config = {
-                "uri": f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}",
-                "warehouse": f"s3://iceberg-warehouse/",
-                "s3.endpoint": f"https://{os.environ.get('MINIO_ENDPOINT', 'minio')}:{os.environ.get('MINIO_PORT', '9000')}",
-                "s3.access-key-id": access_key,
-                "s3.secret-access-key": secret_key,
-                "s3.path-style-access": "true",
-                "s3.region": "us-east-1"  # Required for MinIO
-            }
+            self._catalog = RestCatalog(
+                name="rest_catalog",
+                uri=rest_url
+            )
             
-            self._catalog = SqlCatalog("sql_catalog", **catalog_config)
+            logger.info(f"Initialized REST catalog at {rest_url}")
         
         return self._catalog
     
@@ -138,7 +127,7 @@ class IcebergService:
             
             # Set default location if not provided
             if not properties.get('location') or properties.get('location').strip() == '':
-                properties['location'] = f's3://iceberg-warehouse/{namespace}/'
+                properties['location'] = f's3a://iceberg-warehouse/{namespace}/'
                 logger.info(f"Using default location for namespace '{namespace}': {properties['location']}")
             
             # Create the namespace with properties
