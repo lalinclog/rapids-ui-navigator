@@ -212,10 +212,7 @@ class IcebergTableService:
             else:
                 full_path = parquet_path.lstrip('/')
             
-            # Build the S3 path for reading Parquet
-            s3_parquet_path = f"s3://{bucket}/{full_path}"
-            
-            logger.info(f"Creating table {namespace}.{table_name} from Parquet path: {s3_parquet_path}")
+            logger.info(f"Creating table {namespace}.{table_name} from Parquet path: {bucket}/{full_path}")
             
             # Get MinIO-configured filesystem with logging
             filesystem = self._get_s3_filesystem()
@@ -263,8 +260,12 @@ class IcebergTableService:
             
             # Read the Parquet schema to understand the data structure
             try:
+                # Use bucket-relative path for PyArrow with custom filesystem
+                bucket_relative_path = f"{bucket}/{full_path}"
+                logger.info(f"Reading Parquet file with bucket-relative path: {bucket_relative_path}")
+                
                 # Try to read a sample to get schema
-                parquet_table = pq.read_table(s3_parquet_path, filesystem=filesystem)
+                parquet_table = pq.read_table(bucket_relative_path, filesystem=filesystem)
                 arrow_schema = parquet_table.schema
                 logger.info(f"Successfully read Parquet schema with {len(arrow_schema)} columns")
                 logger.info(f"Parquet table contains {len(parquet_table)} rows")
@@ -300,7 +301,7 @@ class IcebergTableService:
                 "table_identifier": table_identifier,
                 "location": table_location,
                 "schema": self.iceberg_service._iceberg_schema_to_dict(iceberg_schema),
-                "parquet_source": s3_parquet_path,
+                "parquet_source": f"s3://{bucket_relative_path}",
                 "rows_loaded": len(parquet_table),
                 "message": f"Table '{table_identifier}' created successfully from Parquet data"
             }
@@ -361,7 +362,7 @@ class IcebergTableService:
                         
                         if parquet_files:
                             # Use the first Parquet file to get schema
-                            first_file = f"s3://{parquet_files[0]}"
+                            first_file = parquet_files[0]
                             parquet_table = pq.read_table(first_file, filesystem=filesystem)
                             return self._create_table_from_discovered_files(
                                 namespace, table_name, bucket, parquet_files, parquet_table
@@ -405,7 +406,7 @@ class IcebergTableService:
             filesystem = self._get_s3_filesystem()
             
             for file_path in parquet_files:
-                file_table = pq.read_table(f"s3://{file_path}", filesystem=filesystem)
+                file_table = pq.read_table(file_path, filesystem=filesystem)
                 table.append(file_table)
                 total_rows += len(file_table)
             
