@@ -4,13 +4,9 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 // API base URL from environment variable, defaulting to the backend API
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080"
 
-// Iceberg REST catalog URL - direct connection
-const ICEBERG_REST_URL = import.meta.env.VITE_ICEBERG_REST_URL || "http://localhost:8181/v1"
-
 // API client implementation
 class ApiClient {
   private axiosInstance: AxiosInstance;
-  private icebergInstance: AxiosInstance;
   
   constructor() {
     this.axiosInstance = axios.create({
@@ -21,34 +17,25 @@ class ApiClient {
       },
     });
 
-    // Separate instance for direct Iceberg REST catalog communication
-    this.icebergInstance = axios.create({
-      baseURL: ICEBERG_REST_URL,
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
     // Add request interceptors for debugging
-    this.icebergInstance.interceptors.request.use(
+    this.axiosInstance.interceptors.request.use(
       (config) => {
-        console.log(`Making Iceberg REST request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+        console.log(`Making API request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
         return config;
       },
       (error) => {
-        console.error('Iceberg request interceptor error:', error);
+        console.error('API request interceptor error:', error);
         return Promise.reject(error);
       }
     );
 
-    this.icebergInstance.interceptors.response.use(
+    this.axiosInstance.interceptors.response.use(
       (response) => {
-        console.log(`Iceberg REST response: ${response.status} ${response.config.url}`);
+        console.log(`API response: ${response.status} ${response.config.url}`);
         return response;
       },
       (error) => {
-        console.error('Iceberg response error:', error.response?.status, error.response?.data || error.message);
+        console.error('API response error:', error.response?.status, error.response?.data || error.message);
         return Promise.reject(error);
       }
     );
@@ -86,45 +73,12 @@ class ApiClient {
       throw error;
     }
   }
-
-  private async executeIcebergRequest<T>(
-    method: string, 
-    url: string, 
-    data?: any, 
-    config?: AxiosRequestConfig
-  ): Promise<T> {
-    try {
-      let response: AxiosResponse<T>;
-      
-      switch (method) {
-        case 'get':
-          response = await this.icebergInstance.get<T>(url, config);
-          break;
-        case 'post':
-          response = await this.icebergInstance.post<T>(url, data, config);
-          break;
-        case 'put':
-          response = await this.icebergInstance.put<T>(url, data, config);
-          break;
-        case 'delete':
-          response = await this.icebergInstance.delete<T>(url, config);
-          break;
-        default:
-          throw new Error(`Unsupported method: ${method}`);
-      }
-      
-      return response.data;
-    } catch (error: any) {
-      console.error(`Iceberg ${method} request failed:`, error);
-      throw error;
-    }
-  }
 }
 
 // Create and export singleton instance
 const apiClient = new ApiClient();
 
-// Export HTTP methods for backend API
+// Export HTTP methods for backend API (including proxied Iceberg requests)
 export const get = <T>(url: string, config?: AxiosRequestConfig): Promise<T> => 
   apiClient['executeRequest']<T>('get', url, undefined, config);
 
@@ -136,18 +90,5 @@ export const put = <T>(url: string, data?: any, config?: AxiosRequestConfig): Pr
 
 export const del = <T>(url: string, config?: AxiosRequestConfig): Promise<T> => 
   apiClient['executeRequest']<T>('delete', url, undefined, config);
-
-// Export HTTP methods for direct Iceberg REST catalog communication
-export const icebergGet = <T>(url: string, config?: AxiosRequestConfig): Promise<T> => 
-  apiClient['executeIcebergRequest']<T>('get', url, undefined, config);
-
-export const icebergPost = <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => 
-  apiClient['executeIcebergRequest']<T>('post', url, data, config);
-
-export const icebergPut = <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => 
-  apiClient['executeIcebergRequest']<T>('put', url, data, config);
-
-export const icebergDel = <T>(url: string, config?: AxiosRequestConfig): Promise<T> => 
-  apiClient['executeIcebergRequest']<T>('delete', url, undefined, config);
 
 export default apiClient;
