@@ -341,15 +341,6 @@ Tables will be listed here as they are created within this namespace.
             logger.info(f"Raw tables result: {tables}")
             logger.info(f"Raw tables result length: {len(tables) if hasattr(tables, '__len__') else 'No length'}")
             
-            # Log each individual table item
-            if tables:
-                for i, table in enumerate(tables):
-                    logger.info(f"Table {i}: {table} (type: {type(table)})")
-                    if hasattr(table, '__dict__'):
-                        logger.info(f"Table {i} attributes: {table.__dict__}")
-                    if hasattr(table, 'name'):
-                        logger.info(f"Table {i} name: {table.name} (type: {type(table.name)})")
-            
             # Handle empty tables case
             if not tables:
                 logger.info(f"No tables found in namespace '{namespace}'")
@@ -408,8 +399,8 @@ Tables will be listed here as they are created within this namespace.
                     logger.error(f"Error processing table identifier {table}: {e}", exc_info=True)
                     continue
             
-            # Remove duplicates and sort
-            table_names = sorted(list(set(table_names)))
+            # Remove duplicates and sort - ensure we return strings only
+            table_names = sorted(list(set(str(name) for name in table_names if isinstance(name, str))))
             
             logger.info(f"Final table names: {table_names}")
             logger.info(f"Successfully listed {len(table_names)} tables in namespace '{namespace}': {table_names}")

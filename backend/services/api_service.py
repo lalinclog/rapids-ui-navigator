@@ -872,13 +872,28 @@ def list_iceberg_tables(
 ):
     """List all tables in an Iceberg namespace"""
     try:
-        result = iceberg_table_service.list_tables_in_namespace(namespace)
-        return result
+        logger.info(f"API: Listing tables in namespace '{namespace}'")
+        
+        # Call the iceberg service directly instead of table service
+        result = iceberg_service.list_tables(namespace)
+        
+        logger.info(f"API: Iceberg service returned: {result}")
+        logger.info(f"API: Result type: {type(result)}")
+        
+        # Ensure we return a consistent format
+        if isinstance(result, dict) and "tables" in result:
+            return result
+        elif isinstance(result, list):
+            return {"tables": result}
+        else:
+            logger.warning(f"API: Unexpected result format: {result}")
+            return {"tables": []}
+            
     except Exception as e:
-        logger.error(f"Error listing tables in namespace {namespace}: {e}")
+        logger.error(f"API: Error listing tables in namespace {namespace}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail=f"Error listing tables: {str(e)}"
         )
 
 @router.get("/api/iceberg/namespaces/{namespace}/tables/{table_name}")
