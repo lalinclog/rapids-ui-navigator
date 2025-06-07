@@ -32,6 +32,22 @@ interface Owner {
   name: string;
 }
 
+interface ApiNamespaceProperties {
+  warehouse?: string;
+  bucket?: string;
+  location?: string;
+  compression?: string;
+  retention_policy?: string;
+  description?: string;
+  owner?: string;
+  pii_classification?: string;
+}
+
+interface ApiNamespace {
+  name: string;
+  properties: ApiNamespaceProperties;
+}
+
 interface NamespaceProperties {
   description: string;
   owner: string;
@@ -42,14 +58,14 @@ interface NamespaceProperties {
 
 const IcebergNamespaceManager = () => {
   const { toast } = useToast();
-  const [namespaces, setNamespaces] = useState<string[]>([]);
+  const [namespaces, setNamespaces] = useState<ApiNamespace[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [selectedNamespace, setSelectedNamespace] = useState<string>('');
-  const [namespaceProperties, setNamespaceProperties] = useState<NamespaceProperties | null>(null);
+  const [namespaceProperties, setNamespaceProperties] = useState<ApiNamespaceProperties | null>(null);
   const [newNamespace, setNewNamespace] = useState({
     name: '',
     description: '',
@@ -151,7 +167,7 @@ const IcebergNamespaceManager = () => {
       const response = await axios.get(`/api/iceberg/namespaces/${namespace}`, { headers });
       const properties = response.data?.properties || {};
       
-      // Parse owner information
+      // Parse owner information from the properties
       const owners: Owner[] = [];
       if (properties.owner) {
         const ownerEntries = properties.owner.split(',').map((owner: string) => owner.trim());
@@ -577,31 +593,49 @@ const IcebergNamespaceManager = () => {
         {loading ? (
           <p>Loading namespaces...</p>
         ) : (
-          <ul className="list-disc pl-5">
+          <div className="space-y-2">
             {namespaces.map(namespace => (
-              <li key={namespace} className="flex items-center justify-between py-2">
-                <span>{namespace}</span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fetchNamespaceProperties(namespace)}
-                  >
-                    <Edit2 className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDeleteNamespace(namespace)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
-                  </Button>
+              <Card key={namespace.name} className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h4 className="font-medium">{namespace.name}</h4>
+                    <div className="text-sm text-gray-500 space-y-1">
+                      {namespace.properties.location && (
+                        <p>Location: {namespace.properties.location}</p>
+                      )}
+                      {namespace.properties.description && (
+                        <p>Description: {namespace.properties.description}</p>
+                      )}
+                      {namespace.properties.retention_policy && (
+                        <p>Retention: {namespace.properties.retention_policy}</p>
+                      )}
+                      {namespace.properties.pii_classification && (
+                        <p>Classification: {namespace.properties.pii_classification}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchNamespaceProperties(namespace.name)}
+                    >
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDeleteNamespace(namespace.name)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </Button>
+                  </div>
                 </div>
-              </li>
+              </Card>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
