@@ -319,14 +319,36 @@ Tables will be listed here as they are created within this namespace.
         try:
             catalog = self._get_catalog()
             
+            # Log catalog information
+            logger.info(f"Catalog type: {type(catalog)}")
+            logger.info(f"Catalog class: {catalog.__class__}")
+            
             # Convert namespace string to tuple format that PyIceberg expects
             if isinstance(namespace, str):
                 namespace_tuple = tuple(namespace.split('.')) if '.' in namespace else (namespace,)
             else:
                 namespace_tuple = namespace
             
-            # Get tables from catalog
+            logger.info(f"Input namespace: '{namespace}' (type: {type(namespace)})")
+            logger.info(f"Namespace tuple: {namespace_tuple} (type: {type(namespace_tuple)})")
+            
+            # Get tables from catalog with detailed logging
+            logger.info(f"Calling catalog.list_tables() with namespace_tuple: {namespace_tuple}")
             tables = catalog.list_tables(namespace_tuple)
+            
+            # Log what we got back
+            logger.info(f"Raw tables result type: {type(tables)}")
+            logger.info(f"Raw tables result: {tables}")
+            logger.info(f"Raw tables result length: {len(tables) if hasattr(tables, '__len__') else 'No length'}")
+            
+            # Log each individual table item
+            if tables:
+                for i, table in enumerate(tables):
+                    logger.info(f"Table {i}: {table} (type: {type(table)})")
+                    if hasattr(table, '__dict__'):
+                        logger.info(f"Table {i} attributes: {table.__dict__}")
+                    if hasattr(table, 'name'):
+                        logger.info(f"Table {i} name: {table.name} (type: {type(table.name)})")
             
             # Handle empty tables case
             if not tables:
@@ -335,41 +357,69 @@ Tables will be listed here as they are created within this namespace.
             
             # Extract table names - handle different return formats
             table_names = []
-            for table in tables:
+            for i, table in enumerate(tables):
                 try:
+                    logger.info(f"Processing table {i}: {table} (type: {type(table)})")
                     table_name = None
                     
                     if isinstance(table, tuple):
+                        logger.info(f"Table {i} is tuple with {len(table)} elements: {table}")
                         # If it's a tuple, take the last element (table name)
                         table_name = str(table[-1])
+                        logger.info(f"Extracted from tuple: '{table_name}'")
                     elif isinstance(table, str):
+                        logger.info(f"Table {i} is string: '{table}'")
                         # If it's a string, extract table name
                         table_name = table.split('.')[-1]
+                        logger.info(f"Extracted from string: '{table_name}'")
+                    elif isinstance(table, dict):
+                        logger.info(f"Table {i} is dict: {table}")
+                        # Handle dict case - this might be causing the issue
+                        if 'name' in table:
+                            table_name = str(table['name']).split('.')[-1]
+                        elif 'identifier' in table:
+                            table_name = str(table['identifier']).split('.')[-1]
+                        else:
+                            logger.warning(f"Dict table {i} has no 'name' or 'identifier' key: {table.keys()}")
+                            continue
+                        logger.info(f"Extracted from dict: '{table_name}'")
                     elif hasattr(table, 'name'):
+                        logger.info(f"Table {i} has name attribute: {table.name}")
                         # If it has a name attribute
                         table_name = str(table.name).split('.')[-1]
+                        logger.info(f"Extracted from name attribute: '{table_name}'")
                     elif hasattr(table, '__str__'):
+                        logger.info(f"Table {i} converting to string: {str(table)}")
                         # Fallback - convert to string and extract last part
                         table_name = str(table).split('.')[-1]
+                        logger.info(f"Extracted from string conversion: '{table_name}'")
                     else:
                         logger.warning(f"Unknown table identifier format: {type(table)} - {table}")
                         continue
                     
                     # Only add if it's a valid non-empty string
                     if table_name and isinstance(table_name, str) and table_name.strip():
+                        logger.info(f"Adding table name: '{table_name.strip()}'")
                         table_names.append(table_name.strip())
+                    else:
+                        logger.warning(f"Invalid table name extracted: '{table_name}' (type: {type(table_name)})")
                         
                 except Exception as e:
-                    logger.warning(f"Could not process table identifier {table}: {e}")
+                    logger.error(f"Error processing table identifier {table}: {e}", exc_info=True)
                     continue
             
             # Remove duplicates and sort
             table_names = sorted(list(set(table_names)))
             
+            logger.info(f"Final table names: {table_names}")
             logger.info(f"Successfully listed {len(table_names)} tables in namespace '{namespace}': {table_names}")
-            return {"tables": table_names}
+            
+            result = {"tables": table_names}
+            logger.info(f"Returning result: {result}")
+            return result
             
         except Exception as e:
+            logger.error(f"Exception in list_tables: {e}", exc_info=True)
             self._log_and_raise_error("listing tables", e, namespace)
     
     def create_table_from_csv(
