@@ -11,8 +11,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
 import { Database, Plus, Edit, Trash2, FileText, Eye } from 'lucide-react';
 import {
-  getIcebergNamespaces,
-  getIcebergTables,
   previewIcebergTable,
 } from '@/lib/api/datasets';
 import CreateTableForm from './CreateTableForm';
@@ -20,7 +18,7 @@ import authService from '@/services/AuthService';
 
 import SchemaManager from './IcebergSchemaManager';
 import SnapshotManager from './IcebergSnapshotManager';
-import { listNamespaces, listTables, deleteTable } from '@/lib/api/iceberg';
+import { listNamespaces, listTables, deleteTable, getTableDetails } from '@/lib/api/iceberg';
 
 interface Table {
   name: string;
@@ -45,7 +43,7 @@ const IcebergTableManager: React.FC = () => {
     },
   });
 
-  const { data: tables, isLoading: isLoadingTables, error: errorTables } = useQuery({
+  const { data: tableNames, isLoading: isLoadingTables, error: errorTables } = useQuery({
     queryKey: ['iceberg-tables', selectedNamespace],
     queryFn: async () => {
       if (!selectedNamespace) return [];
@@ -53,6 +51,35 @@ const IcebergTableManager: React.FC = () => {
       return await listTables(selectedNamespace, token || undefined);
     },
     enabled: !!selectedNamespace,
+  });
+
+  const { data: tables, isLoading: isLoadingTableDetails } = useQuery({
+    queryKey: ['iceberg-table-details', selectedNamespace, tableNames],
+    queryFn: async () => {
+      if (!selectedNamespace || !tableNames || tableNames.length === 0) return [];
+      const token = await authService.getValidToken();
+      
+      const tableDetails = await Promise.all(
+        tableNames.map(async (tableName) => {
+          try {
+            const details = await getTableDetails(selectedNamespace, tableName, token || undefined);
+            return details;
+          } catch (error) {
+            console.error(`Error fetching details for table ${tableName}:`, error);
+            return {
+              name: tableName,
+              namespace: selectedNamespace,
+              location: '',
+              schema: { columns: [] },
+              current_snapshot_id: ''
+            };
+          }
+        })
+      );
+      
+      return tableDetails;
+    },
+    enabled: !!selectedNamespace && !!tableNames && tableNames.length > 0,
   });
 
   const deleteTableMutation = useMutation({
@@ -150,7 +177,7 @@ const IcebergTableManager: React.FC = () => {
       return <div>Select a namespace to view tables.</div>;
     }
 
-    if (isLoadingTables) {
+    if (isLoadingTables || isLoadingTableDetails) {
       return <div>Loading tables...</div>;
     }
 

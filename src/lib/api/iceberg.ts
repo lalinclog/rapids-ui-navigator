@@ -75,7 +75,7 @@ export async function createNamespace(namespace: string, properties: Record<stri
   try {
     const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
     const response = await post<IcebergNamespace>("/api/iceberg/namespaces", {
-      namespace: [namespace],
+      name: namespace,
       properties
     }, config)
     return {
