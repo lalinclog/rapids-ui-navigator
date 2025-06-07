@@ -25,7 +25,7 @@ interface Table {
   namespace: string;
   location: string;
   schema: any;
-  current_snapshot_id: string;
+  current_snapshot_id?: string; // Made optional to match IcebergTable
 }
 
 const IcebergTableManager: React.FC = () => {
@@ -208,9 +208,11 @@ const IcebergTableManager: React.FC = () => {
                       <Badge variant="outline" className="text-xs">
                         {selectedNamespace}
                       </Badge>
-                      <Badge variant="secondary" className="text-xs">
-                        Snapshot: {table.current_snapshot_id}
-                      </Badge>
+                      {table.current_snapshot_id && (
+                        <Badge variant="secondary" className="text-xs">
+                          Snapshot: {table.current_snapshot_id}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
