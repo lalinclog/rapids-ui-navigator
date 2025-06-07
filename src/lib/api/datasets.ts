@@ -70,27 +70,19 @@ export interface IcebergTable {
 }
 
 /**
- * Get Iceberg namespaces - using the correct Iceberg REST API format
+ * Get Iceberg namespaces - using the backend API
  */
 export async function getIcebergNamespaces(): Promise<string[]> {
-  const response = await get<{namespaces: string[][]}>("/namespaces")
-  // The Iceberg REST API returns namespaces as nested arrays, flatten them
-  return response.namespaces.map(namespace => Array.isArray(namespace) ? namespace.join('.') : namespace)
+  const response = await get<{namespaces: string[]}>("/api/iceberg/namespaces")
+  return response.namespaces
 }
 
 /**
  * Get Iceberg tables in a namespace
  */
 export async function getIcebergTables(namespace: string): Promise<IcebergTable[]> {
-  const response = await get<{identifiers: {name: string, namespace: string[]}[]}>(`/namespaces/${namespace}/tables`)
-  // Transform the Iceberg REST API response to our format
-  return response.identifiers.map(identifier => ({
-    name: identifier.name,
-    namespace: identifier.namespace.join('.'),
-    location: '',
-    schema: {},
-    current_snapshot_id: ''
-  }))
+  const response = await get<{tables: IcebergTable[]}>(`/api/iceberg/namespaces/${namespace}/tables`)
+  return response.tables
 }
 
 /**
