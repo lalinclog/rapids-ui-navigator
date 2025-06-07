@@ -14,13 +14,13 @@ import {
   getIcebergNamespaces,
   getIcebergTables,
   previewIcebergTable,
-} from '../../../nextjs-app/lib/api/datasets';
+} from '@/lib/api/datasets';
 import CreateTableForm from './CreateTableForm';
 import authService from '@/services/AuthService';
 
 import SchemaManager from './IcebergSchemaManager';
 import SnapshotManager from './IcebergSnapshotManager';
-import { deleteTable } from '../../../nextjs-app/lib/api/iceberg';
+import { deleteTable } from '@/lib/api/iceberg';
 
 interface Table {
   name: string;

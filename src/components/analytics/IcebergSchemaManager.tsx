@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { Plus, Edit, Trash2, Database } from 'lucide-react';
-import { getTableDetails, updateTableSchema, SchemaColumn, SchemaUpdate } from '../../../nextjs-app/lib/api/iceberg';
+import { getTableDetails, updateTableSchema, SchemaColumn, SchemaUpdate } from '@/lib/api/iceberg';
 
 interface SchemaManagerProps {
   namespace: string;

@@ -102,7 +102,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
             <SelectValue placeholder="Select namespace" />
           </SelectTrigger>
           <SelectContent>
-            {namespaces?.map((namespace) => (
+            {namespaces && Array.isArray(namespaces) && namespaces.map((namespace) => (
               <SelectItem key={namespace} value={namespace}>
                 {namespace}
               </SelectItem>

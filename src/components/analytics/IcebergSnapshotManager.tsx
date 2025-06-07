@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +14,7 @@ import {
   rollbackToSnapshot, 
   createTableSnapshot, 
   Snapshot 
-} from '../../../nextjs-app/lib/api/iceberg';
+} from '@/lib/api/iceberg';
 
 interface SnapshotManagerProps {
   namespace: string;
