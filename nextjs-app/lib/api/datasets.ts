@@ -272,3 +272,50 @@ export async function previewIcebergTable(
     limit
   })
 }
+
+/**
+ * Update table schema
+ */
+export async function updateTableSchema(
+  namespace: string,
+  table_name: string,
+  updates: any[]
+): Promise<any> {
+  return put<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}/schema`, {
+    updates
+  })
+}
+
+/**
+ * Get table snapshots
+ */
+export async function getTableSnapshots(namespace: string, table_name: string): Promise<any[]> {
+  const response = await get<{snapshots: any[]}>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}/snapshots`)
+  return response.snapshots
+}
+
+/**
+ * Create table snapshot
+ */
+export async function createTableSnapshot(
+  namespace: string,
+  table_name: string,
+  summary?: Record<string, string>
+): Promise<any> {
+  return post<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}/snapshots`, {
+    summary
+  })
+}
+
+/**
+ * Rollback to snapshot
+ */
+export async function rollbackToSnapshot(
+  namespace: string,
+  table_name: string,
+  snapshot_id: string
+): Promise<any> {
+  return post<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}/rollback`, {
+    snapshot_id
+  })
+}
