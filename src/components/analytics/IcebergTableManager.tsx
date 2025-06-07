@@ -13,14 +13,14 @@ import { Database, Plus, Edit, Trash2, FileText, Eye } from 'lucide-react';
 import {
   getIcebergNamespaces,
   getIcebergTables,
-  deleteIcebergTable,
   previewIcebergTable,
-} from '@/lib/api/datasets';
+} from '../../../nextjs-app/lib/api/datasets';
 import CreateTableForm from './CreateTableForm';
 import authService from '@/services/AuthService';
 
 import SchemaManager from './IcebergSchemaManager';
 import SnapshotManager from './IcebergSnapshotManager';
+import { deleteTable } from '../../../nextjs-app/lib/api/iceberg';
 
 interface Table {
   name: string;
@@ -60,7 +60,7 @@ const IcebergTableManager: React.FC = () => {
   const deleteTableMutation = useMutation({
     mutationFn: async ({ namespace, tableName }: { namespace: string; tableName: string }) => {
       const token = await authService.getValidToken();
-      return await deleteIcebergTable(namespace, tableName);
+      return await deleteTable(namespace, tableName);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['iceberg-tables', selectedNamespace] });
@@ -192,30 +192,29 @@ const IcebergTableManager: React.FC = () => {
               </div>
             </CardHeader>
             
-          {/* Update table card actions to include view button */}
-          <CardFooter className="pt-3 flex justify-between border-t">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => handleViewTable(selectedNamespace, table.name)}
-              className="flex-1 mr-2"
-            >
-              <Eye className="h-4 w-4 mr-1" /> View
-            </Button>
-            <div className="flex gap-1">
-              <Button variant="ghost" size="sm" onClick={() => handlePreview(table)} className="px-2">
-                <FileText className="h-4 w-4" />
-              </Button>
+            <CardFooter className="pt-3 flex justify-between border-t">
               <Button 
-                variant="ghost" 
+                variant="outline" 
                 size="sm" 
-                onClick={() => handleDelete(selectedNamespace, table)} 
-                className="px-2 text-destructive hover:text-destructive"
+                onClick={() => handleViewTable(selectedNamespace, table.name)}
+                className="flex-1 mr-2"
               >
-                <Trash2 className="h-4 w-4" />
+                <Eye className="h-4 w-4 mr-1" /> View
               </Button>
-            </div>
-          </CardFooter>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={() => handlePreview(table)} className="px-2">
+                  <FileText className="h-4 w-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => handleDelete(selectedNamespace, table)} 
+                  className="px-2 text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardFooter>
           </Card>
         ))}
       </div>
@@ -263,7 +262,6 @@ const IcebergTableManager: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Table Detail View */}
       {selectedTable && (
         <Dialog open={!!selectedTable} onOpenChange={() => setSelectedTable(null)}>
           <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
