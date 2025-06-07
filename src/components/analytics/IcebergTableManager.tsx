@@ -304,12 +304,32 @@ const IcebergTableManager = () => {
     }
   };
 
-  const getPathSuggestions = (namespace: string) => [
-    `${namespace}/data.parquet`,
-    `${namespace}/table_data/`,
-    `${namespace}/year=2024/month=01/`,
-    `${namespace}/year=2024/month=01/day=15/`,
-    `${namespace}/region=johannesburg/year=2024/`
+  const getPathExamples = (namespace: string) => [
+    {
+      description: "Specific file",
+      path: `${namespace}/johannesburg_ev_charging_2024_2025.parquet`,
+      note: "For your exact file"
+    },
+    {
+      description: "All files in namespace folder",
+      path: `${namespace}/`,
+      note: "All .parquet files in the folder"
+    },
+    {
+      description: "Partitioned data by year",
+      path: `${namespace}/year=2024/`,
+      note: "Hive-style partitioning"
+    },
+    {
+      description: "Partitioned data by year and month",
+      path: `${namespace}/year=2024/month=01/`,
+      note: "Multi-level partitioning"
+    },
+    {
+      description: "Regional partitioning",
+      path: `${namespace}/region=johannesburg/`,
+      note: "Partition by region"
+    }
   ];
 
   return (
@@ -401,26 +421,29 @@ const IcebergTableManager = () => {
                 id="parquet-path"
                 value={newTable.parquet_path}
                 onChange={(e) => setNewTable(prev => ({ ...prev, parquet_path: e.target.value }))}
-                placeholder={`${selectedNamespace}/your_file.parquet`}
+                placeholder={`${selectedNamespace}/johannesburg_ev_charging_2024_2025.parquet`}
               />
-              <div className="text-sm text-muted-foreground mt-2 space-y-2">
-                <p className="font-medium">Common patterns:</p>
-                <div className="grid grid-cols-1 gap-1 text-xs">
-                  {getPathSuggestions(selectedNamespace).map((suggestion, index) => (
+              <div className="text-sm text-muted-foreground mt-2 space-y-3">
+                <p className="font-medium">Path Examples for {selectedNamespace}:</p>
+                <div className="grid grid-cols-1 gap-2 text-xs">
+                  {getPathExamples(selectedNamespace).map((example, index) => (
                     <button
                       key={index}
                       type="button"
-                      onClick={() => setNewTable(prev => ({ ...prev, parquet_path: suggestion }))}
-                      className="text-left p-2 rounded bg-muted/50 hover:bg-muted transition-colors"
+                      onClick={() => setNewTable(prev => ({ ...prev, parquet_path: example.path }))}
+                      className="text-left p-3 rounded bg-muted/50 hover:bg-muted transition-colors border"
                     >
-                      <code>{suggestion}</code>
+                      <div className="font-medium text-sm">{example.description}</div>
+                      <code className="text-blue-600">{example.path}</code>
+                      <div className="text-muted-foreground mt-1">{example.note}</div>
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 text-xs space-y-1">
-                  <p>• <strong>Single file:</strong> <code>{selectedNamespace}/file.parquet</code></p>
-                  <p>• <strong>Directory:</strong> <code>{selectedNamespace}/table_data/</code></p>
-                  <p>• <strong>Partitioned:</strong> <code>{selectedNamespace}/year=2024/month=01/</code></p>
+                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                  <p className="text-sm font-medium text-yellow-800">💡 For your file:</p>
+                  <p className="text-sm text-yellow-700">
+                    Use: <code className="bg-yellow-100 px-1 rounded">{selectedNamespace}/johannesburg_ev_charging_2024_2025.parquet</code>
+                  </p>
                 </div>
               </div>
             </div>
