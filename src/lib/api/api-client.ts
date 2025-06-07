@@ -1,8 +1,8 @@
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 
-// API base URL from environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api"
+// API base URL from environment variable, defaulting to the Iceberg REST API
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://iceberg-rest:8181/v1"
 
 // API client implementation
 class ApiClient {
