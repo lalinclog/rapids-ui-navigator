@@ -271,19 +271,34 @@ class IcebergTableService:
             # Convert PyArrow schema to Iceberg schema
             iceberg_schema = self._convert_arrow_schema_to_iceberg(arrow_schema)
             
-            # Create the table location with proper path construction (no trailing slash)
-            table_location = f"s3://{bucket}/{namespace}/{table_name}"
+            # Create the table location with proper path construction
+            table_location = f"s3a://{bucket}/{namespace}/{table_name}"
             
+            # Configure catalog properties to use MinIO without SSL verification
             catalog = self.iceberg_service._get_catalog()
             table_identifier = f"{namespace}.{table_name}"
             
             logger.info(f"Creating Iceberg table '{table_identifier}' at location: {table_location}")
             
-            # Create the Iceberg table with the inferred schema
+            # Get MinIO credentials from vault
+            vault = VaultService()
+            access_key, secret_key = vault.get_minio_creds()
+            
+            # Create table properties that configure S3 access for MinIO
+            table_properties = {
+                "s3.endpoint": f"http://minio:9000",  # Use HTTP for internal communication
+                "s3.access-key-id": access_key,
+                "s3.secret-access-key": secret_key,
+                "s3.path-style-access": "true",
+                "s3.ssl.enabled": "false"  # Disable SSL for internal MinIO communication
+            }
+            
+            # Create the Iceberg table with the inferred schema and properties
             table = catalog.create_table(
                 identifier=table_identifier,
                 schema=iceberg_schema,
-                location=table_location
+                location=table_location,
+                properties=table_properties
             )
             
             logger.info(f"Successfully created Iceberg table '{table_identifier}'")
