@@ -1,4 +1,3 @@
-
 from .iceberg_service import IcebergService
 from typing import Dict, Any, List, Optional
 import logging
@@ -10,6 +9,7 @@ from pyiceberg.types import (
 )
 import pyarrow as pa
 import pyarrow.parquet as pq
+from .vault_service import VaultService
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,7 @@ class IcebergTableService:
     
     def __init__(self):
         self.iceberg_service = IcebergService()
+        self.vault_service = VaultService()
     
     def list_tables_in_namespace(self, namespace: str) -> Dict[str, Any]:
         """List all tables in a specific namespace"""
@@ -214,10 +215,13 @@ class IcebergTableService:
             
             logger.info(f"Creating table {namespace}.{table_name} from Parquet path: {s3_parquet_path}")
             
+            # Get MinIO-configured filesystem
+            filesystem = self._get_s3_filesystem()
+            
             # Read the Parquet schema to understand the data structure
             try:
                 # Try to read a sample to get schema
-                parquet_table = pq.read_table(s3_parquet_path, filesystem=self._get_s3_filesystem())
+                parquet_table = pq.read_table(s3_parquet_path, filesystem=filesystem)
                 arrow_schema = parquet_table.schema
                 logger.info(f"Successfully read Parquet schema with {len(arrow_schema)} columns")
             except Exception as schema_error:
@@ -262,9 +266,22 @@ class IcebergTableService:
             raise
     
     def _get_s3_filesystem(self):
-        """Get S3 filesystem for PyArrow operations"""
+        """Get S3 filesystem configured for MinIO operations"""
         import pyarrow.fs as fs
-        return fs.S3FileSystem()
+        
+        # Get MinIO credentials from Vault
+        access_key, secret_key = self.vault_service.get_minio_creds()
+        
+        # Get MinIO endpoint from environment
+        minio_endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}"
+        
+        # Configure S3FileSystem for MinIO
+        return fs.S3FileSystem(
+            access_key_id=access_key,
+            secret_access_key=secret_key,
+            endpoint_override=f"https://{minio_endpoint}",
+            scheme="https"
+        )
     
     def _handle_parquet_path_discovery(self, namespace: str, table_name: str, bucket: str, path: str) -> Dict[str, Any]:
         """Handle discovery of Parquet files when direct path access fails"""
