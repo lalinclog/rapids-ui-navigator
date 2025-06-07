@@ -1,3 +1,4 @@
+
 from .iceberg_service import IcebergService
 from typing import Dict, Any, List, Optional
 import logging
@@ -216,8 +217,49 @@ class IcebergTableService:
             
             logger.info(f"Creating table {namespace}.{table_name} from Parquet path: {s3_parquet_path}")
             
-            # Get MinIO-configured filesystem
+            # Get MinIO-configured filesystem with logging
             filesystem = self._get_s3_filesystem()
+            
+            # Test filesystem connectivity
+            logger.info(f"Testing filesystem connectivity to bucket: {bucket}")
+            try:
+                # Try to list the bucket contents first
+                bucket_files = filesystem.get_file_info(fs.FileSelector(bucket, recursive=False))
+                logger.info(f"Successfully connected to bucket '{bucket}', found {len(bucket_files)} items")
+                
+                # Log first few items for debugging
+                for i, file_info in enumerate(bucket_files[:5]):
+                    logger.info(f"  Item {i+1}: {file_info.path} (type: {file_info.type})")
+                
+            except Exception as bucket_error:
+                logger.error(f"Failed to access bucket '{bucket}': {bucket_error}")
+                raise
+            
+            # Test access to the specific file path
+            logger.info(f"Testing access to specific path: {full_path}")
+            try:
+                file_info = filesystem.get_file_info(f"{bucket}/{full_path}")
+                logger.info(f"File info for '{full_path}': type={file_info.type}, size={file_info.size}")
+                
+                if file_info.type == fs.FileType.NotFound:
+                    logger.error(f"File not found: {full_path}")
+                    # Try to list the parent directory
+                    parent_path = "/".join(full_path.split("/")[:-1])
+                    if parent_path:
+                        logger.info(f"Listing parent directory: {parent_path}")
+                        try:
+                            parent_files = filesystem.get_file_info(fs.FileSelector(f"{bucket}/{parent_path}", recursive=False))
+                            logger.info(f"Files in parent directory '{parent_path}':")
+                            for file_info in parent_files:
+                                logger.info(f"  - {file_info.path}")
+                        except Exception as parent_error:
+                            logger.error(f"Failed to list parent directory: {parent_error}")
+                    
+                    raise FileNotFoundError(f"Could not find file at path: {full_path}")
+                    
+            except Exception as file_error:
+                logger.error(f"Error accessing file '{full_path}': {file_error}")
+                raise
             
             # Read the Parquet schema to understand the data structure
             try:
@@ -225,6 +267,7 @@ class IcebergTableService:
                 parquet_table = pq.read_table(s3_parquet_path, filesystem=filesystem)
                 arrow_schema = parquet_table.schema
                 logger.info(f"Successfully read Parquet schema with {len(arrow_schema)} columns")
+                logger.info(f"Parquet table contains {len(parquet_table)} rows")
             except Exception as schema_error:
                 logger.error(f"Failed to read Parquet schema: {schema_error}")
                 # If we can't read the Parquet file, try to handle different path patterns
@@ -274,13 +317,33 @@ class IcebergTableService:
         # Get MinIO endpoint from environment
         minio_endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}"
         
-        # Configure S3FileSystem for MinIO with correct parameter names
-        return fs.S3FileSystem(
-            access_key=access_key,
-            secret_key=secret_key,
-            endpoint_override=f"http://{minio_endpoint}",
-            scheme="http"
-        )
+        # Log connection details (without sensitive info)
+        logger.info(f"Configuring S3 filesystem for MinIO")
+        logger.info(f"MinIO endpoint: {minio_endpoint}")
+        logger.info(f"Access key: {access_key[:10]}..." if access_key else "Access key: None")
+        logger.info(f"Secret key configured: {'Yes' if secret_key else 'No'}")
+        
+        # Determine if we should use HTTPS
+        use_https = os.environ.get('MINIO_USE_HTTPS', 'false').lower() == 'true'
+        scheme = "https" if use_https else "http"
+        endpoint_url = f"{scheme}://{minio_endpoint}"
+        
+        logger.info(f"Using scheme: {scheme}")
+        logger.info(f"Full endpoint URL: {endpoint_url}")
+        
+        try:
+            # Configure S3FileSystem for MinIO with correct parameter names
+            filesystem = fs.S3FileSystem(
+                access_key=access_key,
+                secret_key=secret_key,
+                endpoint_override=endpoint_url,
+                scheme=scheme
+            )
+            logger.info("S3FileSystem created successfully")
+            return filesystem
+        except Exception as fs_error:
+            logger.error(f"Failed to create S3FileSystem: {fs_error}")
+            raise
     
     def _handle_parquet_path_discovery(self, namespace: str, table_name: str, bucket: str, path: str) -> Dict[str, Any]:
         """Handle discovery of Parquet files when direct path access fails"""
