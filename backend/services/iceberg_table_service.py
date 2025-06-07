@@ -1,4 +1,3 @@
-
 from .iceberg_service import IcebergService
 from typing import Dict, Any, List, Optional
 import logging
@@ -10,6 +9,7 @@ from pyiceberg.types import (
 )
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pyarrow.fs as fs
 from .vault_service import VaultService
 
 logger = logging.getLogger(__name__)
@@ -268,21 +268,18 @@ class IcebergTableService:
     
     def _get_s3_filesystem(self):
         """Get S3 filesystem configured for MinIO operations"""
-        import pyarrow.fs as fs
-        
         # Get MinIO credentials from Vault
         access_key, secret_key = self.vault_service.get_minio_creds()
         
         # Get MinIO endpoint from environment
         minio_endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'localhost')}:{os.environ.get('MINIO_PORT', '9000')}"
         
-        # Configure S3FileSystem for MinIO
+        # Configure S3FileSystem for MinIO with correct parameter names
         return fs.S3FileSystem(
-            "access_key": access_key,
-            "secret_key": secret_key,
-            "endpoint_override"=f"https://{minio_endpoint}",
-            "scheme": "http",
-            "allow_bucket_creation": True,
+            access_key=access_key,
+            secret_key=secret_key,
+            endpoint_override=f"http://{minio_endpoint}",
+            scheme="http"
         )
     
     def _handle_parquet_path_discovery(self, namespace: str, table_name: str, bucket: str, path: str) -> Dict[str, Any]:
