@@ -328,26 +328,36 @@ Tables will be listed here as they are created within this namespace.
             # Get tables from catalog
             tables = catalog.list_tables(namespace_tuple)
             
+            # Handle empty tables case
+            if not tables:
+                logger.info(f"No tables found in namespace '{namespace}'")
+                return {"tables": []}
+            
             # Extract table names - handle different return formats
             table_names = []
             for table in tables:
                 try:
+                    table_name = None
+                    
                     if isinstance(table, tuple):
                         # If it's a tuple, take the last element (table name)
-                        table_name = table[-1]
+                        table_name = str(table[-1])
                     elif isinstance(table, str):
                         # If it's a string, extract table name
                         table_name = table.split('.')[-1]
                     elif hasattr(table, 'name'):
                         # If it has a name attribute
                         table_name = str(table.name).split('.')[-1]
-                    else:
+                    elif hasattr(table, '__str__'):
                         # Fallback - convert to string and extract last part
                         table_name = str(table).split('.')[-1]
+                    else:
+                        logger.warning(f"Unknown table identifier format: {type(table)} - {table}")
+                        continue
                     
-                    # Only add if it's a valid string
-                    if table_name and isinstance(table_name, str):
-                        table_names.append(table_name)
+                    # Only add if it's a valid non-empty string
+                    if table_name and isinstance(table_name, str) and table_name.strip():
+                        table_names.append(table_name.strip())
                         
                 except Exception as e:
                     logger.warning(f"Could not process table identifier {table}: {e}")
@@ -356,7 +366,7 @@ Tables will be listed here as they are created within this namespace.
             # Remove duplicates and sort
             table_names = sorted(list(set(table_names)))
             
-            logger.info(f"Successfully listed {len(table_names)} tables in namespace '{namespace}'")
+            logger.info(f"Successfully listed {len(table_names)} tables in namespace '{namespace}': {table_names}")
             return {"tables": table_names}
             
         except Exception as e:
@@ -449,17 +459,20 @@ Tables will be listed here as they are created within this namespace.
             except Exception as e:
                 logger.info(f"Namespace {namespace} already exists or creation failed: {e}")
             
+            # Clean and normalize the parquet path
+            parquet_path = parquet_path.strip('/')
+            
             # Check if parquet files exist at the specified path
             objects = list(self.minio_service.client.list_objects(bucket, prefix=parquet_path))
             
             if not objects:
                 # Try to find parquet files in the directory
-                directory_path = parquet_path.rstrip('/') + '/'
+                directory_path = parquet_path + '/'
                 objects = list(self.minio_service.client.list_objects(bucket, prefix=directory_path))
                 objects = [obj for obj in objects if obj.object_name.endswith('.parquet')]
             
             if not objects:
-                raise IcebergServiceError(f"No Parquet files found at {parquet_path} or {directory_path}")
+                raise IcebergServiceError(f"No Parquet files found at {parquet_path}")
             
             logger.info(f"Found {len(objects)} objects at path {parquet_path}")
             
@@ -492,8 +505,8 @@ Tables will be listed here as they are created within this namespace.
             # Create table identifier
             table_identifier = f"{namespace}.{table_name}"
             
-            # Set table location in the bucket
-            table_location = f"s3://{bucket}/{namespace}/{table_name}/"
+            # Set table location in the bucket - fix double slash issue
+            table_location = f"s3://{bucket}/{namespace}/{table_name}"
             
             logger.info(f"Creating table {table_identifier} at location {table_location}")
             
