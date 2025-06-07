@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Plus, Eye, Database, FileText, Info, Layers, Archive, Upload, Schema } from 'lucide-react';
+import { Trash2, Plus, Eye, Database, FileText, Info, Layers, Archive, Upload, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 import AuthService from '@/services/AuthService';
@@ -522,7 +522,7 @@ const IcebergTableManager = () => {
             <Tabs value={createMode} onValueChange={(value) => setCreateMode(value as 'empty' | 'from_parquet')}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="empty" className="flex items-center gap-2">
-                  <Schema className="h-4 w-4" />
+                  <Settings className="h-4 w-4" />
                   Empty Table
                 </TabsTrigger>
                 <TabsTrigger value="from_parquet" className="flex items-center gap-2">
