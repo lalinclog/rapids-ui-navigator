@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +10,13 @@ import { Trash2, Plus, X, Edit2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 import AuthService from '@/services/AuthService';
+import {
+  listNamespaces,
+  createNamespace,
+  getNamespaceDetails,
+  updateNamespaceProperties,
+  deleteNamespace
+} from '@/lib/api/iceberg';
 
 interface User {
   id: string;
@@ -58,7 +64,8 @@ interface NamespaceProperties {
 
 const IcebergNamespaceManager = () => {
   const { toast } = useToast();
-  const [namespaces, setNamespaces] = useState<ApiNamespace[]>([]);
+  const [namespaces, setNamespaces] = useState<string[]>([]);
+  const [namespacesWithDetails, setNamespacesWithDetails] = useState<ApiNamespace[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(false);
@@ -133,16 +140,27 @@ const IcebergNamespaceManager = () => {
   const fetchNamespaces = async () => {
     setLoading(true);
     try {
-      // Get auth token for API requests
-      const token = await AuthService.getValidToken();
+      // Use direct Iceberg REST catalog API
+      const namespacesData = await listNamespaces();
+      setNamespaces(namespacesData);
       
-      const headers = token ? {
-        Authorization: `Bearer ${token}`
-      } : undefined;
-
-      const response = await axios.get('/api/iceberg/namespaces', { headers });
-      const namespacesData = response.data?.namespaces || [];
-      setNamespaces(Array.isArray(namespacesData) ? namespacesData : []);
+      // Fetch details for each namespace
+      const namespacesWithDetailsData = await Promise.all(
+        namespacesData.map(async (namespaceName) => {
+          try {
+            const details = await getNamespaceDetails(namespaceName);
+            return details;
+          } catch (error) {
+            console.error(`Error fetching details for namespace ${namespaceName}:`, error);
+            return {
+              name: namespaceName,
+              properties: {}
+            };
+          }
+        })
+      );
+      
+      setNamespacesWithDetails(namespacesWithDetailsData);
     } catch (error) {
       console.error('Error fetching namespaces:', error);
       toast({
@@ -158,14 +176,9 @@ const IcebergNamespaceManager = () => {
   const fetchNamespaceProperties = async (namespace: string) => {
     setLoading(true);
     try {
-      const token = await AuthService.getValidToken();
-      
-      const headers = token ? {
-        Authorization: `Bearer ${token}`
-      } : undefined;
-
-      const response = await axios.get(`/api/iceberg/namespaces/${namespace}`, { headers });
-      const properties = response.data?.properties || {};
+      // Use direct Iceberg REST catalog API
+      const namespaceDetails = await getNamespaceDetails(namespace);
+      const properties = namespaceDetails.properties || {};
       
       // Parse owner information from the properties
       const owners: Owner[] = [];
@@ -209,23 +222,19 @@ const IcebergNamespaceManager = () => {
   const handleCreateNamespace = async () => {
     setLoading(true);
     try {
-      // Get auth token for API request
-      const token = await AuthService.getValidToken();
-      
-      const headers = token ? {
-        Authorization: `Bearer ${token}`
-      } : undefined;
+      // Use direct Iceberg REST catalog API
+      const properties: Record<string, string> = {
+        description: newNamespace.description,
+        owner: newNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
+        pii_classification: newNamespace.pii_classification,
+        retention_policy: newNamespace.retention_policy,
+        location: newNamespace.location || `s3://iceberg-warehouse/${newNamespace.name}/`,
+        // Keep MinIO as object storage
+        warehouse: 's3://iceberg-warehouse',
+        bucket: 'iceberg-warehouse'
+      };
 
-      const response = await axios.post('/api/iceberg/namespaces', {
-        name: newNamespace.name,
-        properties: {
-          description: newNamespace.description,
-          owner: newNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
-          pii_classification: newNamespace.pii_classification,
-          retention_policy: newNamespace.retention_policy,
-          location: newNamespace.location || `s3://iceberg-warehouse/${newNamespace.name}/`
-        }
-      }, { headers });
+      await createNamespace(newNamespace.name, properties);
 
       toast({
         title: "Success",
@@ -238,7 +247,7 @@ const IcebergNamespaceManager = () => {
       console.error('Error creating namespace:', error);
       toast({
         title: "Error",
-        description: error.response?.data?.detail || 'Failed to create namespace',
+        description: error.message || 'Failed to create namespace',
         variant: "destructive"
       });
     } finally {
@@ -249,22 +258,19 @@ const IcebergNamespaceManager = () => {
   const handleUpdateNamespace = async () => {
     setLoading(true);
     try {
-      // Get auth token for API request
-      const token = await AuthService.getValidToken();
-      
-      const headers = token ? {
-        Authorization: `Bearer ${token}`
-      } : undefined;
+      // Use direct Iceberg REST catalog API
+      const properties: Record<string, string> = {
+        description: editNamespace.description,
+        owner: editNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
+        pii_classification: editNamespace.pii_classification,
+        retention_policy: editNamespace.retention_policy,
+        location: editNamespace.location,
+        // Keep MinIO as object storage
+        warehouse: 's3://iceberg-warehouse',
+        bucket: 'iceberg-warehouse'
+      };
 
-      await axios.put(`/api/iceberg/namespaces/${selectedNamespace}`, {
-        properties: {
-          description: editNamespace.description,
-          owner: editNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
-          pii_classification: editNamespace.pii_classification,
-          retention_policy: editNamespace.retention_policy,
-          location: editNamespace.location
-        }
-      }, { headers });
+      await updateNamespaceProperties(selectedNamespace, properties);
 
       toast({
         title: "Success",
@@ -276,7 +282,7 @@ const IcebergNamespaceManager = () => {
       console.error('Error updating namespace:', error);
       toast({
         title: "Error",
-        description: error.response?.data?.detail || 'Failed to update namespace',
+        description: error.message || 'Failed to update namespace',
         variant: "destructive"
       });
     } finally {
@@ -288,14 +294,8 @@ const IcebergNamespaceManager = () => {
     if (window.confirm(`Are you sure you want to delete namespace "${namespace}"?`)) {
       setLoading(true);
       try {
-        // Get auth token for API request
-        const token = await AuthService.getValidToken();
-        
-        const headers = token ? {
-          Authorization: `Bearer ${token}`
-        } : undefined;
-        
-        await axios.delete(`/api/iceberg/namespaces/${namespace}`, { headers });
+        // Use direct Iceberg REST catalog API
+        await deleteNamespace(namespace);
         toast({
           title: "Success",
           description: `Namespace "${namespace}" deleted successfully`,
@@ -305,7 +305,7 @@ const IcebergNamespaceManager = () => {
         console.error('Error deleting namespace:', error);
         toast({
           title: "Error",
-          description: error.response?.data?.detail || 'Failed to delete namespace',
+          description: error.message || 'Failed to delete namespace',
           variant: "destructive"
         });
       } finally {
@@ -594,7 +594,7 @@ const IcebergNamespaceManager = () => {
           <p>Loading namespaces...</p>
         ) : (
           <div className="space-y-2">
-            {namespaces.map(namespace => (
+            {namespacesWithDetails.map(namespace => (
               <Card key={namespace.name} className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
