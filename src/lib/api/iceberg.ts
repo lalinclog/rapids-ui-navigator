@@ -57,9 +57,10 @@ export interface SchemaUpdate {
 /**
  * List all namespaces - proxied through backend to Iceberg REST API
  */
-export async function listNamespaces(): Promise<string[]> {
+export async function listNamespaces(token?: string): Promise<string[]> {
   try {
-    const response = await get<{namespaces: string[]}>("/api/iceberg/namespaces")
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    const response = await get<{namespaces: string[]}>("/api/iceberg/namespaces", config)
     return response.namespaces
   } catch (error) {
     console.error('Error listing namespaces:', error);
@@ -70,12 +71,13 @@ export async function listNamespaces(): Promise<string[]> {
 /**
  * Create a new namespace - proxied through backend to Iceberg REST API
  */
-export async function createNamespace(namespace: string, properties: Record<string, string> = {}): Promise<IcebergNamespace> {
+export async function createNamespace(namespace: string, properties: Record<string, string> = {}, token?: string): Promise<IcebergNamespace> {
   try {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
     const response = await post<IcebergNamespace>("/api/iceberg/namespaces", {
       namespace: [namespace],
       properties
-    })
+    }, config)
     return {
       name: namespace,
       properties: response.properties || properties
@@ -89,9 +91,10 @@ export async function createNamespace(namespace: string, properties: Record<stri
 /**
  * Get detailed namespace information - proxied through backend to Iceberg REST API
  */
-export async function getNamespaceDetails(namespace: string): Promise<IcebergNamespace> {
+export async function getNamespaceDetails(namespace: string, token?: string): Promise<IcebergNamespace> {
   try {
-    const response = await get<{properties: Record<string, string>}>(`/api/iceberg/namespaces/${namespace}`)
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    const response = await get<{properties: Record<string, string>}>(`/api/iceberg/namespaces/${namespace}`, config)
     return {
       name: namespace,
       properties: response.properties
@@ -107,12 +110,14 @@ export async function getNamespaceDetails(namespace: string): Promise<IcebergNam
  */
 export async function updateNamespaceProperties(
   namespace: string, 
-  properties: Record<string, string>
+  properties: Record<string, string>,
+  token?: string
 ): Promise<IcebergNamespace> {
   try {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
     const response = await put<{properties: Record<string, string>}>(`/api/iceberg/namespaces/${namespace}`, {
       properties
-    })
+    }, config)
     return {
       name: namespace,
       properties: response.properties
@@ -126,9 +131,10 @@ export async function updateNamespaceProperties(
 /**
  * Delete a namespace - proxied through backend to Iceberg REST API
  */
-export async function deleteNamespace(namespace: string): Promise<void> {
+export async function deleteNamespace(namespace: string, token?: string): Promise<void> {
   try {
-    return del<void>(`/api/iceberg/namespaces/${namespace}`)
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    return del<void>(`/api/iceberg/namespaces/${namespace}`, config)
   } catch (error) {
     console.error('Error deleting namespace:', error);
     throw error;
@@ -138,9 +144,10 @@ export async function deleteNamespace(namespace: string): Promise<void> {
 /**
  * List tables in a namespace - proxied through backend to Iceberg REST API
  */
-export async function listTables(namespace: string): Promise<string[]> {
+export async function listTables(namespace: string, token?: string): Promise<string[]> {
   try {
-    const response = await get<{identifiers: Array<string[]>}>(`/api/iceberg/namespaces/${namespace}/tables`)
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    const response = await get<{identifiers: Array<string[]>}>(`/api/iceberg/namespaces/${namespace}/tables`, config)
     // Iceberg returns table identifiers as arrays, we need just the table names
     return response.identifiers.map(identifier => identifier[identifier.length - 1])
   } catch (error) {
@@ -152,9 +159,10 @@ export async function listTables(namespace: string): Promise<string[]> {
 /**
  * Get detailed table information - proxied through backend to Iceberg REST API
  */
-export async function getTableDetails(namespace: string, table_name: string): Promise<IcebergTable> {
+export async function getTableDetails(namespace: string, table_name: string, token?: string): Promise<IcebergTable> {
   try {
-    const response = await get<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`)
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    const response = await get<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`, config)
     return {
       name: table_name,
       namespace: namespace,
@@ -180,15 +188,15 @@ export async function getTableDetails(namespace: string, table_name: string): Pr
 /**
  * Get table statistics and metadata - proxied through backend to Iceberg REST API
  */
-export async function getTableStatistics(namespace: string, table_name: string): Promise<any> {
+export async function getTableStatistics(namespace: string, table_name: string, token?: string): Promise<any> {
   // For now, return the same as table details since Iceberg REST doesn't have separate stats endpoint
-  return getTableDetails(namespace, table_name)
+  return getTableDetails(namespace, table_name, token)
 }
 
 /**
  * Update table schema - proxied through backend to Iceberg REST API
  */
-export async function updateTableSchema(schemaUpdate: SchemaUpdateRequest): Promise<IcebergTable> {
+export async function updateTableSchema(schemaUpdate: SchemaUpdateRequest, token?: string): Promise<IcebergTable> {
   // This would need to be implemented based on Iceberg's schema update API
   // For now, return placeholder
   throw new Error("Schema updates not yet implemented for proxied Iceberg communication")
@@ -197,9 +205,9 @@ export async function updateTableSchema(schemaUpdate: SchemaUpdateRequest): Prom
 /**
  * Get table snapshots - proxied through backend to Iceberg REST API
  */
-export async function getTableSnapshots(namespace: string, table_name: string): Promise<Snapshot[]> {
+export async function getTableSnapshots(namespace: string, table_name: string, token?: string): Promise<Snapshot[]> {
   try {
-    const tableDetails = await getTableDetails(namespace, table_name)
+    const tableDetails = await getTableDetails(namespace, table_name, token)
     // Extract snapshots from table metadata if available
     return tableDetails.snapshots || []
   } catch (error) {
@@ -214,7 +222,8 @@ export async function getTableSnapshots(namespace: string, table_name: string): 
 export async function rollbackToSnapshot(
   namespace: string, 
   table_name: string, 
-  snapshot_id: string
+  snapshot_id: string,
+  token?: string
 ): Promise<IcebergTable> {
   // This would need to be implemented based on Iceberg's rollback API
   throw new Error("Snapshot rollback not yet implemented for proxied Iceberg communication")
@@ -226,7 +235,8 @@ export async function rollbackToSnapshot(
 export async function createTableSnapshot(
   namespace: string, 
   table_name: string, 
-  summary?: Record<string, string>
+  summary?: Record<string, string>,
+  token?: string
 ): Promise<Snapshot> {
   // This would need to be implemented based on Iceberg's snapshot API
   throw new Error("Snapshot creation not yet implemented for proxied Iceberg communication")
@@ -235,9 +245,10 @@ export async function createTableSnapshot(
 /**
  * Delete table - proxied through backend to Iceberg REST API
  */
-export async function deleteTable(namespace: string, table_name: string): Promise<void> {
+export async function deleteTable(namespace: string, table_name: string, token?: string): Promise<void> {
   try {
-    return del<void>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`)
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    return del<void>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`, config)
   } catch (error) {
     console.error('Error deleting table:', error);
     throw error;

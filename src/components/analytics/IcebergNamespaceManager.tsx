@@ -140,15 +140,17 @@ const IcebergNamespaceManager = () => {
   const fetchNamespaces = async () => {
     setLoading(true);
     try {
-      // Use direct Iceberg REST catalog API
-      const namespacesData = await listNamespaces();
+      const token = await AuthService.getValidToken();
+      
+      // Use Iceberg API with token
+      const namespacesData = await listNamespaces(token || undefined);
       setNamespaces(namespacesData);
       
       // Fetch details for each namespace
       const namespacesWithDetailsData = await Promise.all(
         namespacesData.map(async (namespaceName) => {
           try {
-            const details = await getNamespaceDetails(namespaceName);
+            const details = await getNamespaceDetails(namespaceName, token || undefined);
             return details;
           } catch (error) {
             console.error(`Error fetching details for namespace ${namespaceName}:`, error);
@@ -176,8 +178,10 @@ const IcebergNamespaceManager = () => {
   const fetchNamespaceProperties = async (namespace: string) => {
     setLoading(true);
     try {
-      // Use direct Iceberg REST catalog API
-      const namespaceDetails = await getNamespaceDetails(namespace);
+      const token = await AuthService.getValidToken();
+      
+      // Use Iceberg API with token
+      const namespaceDetails = await getNamespaceDetails(namespace, token || undefined);
       const properties = namespaceDetails.properties || {};
       
       // Parse owner information from the properties
@@ -222,7 +226,9 @@ const IcebergNamespaceManager = () => {
   const handleCreateNamespace = async () => {
     setLoading(true);
     try {
-      // Use direct Iceberg REST catalog API
+      const token = await AuthService.getValidToken();
+      
+      // Use Iceberg API with token
       const properties: Record<string, string> = {
         description: newNamespace.description,
         owner: newNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
@@ -234,7 +240,7 @@ const IcebergNamespaceManager = () => {
         bucket: 'iceberg-warehouse'
       };
 
-      await createNamespace(newNamespace.name, properties);
+      await createNamespace(newNamespace.name, properties, token || undefined);
 
       toast({
         title: "Success",
@@ -258,7 +264,9 @@ const IcebergNamespaceManager = () => {
   const handleUpdateNamespace = async () => {
     setLoading(true);
     try {
-      // Use direct Iceberg REST catalog API
+      const token = await AuthService.getValidToken();
+      
+      // Use Iceberg API with token
       const properties: Record<string, string> = {
         description: editNamespace.description,
         owner: editNamespace.owners.map(owner => `${owner.type}:${owner.id}`).join(','),
@@ -270,7 +278,7 @@ const IcebergNamespaceManager = () => {
         bucket: 'iceberg-warehouse'
       };
 
-      await updateNamespaceProperties(selectedNamespace, properties);
+      await updateNamespaceProperties(selectedNamespace, properties, token || undefined);
 
       toast({
         title: "Success",
@@ -294,8 +302,10 @@ const IcebergNamespaceManager = () => {
     if (window.confirm(`Are you sure you want to delete namespace "${namespace}"?`)) {
       setLoading(true);
       try {
-        // Use direct Iceberg REST catalog API
-        await deleteNamespace(namespace);
+        const token = await AuthService.getValidToken();
+        
+        // Use Iceberg API with token
+        await deleteNamespace(namespace, token || undefined);
         toast({
           title: "Success",
           description: `Namespace "${namespace}" deleted successfully`,
