@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Plus, Eye, Database, FileText, Info } from 'lucide-react';
+import { Trash2, Plus, Eye, Database, FileText, Info, Layers, Archive } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 import AuthService from '@/services/AuthService';
@@ -306,29 +306,52 @@ const IcebergTableManager = () => {
 
   const getPathExamples = (namespace: string) => [
     {
-      description: "Specific file",
-      path: `${namespace}/johannesburg_ev_charging_2024_2025.parquet`,
-      note: "For your exact file"
-    },
-    {
-      description: "All files in namespace folder",
+      icon: <Archive className="h-4 w-4" />,
+      type: "Multi-file Dataset",
+      description: "All Parquet files in folder",
       path: `${namespace}/`,
-      note: "All .parquet files in the folder"
+      note: "Iceberg will discover and manage all .parquet files in the folder",
+      useCase: "Best for: Multiple data files that form one logical table"
     },
     {
-      description: "Partitioned data by year",
+      icon: <FileText className="h-4 w-4" />,
+      type: "Single File",
+      description: "Specific Parquet file",
+      path: `${namespace}/johannesburg_ev_charging_2024_2025.parquet`,
+      note: "Start with one file, add more later through Iceberg operations",
+      useCase: "Best for: Starting with one file, expanding later"
+    },
+    {
+      icon: <Layers className="h-4 w-4" />,
+      type: "Hive-style Partitioning",
+      description: "Partitioned by year",
       path: `${namespace}/year=2024/`,
-      note: "Hive-style partitioning"
+      note: "Iceberg will recognize partition structure and optimize queries",
+      useCase: "Best for: Time-series data partitioned by year"
     },
     {
-      description: "Partitioned data by year and month",
-      path: `${namespace}/year=2024/month=01/`,
-      note: "Multi-level partitioning"
+      icon: <Layers className="h-4 w-4" />,
+      type: "Multi-level Partitioning",
+      description: "Partitioned by year and month",
+      path: `${namespace}/year=2024/month=*/`,
+      note: "Use wildcards (*) to include multiple partitions at once",
+      useCase: "Best for: Fine-grained time partitioning"
     },
     {
-      description: "Regional partitioning",
-      path: `${namespace}/region=johannesburg/`,
-      note: "Partition by region"
+      icon: <Database className="h-4 w-4" />,
+      type: "Regional Partitioning",
+      description: "Partitioned by location",
+      path: `${namespace}/region=*/`,
+      note: "Geographic or categorical partitioning for query optimization",
+      useCase: "Best for: Data partitioned by geographic regions or categories"
+    },
+    {
+      icon: <Layers className="h-4 w-4" />,
+      type: "Complex Partitioning",
+      description: "Multiple partition levels",
+      path: `${namespace}/region=*/year=*/month=*/`,
+      note: "Nested partitioning for maximum query performance",
+      useCase: "Best for: Large datasets with multiple partition dimensions"
     }
   ];
 
@@ -389,8 +412,11 @@ const IcebergTableManager = () => {
       {showCreateForm && (
         <Card>
           <CardHeader>
-            <CardTitle>Create New Table</CardTitle>
-            <CardDescription>Create an Iceberg table from Parquet files in {selectedNamespace}</CardDescription>
+            <CardTitle>Create New Iceberg Table</CardTitle>
+            <CardDescription>
+              Create an Iceberg table from Parquet files in {selectedNamespace}. 
+              Iceberg supports single files, multiple files, and partitioned datasets.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -416,33 +442,67 @@ const IcebergTableManager = () => {
             </div>
 
             <div>
-              <Label htmlFor="parquet-path">Parquet File Path *</Label>
+              <Label htmlFor="parquet-path">Parquet Path Pattern *</Label>
               <Input
                 id="parquet-path"
                 value={newTable.parquet_path}
                 onChange={(e) => setNewTable(prev => ({ ...prev, parquet_path: e.target.value }))}
-                placeholder={`${selectedNamespace}/johannesburg_ev_charging_2024_2025.parquet`}
+                placeholder={`${selectedNamespace}/`}
               />
-              <div className="text-sm text-muted-foreground mt-2 space-y-3">
-                <p className="font-medium">Path Examples for {selectedNamespace}:</p>
-                <div className="grid grid-cols-1 gap-2 text-xs">
+              
+              <div className="text-sm text-muted-foreground mt-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="h-4 w-4" />
+                  <span className="font-semibold">Iceberg Table Patterns</span>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3">
                   {getPathExamples(selectedNamespace).map((example, index) => (
                     <button
                       key={index}
                       type="button"
                       onClick={() => setNewTable(prev => ({ ...prev, parquet_path: example.path }))}
-                      className="text-left p-3 rounded bg-muted/50 hover:bg-muted transition-colors border"
+                      className="text-left p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors border border-border hover:border-primary/20"
                     >
-                      <div className="font-medium text-sm">{example.description}</div>
-                      <code className="text-blue-600">{example.path}</code>
-                      <div className="text-muted-foreground mt-1">{example.note}</div>
+                      <div className="flex items-start gap-3">
+                        <div className="text-primary mt-0.5">
+                          {example.icon}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{example.type}</span>
+                            <Badge variant="outline" className="text-xs">{example.description}</Badge>
+                          </div>
+                          <code className="text-blue-600 text-sm block">{example.path}</code>
+                          <p className="text-xs text-muted-foreground">{example.note}</p>
+                          <p className="text-xs font-medium text-green-700">{example.useCase}</p>
+                        </div>
+                      </div>
                     </button>
                   ))}
                 </div>
+                
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-blue-800">Iceberg Table Benefits:</p>
+                      <ul className="text-xs text-blue-700 space-y-1">
+                        <li>• <strong>Multi-file support:</strong> Automatically manages multiple Parquet files as one table</li>
+                        <li>• <strong>Partition discovery:</strong> Recognizes Hive-style partitioning (column=value)</li>
+                        <li>• <strong>Schema evolution:</strong> Add/remove columns without rewriting data</li>
+                        <li>• <strong>Time travel:</strong> Query historical versions of your data</li>
+                        <li>• <strong>ACID transactions:</strong> Consistent reads and writes</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                  <p className="text-sm font-medium text-yellow-800">💡 For your file:</p>
+                  <p className="text-sm font-medium text-yellow-800">💡 For your current file:</p>
                   <p className="text-sm text-yellow-700">
-                    Use: <code className="bg-yellow-100 px-1 rounded">{selectedNamespace}/johannesburg_ev_charging_2024_2025.parquet</code>
+                    Start with: <code className="bg-yellow-100 px-1 rounded">{selectedNamespace}/</code> 
+                    to include your johannesburg_ev_charging_2024_2025.parquet file and any future files you add.
                   </p>
                 </div>
               </div>
