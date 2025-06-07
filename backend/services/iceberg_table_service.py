@@ -1,3 +1,4 @@
+
 from .iceberg_service import IcebergService
 from typing import Dict, Any, List, Optional
 import logging
@@ -277,10 +278,11 @@ class IcebergTableService:
         
         # Configure S3FileSystem for MinIO
         return fs.S3FileSystem(
-            access_key_id=access_key,
-            secret_access_key=secret_key,
-            endpoint_override=f"https://{minio_endpoint}",
-            scheme="https"
+            "access_key": access_key,
+            "secret_key": secret_key,
+            "endpoint_override"=f"https://{minio_endpoint}",
+            "scheme": "http",
+            "allow_bucket_creation": True,
         )
     
     def _handle_parquet_path_discovery(self, namespace: str, table_name: str, bucket: str, path: str) -> Dict[str, Any]:
