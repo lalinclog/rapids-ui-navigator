@@ -55,14 +55,38 @@ export interface SchemaUpdate {
 }
 
 /**
- * Get detailed table information including snapshots
+ * Get detailed namespace information - using backend API
+ */
+export async function getNamespaceDetails(namespace: string): Promise<IcebergNamespace> {
+  return get<IcebergNamespace>(`/api/iceberg/namespaces/${namespace}`)
+}
+
+/**
+ * Update namespace properties - using backend API
+ */
+export async function updateNamespaceProperties(
+  namespace: string, 
+  properties: Record<string, string>
+): Promise<IcebergNamespace> {
+  return put<IcebergNamespace>(`/api/iceberg/namespaces/${namespace}`, { properties })
+}
+
+/**
+ * Get detailed table information including snapshots - using backend API
  */
 export async function getTableDetails(namespace: string, table_name: string): Promise<IcebergTable> {
   return get<IcebergTable>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`)
 }
 
 /**
- * Update table schema
+ * Get table statistics and metadata - using backend API
+ */
+export async function getTableStatistics(namespace: string, table_name: string): Promise<any> {
+  return get<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}/statistics`)
+}
+
+/**
+ * Update table schema - using backend API
  */
 export async function updateTableSchema(schemaUpdate: SchemaUpdateRequest): Promise<IcebergTable> {
   return put<IcebergTable>(
@@ -72,7 +96,7 @@ export async function updateTableSchema(schemaUpdate: SchemaUpdateRequest): Prom
 }
 
 /**
- * Get table snapshots
+ * Get table snapshots - using backend API
  */
 export async function getTableSnapshots(namespace: string, table_name: string): Promise<Snapshot[]> {
   const response = await get<{snapshots: Snapshot[]}>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}/snapshots`)
@@ -80,7 +104,7 @@ export async function getTableSnapshots(namespace: string, table_name: string): 
 }
 
 /**
- * Rollback table to a specific snapshot
+ * Rollback table to a specific snapshot - using backend API
  */
 export async function rollbackToSnapshot(
   namespace: string, 
@@ -94,7 +118,7 @@ export async function rollbackToSnapshot(
 }
 
 /**
- * Create table snapshot
+ * Create table snapshot - using backend API
  */
 export async function createTableSnapshot(
   namespace: string, 
@@ -108,7 +132,7 @@ export async function createTableSnapshot(
 }
 
 /**
- * Delete table
+ * Delete table - using backend API
  */
 export async function deleteTable(namespace: string, table_name: string): Promise<void> {
   return del<void>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`)

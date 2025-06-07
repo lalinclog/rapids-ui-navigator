@@ -78,7 +78,7 @@ export async function getIcebergNamespaces(): Promise<string[]> {
 }
 
 /**
- * Get Iceberg tables in a namespace
+ * Get Iceberg tables in a namespace - using the backend API
  */
 export async function getIcebergTables(namespace: string): Promise<IcebergTable[]> {
   const response = await get<{tables: IcebergTable[]}>(`/api/iceberg/namespaces/${namespace}/tables`)
@@ -86,7 +86,7 @@ export async function getIcebergTables(namespace: string): Promise<IcebergTable[
 }
 
 /**
- * Create Iceberg dataset
+ * Create Iceberg dataset - using the backend API
  */
 export async function createIcebergDataset(dataset: {
   name: string;
@@ -102,7 +102,7 @@ export async function createIcebergDataset(dataset: {
 }
 
 /**
- * Preview Iceberg table
+ * Preview Iceberg table - using the backend API
  */
 export async function previewIcebergTable(
   namespace: string, 
