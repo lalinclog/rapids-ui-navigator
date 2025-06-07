@@ -7,7 +7,6 @@ import os
 
 # Import services
 from services.api_service import router as api_router
-from services.iceberg_api_routes import router as iceberg_router
 from services.app_lifecycle import lifespan
 
 # Configure logging
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app with lifespan
 app = FastAPI(
     title="Analytics Platform API",
-    description="Backend API for Analytics Platform with Iceberg integration",
+    description="Backend API for Analytics Platform",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -36,7 +35,6 @@ app.add_middleware(
 
 # Include routers
 app.include_router(api_router)
-app.include_router(iceberg_router)
 
 @app.get("/")
 async def root():
