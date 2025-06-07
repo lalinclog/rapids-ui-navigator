@@ -18,6 +18,10 @@ from .minio_service import MinioService
 
 logger = logging.getLogger(__name__)
 
+class IcebergServiceError(Exception):
+    """Custom exception for Iceberg service errors"""
+    pass
+
 class IcebergService:
     def __init__(self):
         self.vault = VaultService()
@@ -36,7 +40,6 @@ class IcebergService:
             postgres_password = os.environ.get("POSTGRES_PASSWORD", "postgres")
             postgres_db = os.environ.get("POSTGRES_DB", "spark_rapids")
             
-            
             catalog_config = {
                 "uri": f"postgresql://{postgres_user}:{postgres_password}@{postgres_host}:{postgres_port}/{postgres_db}",
                 "warehouse": f"s3://iceberg-warehouse/",
@@ -51,53 +54,64 @@ class IcebergService:
         
         return self._catalog
     
+    def _log_and_raise_error(self, operation: str, error: Exception, namespace: str = None, table: str = None):
+        """Standardized error logging and raising"""
+        context = f"namespace '{namespace}'" if namespace else ""
+        if table:
+            context += f", table '{table}'" if context else f"table '{table}'"
+        
+        error_msg = f"Error {operation}"
+        if context:
+            error_msg += f" for {context}"
+        error_msg += f": {str(error)}"
+        
+        logger.error(error_msg)
+        raise IcebergServiceError(error_msg) from error
+    
     def _ensure_bucket_exists(self, bucket_name: str) -> bool:
         """Ensure the MinIO bucket exists, create it if not"""
         try:
             if not self.minio_service.client.bucket_exists(bucket_name):
                 logger.info(f"Creating bucket: {bucket_name}")
                 self.minio_service.client.make_bucket(bucket_name)
-
-                # Create placeholder file to make bucket visible
                 self.minio_service._create_placeholder_file(bucket_name)
-                
-                # Set bucket policy for Iceberg operations
-                policy = {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"AWS": "*"},
-                            "Action": ["s3:GetObject"],
-                            "Resource": [f"arn:aws:s3:::{bucket_name}/*"]
-                        },
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"AWS": "*"},
-                            "Action": ["s3:ListBucket"],
-                            "Resource": [f"arn:aws:s3:::{bucket_name}"]
-                        }
-                    ]
-                }
-                
-                try:
-                    import json
-                    self.minio_service.client.set_bucket_policy(bucket_name, json.dumps(policy))
-                    logger.info(f"Set bucket policy for {bucket_name}")
-                except Exception as e:
-                    logger.warning(f"Could not set bucket policy for {bucket_name}: {e}")
-                
+                self._set_bucket_policy(bucket_name)
                 logger.info(f"Successfully created bucket: {bucket_name}")
             else:
                 logger.info(f"Bucket {bucket_name} already exists")
             return True
             
         except S3Error as e:
-            logger.error(f"Error ensuring bucket {bucket_name} exists: {e}")
-            return False
+            self._log_and_raise_error("ensuring bucket exists", e)
         except Exception as e:
-            logger.error(f"Unexpected error with bucket {bucket_name}: {e}")
-            return False
+            self._log_and_raise_error("ensuring bucket exists (unexpected error)", e)
+    
+    def _set_bucket_policy(self, bucket_name: str):
+        """Set bucket policy for Iceberg operations"""
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": ["s3:GetObject"],
+                    "Resource": [f"arn:aws:s3:::{bucket_name}/*"]
+                },
+                {
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "*"},
+                    "Action": ["s3:ListBucket"],
+                    "Resource": [f"arn:aws:s3:::{bucket_name}"]
+                }
+            ]
+        }
+        
+        try:
+            import json
+            self.minio_service.client.set_bucket_policy(bucket_name, json.dumps(policy))
+            logger.info(f"Set bucket policy for {bucket_name}")
+        except Exception as e:
+            logger.warning(f"Could not set bucket policy for {bucket_name}: {e}")
     
     def list_namespaces(self) -> List[str]:
         """List all namespaces in the catalog"""
@@ -105,8 +119,7 @@ class IcebergService:
             catalog = self._get_catalog()
             return [".".join(ns) for ns in catalog.list_namespaces()]
         except Exception as e:
-            logger.error(f"Error listing namespaces: {e}")
-            return []
+            self._log_and_raise_error("listing namespaces", e)
     
     def create_namespace(self, namespace: str, properties: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """Create a new namespace with bucket management"""
@@ -116,74 +129,22 @@ class IcebergService:
             # Check if namespace already exists
             existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace in existing_namespaces:
-                raise ValueError(f"Namespace '{namespace}' already exists")
+                raise IcebergServiceError(f"Namespace '{namespace}' already exists")
 
             # Ensure the iceberg-warehouse bucket exists
-            if not self._ensure_bucket_exists("iceberg-warehouse"):
-                raise ValueError("Failed to create or access the iceberg-warehouse bucket")
+            self._ensure_bucket_exists("iceberg-warehouse")
             
-            # Validate required properties
-            required_props = ['owner', 'description', 'pii_classification']
-            if properties:
-                missing_props = [prop for prop in required_props if not properties.get(prop)]
-                if missing_props:
-                    raise ValueError(f"Missing required properties: {', '.join(missing_props)}")
-            else:
-                raise ValueError(f"Properties are required. Missing: {', '.join(required_props)}")
+            # Validate properties
+            self._validate_namespace_properties(properties)
             
-            # Validate PII classification values
-            valid_pii_classifications = ['public', 'internal', 'confidential', 'restricted']
-            if properties.get('pii_classification') not in valid_pii_classifications:
-                raise ValueError(f"Invalid PII classification. Must be one of: {', '.join(valid_pii_classifications)}")
-            
-            # Set default location if not provided or empty
+            # Set default location if not provided
             if not properties.get('location') or properties.get('location').strip() == '':
                 properties['location'] = f's3://iceberg-warehouse/{namespace}/'
                 logger.info(f"Using default location for namespace '{namespace}': {properties['location']}")
-            else:
-                logger.info(f"Using custom location for namespace '{namespace}': {properties['location']}")
             
             # Create the namespace with properties
             catalog.create_namespace(namespace, properties)
-
-            # Create the namespace folder in MinIO with README.md
-            namespace_path = f"{namespace}/"
-            readme_content = f"""# {namespace} Namespace
-
-            **Description:** {properties.get('description', 'No description provided')}
-            **Owner(s):** {properties.get('owner', 'Not specified')}
-            **PII Classification:** {properties.get('pii_classification', 'Not specified')}
-            **Retention Policy:** {properties.get('retention_policy', 'Not specified')}
-            **Location:** {properties.get('location')}
-
-            ## Purpose
-            This namespace contains Iceberg tables for {namespace} data.
-
-            ## Data Governance
-            - **Created:** {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
-            - **Classification:** {properties.get('pii_classification', 'Not specified')}
-            - **Retention:** {properties.get('retention_policy', 'Not specified')}
-
-            ## Tables
-            Tables will be listed here as they are created within this namespace.
-            """
-            
-            try:
-                import io
-                content_stream = io.BytesIO(readme_content.encode('utf-8'))
-                
-                self.minio_service.client.put_object(
-                    bucket_name="iceberg-warehouse",
-                    object_name=f"{namespace_path}README.md",
-                    data=content_stream,
-                    length=len(readme_content.encode('utf-8')),
-                    content_type="text/markdown"
-                )
-                
-                logger.info(f"Created README.md for namespace '{namespace}' at path: iceberg-warehouse/{namespace_path}README.md")
-                
-            except Exception as e:
-                logger.warning(f"Could not create README.md for namespace {namespace}: {e}")
+            self._create_namespace_readme(namespace, properties)
             
             logger.info(f"Created namespace '{namespace}' with location: {properties['location']}")
 
@@ -195,9 +156,64 @@ class IcebergService:
                 "message": f"Namespace '{namespace}' created successfully at {properties['location']}"
             }
             
-        except Exception as e:
-            logger.error(f"Error creating namespace {namespace}: {e}")
+        except IcebergServiceError:
             raise
+        except Exception as e:
+            self._log_and_raise_error("creating namespace", e, namespace)
+    
+    def _validate_namespace_properties(self, properties: Optional[Dict[str, str]]):
+        """Validate namespace properties"""
+        required_props = ['owner', 'description', 'pii_classification']
+        if not properties:
+            raise IcebergServiceError(f"Properties are required. Missing: {', '.join(required_props)}")
+        
+        missing_props = [prop for prop in required_props if not properties.get(prop)]
+        if missing_props:
+            raise IcebergServiceError(f"Missing required properties: {', '.join(missing_props)}")
+        
+        valid_pii_classifications = ['public', 'internal', 'confidential', 'restricted']
+        if properties.get('pii_classification') not in valid_pii_classifications:
+            raise IcebergServiceError(f"Invalid PII classification. Must be one of: {', '.join(valid_pii_classifications)}")
+    
+    def _create_namespace_readme(self, namespace: str, properties: Dict[str, str]):
+        """Create README.md for namespace"""
+        namespace_path = f"{namespace}/"
+        readme_content = f"""# {namespace} Namespace
+
+**Description:** {properties.get('description', 'No description provided')}
+**Owner(s):** {properties.get('owner', 'Not specified')}
+**PII Classification:** {properties.get('pii_classification', 'Not specified')}
+**Retention Policy:** {properties.get('retention_policy', 'Not specified')}
+**Location:** {properties.get('location')}
+
+## Purpose
+This namespace contains Iceberg tables for {namespace} data.
+
+## Data Governance
+- **Created:** {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+- **Classification:** {properties.get('pii_classification', 'Not specified')}
+- **Retention:** {properties.get('retention_policy', 'Not specified')}
+
+## Tables
+Tables will be listed here as they are created within this namespace.
+"""
+        
+        try:
+            import io
+            content_stream = io.BytesIO(readme_content.encode('utf-8'))
+            
+            self.minio_service.client.put_object(
+                bucket_name="iceberg-warehouse",
+                object_name=f"{namespace_path}README.md",
+                data=content_stream,
+                length=len(readme_content.encode('utf-8')),
+                content_type="text/markdown"
+            )
+            
+            logger.info(f"Created README.md for namespace '{namespace}' at path: iceberg-warehouse/{namespace_path}README.md")
+            
+        except Exception as e:
+            logger.warning(f"Could not create README.md for namespace {namespace}: {e}")
     
     def delete_namespace(self, namespace: str) -> Dict[str, Any]:
         """Delete a namespace (must be empty)"""
@@ -207,18 +223,15 @@ class IcebergService:
             # Check if namespace exists
             existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace not in existing_namespaces:
-                raise ValueError(f"Namespace '{namespace}' does not exist")
+                raise IcebergServiceError(f"Namespace '{namespace}' does not exist")
             
             # Check if namespace has tables
             tables = catalog.list_tables(namespace)
             if tables:
-                raise ValueError(f"Cannot delete namespace '{namespace}': contains {len(tables)} tables")
+                raise IcebergServiceError(f"Cannot delete namespace '{namespace}': contains {len(tables)} tables")
             
             # Drop the namespace
             catalog.drop_namespace(namespace)
-
-            # Note: We don't delete the bucket as it might contain other data
-            # or be used by other applications
             logger.info(f"Deleted namespace '{namespace}' (bucket preserved)")
             
             return {
@@ -226,9 +239,10 @@ class IcebergService:
                 "message": f"Namespace '{namespace}' deleted successfully (bucket preserved)"
             }
             
-        except Exception as e:
-            logger.error(f"Error deleting namespace {namespace}: {e}")
+        except IcebergServiceError:
             raise
+        except Exception as e:
+            self._log_and_raise_error("deleting namespace", e, namespace)
     
     def get_namespace_properties(self, namespace: str) -> Dict[str, Any]:
         """Get namespace properties"""
@@ -238,7 +252,7 @@ class IcebergService:
             # Check if namespace exists
             existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace not in existing_namespaces:
-                raise ValueError(f"Namespace '{namespace}' does not exist")
+                raise IcebergServiceError(f"Namespace '{namespace}' does not exist")
             
             # Get namespace properties
             properties = catalog.load_namespace_properties(namespace)
@@ -251,9 +265,10 @@ class IcebergService:
                 "tables": [str(table) for table in tables]
             }
             
-        except Exception as e:
-            logger.error(f"Error getting namespace properties for {namespace}: {e}")
+        except IcebergServiceError:
             raise
+        except Exception as e:
+            self._log_and_raise_error("getting namespace properties", e, namespace)
     
     def update_namespace_properties(self, namespace: str, properties: Dict[str, str]) -> Dict[str, Any]:
         """Update namespace properties"""
@@ -263,7 +278,7 @@ class IcebergService:
             # Check if namespace exists
             existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace not in existing_namespaces:
-                raise ValueError(f"Namespace '{namespace}' does not exist")
+                raise IcebergServiceError(f"Namespace '{namespace}' does not exist")
             
             # Get current properties first
             current_properties = catalog.load_namespace_properties(namespace)
@@ -274,20 +289,14 @@ class IcebergService:
             if 'pii_classification' in properties and properties['pii_classification']:
                 valid_pii_classifications = ['public', 'internal', 'confidential', 'restricted']
                 if properties['pii_classification'] not in valid_pii_classifications:
-                    raise ValueError(f"Invalid PII classification. Must be one of: {', '.join(valid_pii_classifications)}")
+                    raise IcebergServiceError(f"Invalid PII classification. Must be one of: {', '.join(valid_pii_classifications)}")
             
-            # PyIceberg expects updates as a set of properties to remove and a dict of properties to update
-            # We'll update all provided properties and remove none
-            removals = set()  # Properties to remove (empty set means remove nothing)
-            updates = {}
-            
-            # Only include non-empty properties in updates
-            for key, value in properties.items():
-                if value is not None and str(value).strip():  # Only add non-empty values
-                    updates[key] = str(value).strip()
+            # Prepare updates - only include non-empty properties
+            removals = set()
+            updates = {key: str(value).strip() for key, value in properties.items() 
+                      if value is not None and str(value).strip()}
             
             logger.info(f"Properties to update: {updates}")
-            logger.info(f"Properties to remove: {removals}")
             
             # Update properties using the correct PyIceberg API
             catalog.update_namespace_properties(namespace, removals, updates)
@@ -301,36 +310,32 @@ class IcebergService:
                 "message": f"Namespace '{namespace}' properties updated successfully"
             }
             
-        except Exception as e:
-            logger.error(f"Error updating namespace properties for {namespace}: {e}")
+        except IcebergServiceError:
             raise
+        except Exception as e:
+            self._log_and_raise_error("updating namespace properties", e, namespace)
     
     def list_tables(self, namespace: str = "default") -> Dict[str, Any]:
         """List all tables in a namespace"""
         try:
             catalog = self._get_catalog()
-            # Convert namespace string to tuple if needed
             namespace_tuple = tuple(namespace.split('.')) if '.' in namespace else (namespace,)
-
             tables = catalog.list_tables(namespace_tuple)
-            # Extract table names from identifiers
+            
+            # Simplified table name extraction
             table_names = []
-            if tables:  # Only process if tables exist
-                for table in tables:
-                    if isinstance(table, tuple):
-                        # Handle tuple format (namespace, table_name)
-                        table_names.append(table[-1])  # Get the last part (table name)
-                    elif hasattr(table, 'name'):
-                        # Handle object with name attribute
-                        table_names.append(table.name)
-                    else:
-                        # Handle string format
-                        table_names.append(str(table).split('.')[-1])
+            for table in tables:
+                if isinstance(table, tuple):
+                    table_names.append(table[-1])  # Get the last part (table name)
+                else:
+                    # Handle both object with name attribute and string format
+                    table_name = getattr(table, 'name', str(table))
+                    table_names.append(table_name.split('.')[-1])
 
-            return  {"tables": table_names}
+            return {"tables": table_names}
+            
         except Exception as e:
-            logger.error(f"Error listing tables in namespace {namespace}: {e}")
-            return {"tables": []}
+            self._log_and_raise_error("listing tables", e, namespace)
     
     def create_table_from_csv(
         self, 
@@ -355,7 +360,7 @@ class IcebergService:
             objects = list(self.minio_service.client.list_objects(bucket, prefix=full_path))
             
             if not objects:
-                raise ValueError(f"No CSV files found at {full_path}")
+                raise IcebergServiceError(f"No CSV files found at {full_path}")
             
             # Read first CSV file to infer schema
             first_file = objects[0].object_name
@@ -383,20 +388,23 @@ class IcebergService:
                     df = pd.read_csv(response)
                     all_data.append(df)
             
+            row_count = 0
             if all_data:
                 combined_df = pd.concat(all_data, ignore_index=True)
+                row_count = len(combined_df)
                 table.append(combined_df)
             
             return {
                 "table_identifier": table_identifier,
                 "schema": self._iceberg_schema_to_dict(schema),
                 "location": table.location(),
-                "row_count": len(combined_df) if all_data else 0
+                "row_count": row_count
             }
             
-        except Exception as e:
-            logger.error(f"Error creating Iceberg table: {e}")
+        except IcebergServiceError:
             raise
+        except Exception as e:
+            self._log_and_raise_error("creating table from CSV", e, namespace, table_name)
 
     def create_table_from_parquet(
         self, 
@@ -426,7 +434,7 @@ class IcebergService:
                 objects = [obj for obj in objects if obj.object_name.endswith('.parquet')]
             
             if not objects:
-                raise ValueError(f"No Parquet files found at {parquet_path} or {directory_path}")
+                raise IcebergServiceError(f"No Parquet files found at {parquet_path} or {directory_path}")
             
             logger.info(f"Found {len(objects)} objects at path {parquet_path}")
             
@@ -438,7 +446,7 @@ class IcebergService:
                     break
             
             if not first_file:
-                raise ValueError(f"No Parquet files found in the specified path: {parquet_path}")
+                raise IcebergServiceError(f"No Parquet files found in the specified path: {parquet_path}")
             
             logger.info(f"Using {first_file} to infer schema")
             
@@ -498,9 +506,10 @@ class IcebergService:
                 "source_files": len([obj for obj in objects if obj.object_name.endswith('.parquet')])
             }
             
-        except Exception as e:
-            logger.error(f"Error creating Iceberg table from Parquet: {e}")
+        except IcebergServiceError:
             raise
+        except Exception as e:
+            self._log_and_raise_error("creating table from Parquet", e, namespace, table_name)
     
     def get_table_info(self, namespace: str, table_name: str) -> Dict[str, Any]:
         """Get detailed information about an Iceberg table"""
@@ -517,10 +526,9 @@ class IcebergService:
                 "metadata_location": table.metadata_location
             }
         except NoSuchTableError:
-            raise ValueError(f"Table {namespace}.{table_name} not found")
+            raise IcebergServiceError(f"Table {namespace}.{table_name} not found")
         except Exception as e:
-            logger.error(f"Error getting table info: {e}")
-            raise
+            self._log_and_raise_error("getting table info", e, namespace, table_name)
     
     def query_table(
         self, 
@@ -548,8 +556,7 @@ class IcebergService:
             }
             
         except Exception as e:
-            logger.error(f"Error querying table: {e}")
-            raise
+            self._log_and_raise_error("querying table", e, namespace, table_name)
     
     def _pandas_to_iceberg_schema(self, df: pd.DataFrame) -> Schema:
         """Convert pandas DataFrame schema to Iceberg schema"""
@@ -619,5 +626,4 @@ class IcebergService:
             }
             
         except Exception as e:
-            logger.error(f"Error evolving schema: {e}")
-            raise
+            self._log_and_raise_error("evolving schema", e, namespace, table_name)
