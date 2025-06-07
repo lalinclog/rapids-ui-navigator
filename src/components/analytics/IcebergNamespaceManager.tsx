@@ -98,8 +98,12 @@ const IcebergNamespaceManager = () => {
       console.log('Users response:', usersResponse.data);
       console.log('Groups response:', groupsResponse.data);
       
-      setUsers(usersResponse.data.users || []);
-      setGroups(groupsResponse.data.groups || []);
+      // Safely extract users and groups arrays from the response
+      const usersData = usersResponse.data?.users || [];
+      const groupsData = groupsResponse.data?.groups || [];
+      
+      setUsers(Array.isArray(usersData) ? usersData : []);
+      setGroups(Array.isArray(groupsData) ? groupsData : []);
     } catch (error) {
       console.error('Error fetching users and groups:', error);
       toast({
@@ -121,7 +125,8 @@ const IcebergNamespaceManager = () => {
       } : undefined;
 
       const response = await axios.get('/api/iceberg/namespaces', { headers });
-      setNamespaces(response.data.namespaces || []);
+      const namespacesData = response.data?.namespaces || [];
+      setNamespaces(Array.isArray(namespacesData) ? namespacesData : []);
     } catch (error) {
       console.error('Error fetching namespaces:', error);
       toast({
@@ -144,12 +149,12 @@ const IcebergNamespaceManager = () => {
       } : undefined;
 
       const response = await axios.get(`/api/iceberg/namespaces/${namespace}`, { headers });
-      const properties = response.data.properties || {};
+      const properties = response.data?.properties || {};
       
       // Parse owner information
       const owners: Owner[] = [];
       if (properties.owner) {
-        const ownerEntries = properties.owner.split(',').map(owner => owner.trim());
+        const ownerEntries = properties.owner.split(',').map((owner: string) => owner.trim());
         for (const entry of ownerEntries) {
           const [type, id] = entry.split(':');
           if (type === 'user') {
