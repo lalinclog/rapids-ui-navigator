@@ -12,6 +12,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyarrow.fs as fs
 from .vault_service import VaultService
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -217,46 +218,15 @@ class IcebergTableService:
             # Get MinIO-configured filesystem with logging
             filesystem = self._get_s3_filesystem()
             
-            # Test filesystem connectivity
+            # Test filesystem connectivity with enhanced debugging
             logger.info(f"Testing filesystem connectivity to bucket: {bucket}")
-            try:
-                # Try to list the bucket contents first
-                bucket_files = filesystem.get_file_info(fs.FileSelector(bucket, recursive=False))
-                logger.info(f"Successfully connected to bucket '{bucket}', found {len(bucket_files)} items")
-                
-                # Log first few items for debugging
-                for i, file_info in enumerate(bucket_files[:5]):
-                    logger.info(f"  Item {i+1}: {file_info.path} (type: {file_info.type})")
-                
-            except Exception as bucket_error:
-                logger.error(f"Failed to access bucket '{bucket}': {bucket_error}")
-                raise
             
-            # Test access to the specific file path
-            logger.info(f"Testing access to specific path: {full_path}")
-            try:
-                file_info = filesystem.get_file_info(f"{bucket}/{full_path}")
-                logger.info(f"File info for '{full_path}': type={file_info.type}, size={file_info.size}")
-                
-                if file_info.type == fs.FileType.NotFound:
-                    logger.error(f"File not found: {full_path}")
-                    # Try to list the parent directory
-                    parent_path = "/".join(full_path.split("/")[:-1])
-                    if parent_path:
-                        logger.info(f"Listing parent directory: {parent_path}")
-                        try:
-                            parent_files = filesystem.get_file_info(fs.FileSelector(f"{bucket}/{parent_path}", recursive=False))
-                            logger.info(f"Files in parent directory '{parent_path}':")
-                            for file_info in parent_files:
-                                logger.info(f"  - {file_info.path}")
-                        except Exception as parent_error:
-                            logger.error(f"Failed to list parent directory: {parent_error}")
-                    
-                    raise FileNotFoundError(f"Could not find file at path: {full_path}")
-                    
-            except Exception as file_error:
-                logger.error(f"Error accessing file '{full_path}': {file_error}")
-                raise
+            # Try multiple connection tests
+            connection_success = self._test_minio_connection(filesystem, bucket, full_path)
+            
+            if not connection_success:
+                logger.error("Failed all connection tests to MinIO")
+                raise ConnectionError("Unable to establish connection to MinIO storage")
             
             # Read the Parquet schema to understand the data structure
             try:
@@ -310,6 +280,104 @@ class IcebergTableService:
             logger.error(f"Error creating table from Parquet: {e}")
             raise
     
+    def _test_minio_connection(self, filesystem, bucket: str, full_path: str) -> bool:
+        """Test MinIO connection with multiple approaches"""
+        
+        # Test 1: Simple bucket existence check
+        logger.info("=== Connection Test 1: Basic bucket check ===")
+        try:
+            # Try a simpler approach first - just check if bucket exists
+            bucket_info = filesystem.get_file_info(bucket)
+            logger.info(f"Bucket info: type={bucket_info.type}, path={bucket_info.path}")
+            
+            if bucket_info.type == fs.FileType.Directory:
+                logger.info(f"✓ Bucket '{bucket}' exists and is accessible")
+            else:
+                logger.warning(f"⚠ Bucket '{bucket}' may not exist or is not a directory")
+                
+        except Exception as bucket_error:
+            logger.error(f"✗ Basic bucket check failed: {bucket_error}")
+        
+        # Test 2: Try listing with selector (more robust)
+        logger.info("=== Connection Test 2: List with FileSelector ===")
+        try:
+            selector = fs.FileSelector(bucket, recursive=False)
+            bucket_files = filesystem.get_file_info(selector)
+            logger.info(f"✓ Successfully listed bucket contents using FileSelector")
+            logger.info(f"Found {len(bucket_files)} items in bucket '{bucket}'")
+            
+            # Log first few items for debugging
+            for i, file_info in enumerate(bucket_files[:5]):
+                logger.info(f"  Item {i+1}: {file_info.path} (type: {file_info.type}, size: {file_info.size})")
+            
+            # Test 3: Check for the specific file
+            logger.info("=== Connection Test 3: Specific file check ===")
+            target_path = f"{bucket}/{full_path}"
+            logger.info(f"Looking for specific file: {target_path}")
+            
+            file_info = filesystem.get_file_info(target_path)
+            logger.info(f"File info for '{full_path}': type={file_info.type}, size={file_info.size}")
+            
+            if file_info.type == fs.FileType.File:
+                logger.info(f"✓ Target file found: {target_path}")
+                return True
+            elif file_info.type == fs.FileType.NotFound:
+                logger.warning(f"⚠ Target file not found: {target_path}")
+                # Try to find similar files
+                self._search_for_similar_files(filesystem, bucket, full_path)
+                return False
+            else:
+                logger.warning(f"⚠ Target path exists but is not a file: {target_path}")
+                return False
+                
+        except Exception as selector_error:
+            logger.error(f"✗ FileSelector listing failed: {selector_error}")
+            
+            # Test 4: Alternative connection method
+            logger.info("=== Connection Test 4: Alternative method ===")
+            try:
+                # Try using a different approach - get filesystem info
+                fs_info = filesystem.get_file_info(f"{bucket}/")
+                logger.info(f"Alternative bucket check: type={fs_info.type}")
+                
+                if fs_info.type == fs.FileType.Directory:
+                    logger.info("✓ Alternative bucket check successful")
+                    return True
+                    
+            except Exception as alt_error:
+                logger.error(f"✗ Alternative connection method failed: {alt_error}")
+        
+        return False
+    
+    def _search_for_similar_files(self, filesystem, bucket: str, target_path: str):
+        """Search for files similar to the target path"""
+        try:
+            # Try searching in parent directories
+            path_parts = target_path.split('/')
+            
+            for i in range(len(path_parts)):
+                search_path = '/'.join(path_parts[:i+1])
+                logger.info(f"Searching in path: {bucket}/{search_path}")
+                
+                try:
+                    search_selector = fs.FileSelector(f"{bucket}/{search_path}", recursive=False)
+                    search_files = filesystem.get_file_info(search_selector)
+                    
+                    if search_files:
+                        logger.info(f"Found {len(search_files)} items in {search_path}:")
+                        for file_info in search_files[:10]:  # Limit to first 10
+                            logger.info(f"  - {file_info.path} (type: {file_info.type})")
+                        break
+                    else:
+                        logger.info(f"No items found in {search_path}")
+                        
+                except Exception as search_error:
+                    logger.warning(f"Search failed for {search_path}: {search_error}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Error in similar file search: {e}")
+    
     def _get_s3_filesystem(self):
         """Get S3 filesystem configured for MinIO operations"""
         # Get MinIO credentials from Vault
@@ -332,6 +400,12 @@ class IcebergTableService:
         logger.info(f"Using scheme: {scheme}")
         logger.info(f"Full endpoint URL: {endpoint_url}")
         
+        # Log environment variables for debugging
+        logger.info(f"Environment check:")
+        logger.info(f"  MINIO_ENDPOINT: {os.environ.get('MINIO_ENDPOINT', 'not set')}")
+        logger.info(f"  MINIO_PORT: {os.environ.get('MINIO_PORT', 'not set')}")
+        logger.info(f"  MINIO_USE_HTTPS: {os.environ.get('MINIO_USE_HTTPS', 'not set')}")
+        
         try:
             # Configure S3FileSystem for MinIO with correct parameter names
             filesystem = fs.S3FileSystem(
@@ -345,6 +419,8 @@ class IcebergTableService:
         except Exception as fs_error:
             logger.error(f"Failed to create S3FileSystem: {fs_error}")
             raise
+
+    # ... keep existing code (all remaining methods unchanged)
     
     def _handle_parquet_path_discovery(self, namespace: str, table_name: str, bucket: str, path: str) -> Dict[str, Any]:
         """Handle discovery of Parquet files when direct path access fails"""
