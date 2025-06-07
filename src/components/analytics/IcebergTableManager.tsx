@@ -6,10 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Plus, Eye, Database, FileText, Info, Layers, Archive } from 'lucide-react';
+import { Trash2, Plus, Eye, Database, FileText, Info, Layers, Archive, Upload, Schema } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 import AuthService from '@/services/AuthService';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 
 interface TableInfo {
   identifier: string;
@@ -43,6 +45,12 @@ interface NamespaceInfo {
   };
 }
 
+interface SchemaColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+}
+
 const IcebergTableManager = () => {
   const { toast } = useToast();
   const [namespaces, setNamespaces] = useState<NamespaceInfo[]>([]);
@@ -55,11 +63,23 @@ const IcebergTableManager = () => {
   const [loading, setLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [createMode, setCreateMode] = useState<'empty' | 'from_parquet'>('empty');
+  
   const [newTable, setNewTable] = useState({
     name: '',
     bucket: '',
     parquet_path: '',
     base_path: ''
+  });
+
+  const [emptyTableConfig, setEmptyTableConfig] = useState({
+    name: '',
+    bucket: '',
+    schema: [
+      { name: 'id', type: 'bigint', nullable: false },
+      { name: 'name', type: 'string', nullable: true },
+      { name: 'created_at', type: 'timestamp', nullable: true }
+    ] as SchemaColumn[]
   });
 
   useEffect(() => {
@@ -77,6 +97,10 @@ const IcebergTableManager = () => {
           ...prev,
           bucket: namespaceInfo.properties.bucket || namespaceInfo.properties.warehouse || 'iceberg-warehouse',
           parquet_path: `${selectedNamespace}/`
+        }));
+        setEmptyTableConfig(prev => ({
+          ...prev,
+          bucket: namespaceInfo.properties.bucket || namespaceInfo.properties.warehouse || 'iceberg-warehouse'
         }));
       }
     }
@@ -215,6 +239,60 @@ const IcebergTableManager = () => {
     }
   };
 
+  const handleCreateEmptyTable = async () => {
+    if (!selectedNamespace || !emptyTableConfig.name || emptyTableConfig.schema.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in table name and define at least one column",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = await AuthService.getValidToken();
+      if (!token) {
+        throw new Error('No valid token available');
+      }
+      
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const response = await axios.post('/api/iceberg/tables/empty', {
+        namespace: selectedNamespace,
+        table_name: emptyTableConfig.name,
+        bucket: emptyTableConfig.bucket,
+        schema: emptyTableConfig.schema
+      }, { headers });
+
+      toast({
+        title: "Success",
+        description: `Empty table "${emptyTableConfig.name}" created successfully`,
+      });
+
+      fetchTables(selectedNamespace);
+      setShowCreateForm(false);
+      setEmptyTableConfig({
+        name: '',
+        bucket: selectedNamespaceInfo?.properties.bucket || 'iceberg-warehouse',
+        schema: [
+          { name: 'id', type: 'bigint', nullable: false },
+          { name: 'name', type: 'string', nullable: true },
+          { name: 'created_at', type: 'timestamp', nullable: true }
+        ]
+      });
+    } catch (error: any) {
+      console.error('Error creating empty table:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || 'Failed to create empty table',
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCreateTable = async () => {
     if (!selectedNamespace || !newTable.name || !newTable.parquet_path) {
       toast({
@@ -302,6 +380,29 @@ const IcebergTableManager = () => {
         setLoading(false);
       }
     }
+  };
+
+  const addSchemaColumn = () => {
+    setEmptyTableConfig(prev => ({
+      ...prev,
+      schema: [...prev.schema, { name: '', type: 'string', nullable: true }]
+    }));
+  };
+
+  const removeSchemaColumn = (index: number) => {
+    setEmptyTableConfig(prev => ({
+      ...prev,
+      schema: prev.schema.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateSchemaColumn = (index: number, field: keyof SchemaColumn, value: any) => {
+    setEmptyTableConfig(prev => ({
+      ...prev,
+      schema: prev.schema.map((col, i) => 
+        i === index ? { ...col, [field]: value } : col
+      )
+    }));
   };
 
   const getPathExamples = (namespace: string) => [
@@ -414,121 +515,221 @@ const IcebergTableManager = () => {
           <CardHeader>
             <CardTitle>Create New Iceberg Table</CardTitle>
             <CardDescription>
-              Create an Iceberg table from Parquet files in {selectedNamespace}. 
-              Iceberg supports single files, multiple files, and partitioned datasets.
+              Choose how to create your Iceberg table: start with an empty table or create from existing Parquet files.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="table-name">Table Name *</Label>
-              <Input
-                id="table-name"
-                value={newTable.name}
-                onChange={(e) => setNewTable(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="e.g., ev_charging_stations"
-              />
-            </div>
+          <CardContent>
+            <Tabs value={createMode} onValueChange={(value) => setCreateMode(value as 'empty' | 'from_parquet')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="empty" className="flex items-center gap-2">
+                  <Schema className="h-4 w-4" />
+                  Empty Table
+                </TabsTrigger>
+                <TabsTrigger value="from_parquet" className="flex items-center gap-2">
+                  <Upload className="h-4 w-4" />
+                  From Parquet
+                </TabsTrigger>
+              </TabsList>
 
-            <div>
-              <Label htmlFor="bucket">Bucket (auto-set from namespace)</Label>
-              <Input
-                id="bucket"
-                value={newTable.bucket}
-                onChange={(e) => setNewTable(prev => ({ ...prev, bucket: e.target.value }))}
-                placeholder="iceberg-warehouse"
-                disabled={true}
-                className="bg-muted"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="parquet-path">Parquet Path Pattern *</Label>
-              <Input
-                id="parquet-path"
-                value={newTable.parquet_path}
-                onChange={(e) => setNewTable(prev => ({ ...prev, parquet_path: e.target.value }))}
-                placeholder={`${selectedNamespace}/`}
-              />
-              
-              <div className="text-sm text-muted-foreground mt-4 space-y-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="h-4 w-4" />
-                  <span className="font-semibold">Iceberg Table Patterns</span>
-                </div>
-                
-                <div className="grid grid-cols-1 gap-3">
-                  {getPathExamples(selectedNamespace).map((example, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => setNewTable(prev => ({ ...prev, parquet_path: example.path }))}
-                      className="text-left p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors border border-border hover:border-primary/20"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="text-primary mt-0.5">
-                          {example.icon}
-                        </div>
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm">{example.type}</span>
-                            <Badge variant="outline" className="text-xs">{example.description}</Badge>
-                          </div>
-                          <code className="text-blue-600 text-sm block">{example.path}</code>
-                          <p className="text-xs text-muted-foreground">{example.note}</p>
-                          <p className="text-xs font-medium text-green-700">{example.useCase}</p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                
-                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <TabsContent value="empty" className="space-y-4 mt-6">
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="flex items-start gap-2">
                     <Info className="h-4 w-4 text-blue-600 mt-0.5" />
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-blue-800">Iceberg Table Benefits:</p>
+                      <p className="text-sm font-medium text-blue-800">Empty Table Benefits:</p>
                       <ul className="text-xs text-blue-700 space-y-1">
-                        <li>• <strong>Multi-file support:</strong> Automatically manages multiple Parquet files as one table</li>
-                        <li>• <strong>Partition discovery:</strong> Recognizes Hive-style partitioning (column=value)</li>
-                        <li>• <strong>Schema evolution:</strong> Add/remove columns without rewriting data</li>
-                        <li>• <strong>Time travel:</strong> Query historical versions of your data</li>
-                        <li>• <strong>ACID transactions:</strong> Consistent reads and writes</li>
+                        <li>• <strong>Schema first:</strong> Define your table structure upfront</li>
+                        <li>• <strong>Data loading flexibility:</strong> Load data later via API, streaming, or batch</li>
+                        <li>• <strong>Evolution ready:</strong> Easy to modify schema as requirements change</li>
+                        <li>• <strong>Integration friendly:</strong> Perfect for ETL pipelines and data ingestion</li>
                       </ul>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                  <p className="text-sm font-medium text-yellow-800">💡 For your current file:</p>
-                  <p className="text-sm text-yellow-700">
-                    Start with: <code className="bg-yellow-100 px-1 rounded">{selectedNamespace}/</code> 
-                    to include your johannesburg_ev_charging_2024_2025.parquet file and any future files you add.
+                <div>
+                  <Label htmlFor="empty-table-name">Table Name *</Label>
+                  <Input
+                    id="empty-table-name"
+                    value={emptyTableConfig.name}
+                    onChange={(e) => setEmptyTableConfig(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., customer_events"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="empty-bucket">Bucket (auto-set from namespace)</Label>
+                  <Input
+                    id="empty-bucket"
+                    value={emptyTableConfig.bucket}
+                    disabled={true}
+                    className="bg-muted"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <Label>Table Schema *</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addSchemaColumn}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Column
+                    </Button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {emptyTableConfig.schema.map((column, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                        <div className="col-span-4">
+                          <Input
+                            placeholder="Column name"
+                            value={column.name}
+                            onChange={(e) => updateSchemaColumn(index, 'name', e.target.value)}
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <Select 
+                            value={column.type} 
+                            onValueChange={(value) => updateSchemaColumn(index, 'type', value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="string">String</SelectItem>
+                              <SelectItem value="bigint">BigInt</SelectItem>
+                              <SelectItem value="int">Integer</SelectItem>
+                              <SelectItem value="double">Double</SelectItem>
+                              <SelectItem value="boolean">Boolean</SelectItem>
+                              <SelectItem value="timestamp">Timestamp</SelectItem>
+                              <SelectItem value="date">Date</SelectItem>
+                              <SelectItem value="decimal">Decimal</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="col-span-3 flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={column.nullable}
+                            onChange={(e) => updateSchemaColumn(index, 'nullable', e.target.checked)}
+                            className="rounded"
+                          />
+                          <span className="text-sm">Nullable</span>
+                        </div>
+                        <div className="col-span-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeSchemaColumn(index)}
+                            disabled={emptyTableConfig.schema.length === 1}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => setShowCreateForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateEmptyTable} disabled={loading}>
+                    {loading ? 'Creating...' : 'Create Empty Table'}
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="from_parquet" className="space-y-4 mt-6">
+                <div>
+                  <Label htmlFor="table-name">Table Name *</Label>
+                  <Input
+                    id="table-name"
+                    value={newTable.name}
+                    onChange={(e) => setNewTable(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g., ev_charging_stations"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="bucket">Bucket (auto-set from namespace)</Label>
+                  <Input
+                    id="bucket"
+                    value={newTable.bucket}
+                    onChange={(e) => setNewTable(prev => ({ ...prev, bucket: e.target.value }))}
+                    placeholder="iceberg-warehouse"
+                    disabled={true}
+                    className="bg-muted"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="parquet-path">Parquet Path Pattern *</Label>
+                  <Input
+                    id="parquet-path"
+                    value={newTable.parquet_path}
+                    onChange={(e) => setNewTable(prev => ({ ...prev, parquet_path: e.target.value }))}
+                    placeholder={`${selectedNamespace}/`}
+                  />
+                  
+                  <div className="text-sm text-muted-foreground mt-4 space-y-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Database className="h-4 w-4" />
+                      <span className="font-semibold">Iceberg Table Patterns</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 gap-3">
+                      {getPathExamples(selectedNamespace).map((example, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => setNewTable(prev => ({ ...prev, parquet_path: example.path }))}
+                          className="text-left p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors border border-border hover:border-primary/20"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="text-primary mt-0.5">
+                              {example.icon}
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm">{example.type}</span>
+                                <Badge variant="outline" className="text-xs">{example.description}</Badge>
+                              </div>
+                              <code className="text-blue-600 text-sm block">{example.path}</code>
+                              <p className="text-xs text-muted-foreground">{example.note}</p>
+                              <p className="text-xs font-medium text-green-700">{example.useCase}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="base-path">Base Path (optional)</Label>
+                  <Input
+                    id="base-path"
+                    value={newTable.base_path}
+                    onChange={(e) => setNewTable(prev => ({ ...prev, base_path: e.target.value }))}
+                    placeholder="Optional base path prefix"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    If specified, will be prepended to the Parquet path
                   </p>
                 </div>
-              </div>
-            </div>
 
-            <div>
-              <Label htmlFor="base-path">Base Path (optional)</Label>
-              <Input
-                id="base-path"
-                value={newTable.base_path}
-                onChange={(e) => setNewTable(prev => ({ ...prev, base_path: e.target.value }))}
-                placeholder="Optional base path prefix"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                If specified, will be prepended to the Parquet path
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowCreateForm(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCreateTable} disabled={loading}>
-                {loading ? 'Creating...' : 'Create Table'}
-              </Button>
-            </div>
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => setShowCreateForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateTable} disabled={loading}>
+                    {loading ? 'Creating...' : 'Create Table'}
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       )}
