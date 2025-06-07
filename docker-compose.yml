@@ -16,6 +16,8 @@ services:
       - minio
       - postgres
       - keycloak
+      - vault
+      - vault-init
     environment:
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
@@ -29,7 +31,23 @@ services:
       - PYTHONPATH=/app
       - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
       - KEYCLOAK_URL=http://keycloak:8080
-    command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080","--log-level", "debug"] #, "--reload"]
+      - VAULT_TOKEN=root
+    #command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080","--log-level", "debug"] #, "--reload"]
+    command: ["sh", "-c", "./wait-for-minio-secret.sh"]
+
+  vault:
+    image: hashicorp/vault:1.19
+    container_name: vault
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    volumes:
+      - ./vault/data:/vault/data
+    command: server -dev
 
   keycloak:
     image: quay.io/keycloak/keycloak:latest
@@ -68,6 +86,21 @@ services:
       start_period: 180s  # Added to give more startup time
       retries: 5
 
+  keycloak-init:
+    build: 
+      context: .
+      dockerfile: ./docker/keycloak-init.Dockerfile
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    environment:
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - PYTHONPATH=/app
+
   minio:
     image: minio/minio
     restart: always
@@ -80,12 +113,13 @@ services:
     environment:
       - MINIO_ROOT_USER_FILE=/run/secrets/minio_root_user
       - MINIO_ROOT_PASSWORD_FILE=/run/secrets/minio_root_password
+      - MINIO_USE_HTTPS=true
     secrets:
       - minio_root_user
       - minio_root_password
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "--insecure", "https://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -94,12 +128,25 @@ services:
       context: .
       dockerfile: Dockerfile.minio-init
     depends_on:
-      minio:
-        condition: service_healthy
+      - minio
     environment:
       - WAIT_HOSTS=minio:9000
       - WAIT_TIMEOUT=60
       - WAIT_BEFORE=5
+      - http_proxy=
+      - https_proxy=
+    volumes:
+      - ./certs:/root/.minio/certs:ro
+      - ./certs/public.crt:/usr/local/share/ca-certificates/minio.crt:ro
+  vault-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.vault-init
+    depends_on:
+      - vault
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: root
 
   postgres:
     image: postgres:14
