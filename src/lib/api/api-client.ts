@@ -15,7 +15,7 @@ class ApiClient {
   constructor() {
     this.axiosInstance = axios.create({
       baseURL: API_BASE_URL,
-      timeout: 10000,
+      timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -24,11 +24,34 @@ class ApiClient {
     // Separate instance for direct Iceberg REST catalog communication
     this.icebergInstance = axios.create({
       baseURL: ICEBERG_REST_URL,
-      timeout: 10000,
+      timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
       },
     });
+
+    // Add request interceptors for debugging
+    this.icebergInstance.interceptors.request.use(
+      (config) => {
+        console.log(`Making Iceberg REST request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+        return config;
+      },
+      (error) => {
+        console.error('Iceberg request interceptor error:', error);
+        return Promise.reject(error);
+      }
+    );
+
+    this.icebergInstance.interceptors.response.use(
+      (response) => {
+        console.log(`Iceberg REST response: ${response.status} ${response.config.url}`);
+        return response;
+      },
+      (error) => {
+        console.error('Iceberg response error:', error.response?.status, error.response?.data || error.message);
+        return Promise.reject(error);
+      }
+    );
   }
   
   private async executeRequest<T>(
