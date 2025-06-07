@@ -1,4 +1,3 @@
-
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -319,19 +318,45 @@ Tables will be listed here as they are created within this namespace.
         """List all tables in a namespace"""
         try:
             catalog = self._get_catalog()
-            namespace_tuple = tuple(namespace.split('.')) if '.' in namespace else (namespace,)
+            
+            # Convert namespace string to tuple format that PyIceberg expects
+            if isinstance(namespace, str):
+                namespace_tuple = tuple(namespace.split('.')) if '.' in namespace else (namespace,)
+            else:
+                namespace_tuple = namespace
+            
+            # Get tables from catalog
             tables = catalog.list_tables(namespace_tuple)
             
-            # Simplified table name extraction
+            # Extract table names - handle different return formats
             table_names = []
             for table in tables:
-                if isinstance(table, tuple):
-                    table_names.append(table[-1])  # Get the last part (table name)
-                else:
-                    # Handle both object with name attribute and string format
-                    table_name = getattr(table, 'name', str(table))
-                    table_names.append(table_name.split('.')[-1])
-
+                try:
+                    if isinstance(table, tuple):
+                        # If it's a tuple, take the last element (table name)
+                        table_name = table[-1]
+                    elif isinstance(table, str):
+                        # If it's a string, extract table name
+                        table_name = table.split('.')[-1]
+                    elif hasattr(table, 'name'):
+                        # If it has a name attribute
+                        table_name = str(table.name).split('.')[-1]
+                    else:
+                        # Fallback - convert to string and extract last part
+                        table_name = str(table).split('.')[-1]
+                    
+                    # Only add if it's a valid string
+                    if table_name and isinstance(table_name, str):
+                        table_names.append(table_name)
+                        
+                except Exception as e:
+                    logger.warning(f"Could not process table identifier {table}: {e}")
+                    continue
+            
+            # Remove duplicates and sort
+            table_names = sorted(list(set(table_names)))
+            
+            logger.info(f"Successfully listed {len(table_names)} tables in namespace '{namespace}'")
             return {"tables": table_names}
             
         except Exception as e:
