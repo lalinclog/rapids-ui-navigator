@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { createIcebergDataset, getIcebergNamespaces } from '@/lib/api/datasets';
+import authService from '@/services/AuthService';
 
 interface CreateTableFormProps {
   onSuccess: () => void;
@@ -28,11 +29,17 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
 
   const { data: namespaces } = useQuery({
     queryKey: ['iceberg-namespaces'],
-    queryFn: getIcebergNamespaces,
+    queryFn: async () => {
+      const token = await authService.getValidToken();
+      return getIcebergNamespaces(token || undefined);
+    },
   });
 
   const createTableMutation = useMutation({
-    mutationFn: createIcebergDataset,
+    mutationFn: async (dataset: typeof formData & { source_id: number }) => {
+      const token = await authService.getValidToken();
+      return createIcebergDataset(dataset, token || undefined);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['iceberg-tables'] });
       toast({
