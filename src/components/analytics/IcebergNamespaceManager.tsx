@@ -144,13 +144,16 @@ const IcebergNamespaceManager = () => {
       
       // Use Iceberg API with token
       const namespacesData = await listNamespaces(token || undefined);
+      console.log('Fetched namespaces:', namespacesData);
       setNamespaces(namespacesData);
       
       // Fetch details for each namespace
       const namespacesWithDetailsData = await Promise.all(
-        namespacesData.map(async (namespaceName) => {
+        namespacesData.map(async (namespaceName: string) => {
           try {
+            console.log('Fetching details for namespace:', namespaceName);
             const details = await getNamespaceDetails(namespaceName, token || undefined);
+            console.log('Namespace details:', details);
             return details;
           } catch (error) {
             console.error(`Error fetching details for namespace ${namespaceName}:`, error);
@@ -162,6 +165,7 @@ const IcebergNamespaceManager = () => {
         })
       );
       
+      console.log('Namespaces with details:', namespacesWithDetailsData);
       setNamespacesWithDetails(namespacesWithDetailsData);
     } catch (error) {
       console.error('Error fetching namespaces:', error);
@@ -175,13 +179,25 @@ const IcebergNamespaceManager = () => {
     }
   };
 
-  const fetchNamespaceProperties = async (namespace: string) => {
+  const fetchNamespaceProperties = async (namespaceName: string) => {
+    console.log('Fetching properties for namespace:', namespaceName, typeof namespaceName);
     setLoading(true);
     try {
       const token = await AuthService.getValidToken();
       
+      // Ensure we're passing a string, not an object
+      if (typeof namespaceName !== 'string') {
+        console.error('Invalid namespace name type:', typeof namespaceName, namespaceName);
+        toast({
+          title: "Error",
+          description: "Invalid namespace name",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       // Use Iceberg API with token
-      const namespaceDetails = await getNamespaceDetails(namespace, token || undefined);
+      const namespaceDetails = await getNamespaceDetails(namespaceName, token || undefined);
       const properties = namespaceDetails.properties || {};
       
       // Parse owner information from the properties
@@ -209,7 +225,7 @@ const IcebergNamespaceManager = () => {
       });
       
       setNamespaceProperties(properties);
-      setSelectedNamespace(namespace);
+      setSelectedNamespace(namespaceName);
       setShowEditForm(true);
     } catch (error) {
       console.error('Error fetching namespace properties:', error);
@@ -298,17 +314,17 @@ const IcebergNamespaceManager = () => {
     }
   };
 
-  const handleDeleteNamespace = async (namespace: string) => {
-    if (window.confirm(`Are you sure you want to delete namespace "${namespace}"?`)) {
+  const handleDeleteNamespace = async (namespaceName: string) => {
+    if (window.confirm(`Are you sure you want to delete namespace "${namespaceName}"?`)) {
       setLoading(true);
       try {
         const token = await AuthService.getValidToken();
         
         // Use Iceberg API with token
-        await deleteNamespace(namespace, token || undefined);
+        await deleteNamespace(namespaceName, token || undefined);
         toast({
           title: "Success",
-          description: `Namespace "${namespace}" deleted successfully`,
+          description: `Namespace "${namespaceName}" deleted successfully`,
         });
         fetchNamespaces();
       } catch (error: any) {
