@@ -70,23 +70,35 @@ export interface IcebergTable {
 }
 
 /**
- * Get Iceberg namespaces - using the backend API
+ * Get Iceberg namespaces - using the backend API with token support
  */
-export async function getIcebergNamespaces(): Promise<string[]> {
-  const response = await get<{namespaces: string[]}>("/api/iceberg/namespaces")
-  return response.namespaces
+export async function getIcebergNamespaces(token?: string): Promise<string[]> {
+  try {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    const response = await get<{namespaces: string[]}>("/api/iceberg/namespaces", config)
+    return response.namespaces
+  } catch (error) {
+    console.error('Error getting Iceberg namespaces:', error);
+    throw error;
+  }
 }
 
 /**
- * Get Iceberg tables in a namespace - using the backend API
+ * Get Iceberg tables in a namespace - using the backend API with token support
  */
-export async function getIcebergTables(namespace: string): Promise<IcebergTable[]> {
-  const response = await get<{tables: IcebergTable[]}>(`/api/iceberg/namespaces/${namespace}/tables`)
-  return response.tables
+export async function getIcebergTables(namespace: string, token?: string): Promise<IcebergTable[]> {
+  try {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    const response = await get<{tables: IcebergTable[]}>(`/api/iceberg/namespaces/${namespace}/tables`, config)
+    return response.tables
+  } catch (error) {
+    console.error('Error getting Iceberg tables:', error);
+    throw error;
+  }
 }
 
 /**
- * Create Iceberg dataset - using the backend API
+ * Create Iceberg dataset - using the backend API with token support
  */
 export async function createIcebergDataset(dataset: {
   name: string;
@@ -97,21 +109,34 @@ export async function createIcebergDataset(dataset: {
   bucket: string;
   base_path?: string;
   csv_path?: string;
-}): Promise<IcebergDataset> {
-  return post<IcebergDataset>("/api/iceberg/datasets", dataset)
+}, token?: string): Promise<IcebergDataset> {
+  try {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    return post<IcebergDataset>("/api/iceberg/datasets", dataset, config)
+  } catch (error) {
+    console.error('Error creating Iceberg dataset:', error);
+    throw error;
+  }
 }
 
 /**
- * Preview Iceberg table - using the backend API
+ * Preview Iceberg table - using the backend API with token support
  */
 export async function previewIcebergTable(
   namespace: string, 
   table_name: string, 
-  limit: number = 100
+  limit: number = 100,
+  token?: string
 ): Promise<any> {
-  return post<any>("/api/iceberg/preview", {
-    namespace,
-    table_name,
-    limit
-  })
+  try {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+    return post<any>("/api/iceberg/preview", {
+      namespace,
+      table_name,
+      limit
+    }, config)
+  } catch (error) {
+    console.error('Error previewing Iceberg table:', error);
+    throw error;
+  }
 }
