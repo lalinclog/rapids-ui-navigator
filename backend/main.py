@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 # ... keep existing code (other route definitions)
 
 # Iceberg REST Catalog proxy endpoints
-ICEBERG_REST_URL = "http://localhost:8181/v1"
+ICEBERG_REST_URL = "http://iceberg-rest:8181"
 
 @app.get("/api/iceberg/namespaces")
 async def list_namespaces():
@@ -21,11 +21,30 @@ async def list_namespaces():
 
 @app.post("/api/iceberg/namespaces")
 async def create_namespace(request: dict):
-    """Proxy request to Iceberg REST catalog to create namespace"""
+    """Proxy request to Iceberg REST catalog to create namespace and store in PostgreSQL"""
     try:
+        # Create namespace in Iceberg REST catalog
         response = requests.post(f"{ICEBERG_REST_URL}/namespaces", json=request)
         response.raise_for_status()
-        return response.json()
+        iceberg_response = response.json()
+        
+        # Also store in PostgreSQL for BI dashboard integration
+        from backend.services.postgres_service import PostgresService
+        postgres_service = PostgresService()
+        
+        # Insert into iceberg_namespaces table
+        postgres_service.execute_query("""
+            INSERT INTO spark_rapids.public.iceberg_namespaces (name, properties, created_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (name) DO UPDATE SET
+                properties = EXCLUDED.properties,
+                updated_at = NOW()
+        """, (
+            request.get('name'),
+            json.dumps(iceberg_response.get('properties', {}))
+        ))
+        
+        return iceberg_response
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error communicating with Iceberg REST catalog: {str(e)}")
 
@@ -45,7 +64,22 @@ async def update_namespace_properties(namespace: str, request: dict):
     try:
         response = requests.put(f"{ICEBERG_REST_URL}/namespaces/{namespace}", json=request)
         response.raise_for_status()
-        return response.json()
+        iceberg_response = response.json()
+        
+        # Also update in PostgreSQL
+        from backend.services.postgres_service import PostgresService
+        postgres_service = PostgresService()
+        
+        postgres_service.execute_query("""
+            UPDATE spark_rapids.public.iceberg_namespaces 
+            SET properties = %s, updated_at = NOW()
+            WHERE name = %s
+        """, (
+            json.dumps(iceberg_response.get('properties', {})),
+            namespace
+        ))
+        
+        return iceberg_response
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error communicating with Iceberg REST catalog: {str(e)}")
 
@@ -55,6 +89,15 @@ async def delete_namespace(namespace: str):
     try:
         response = requests.delete(f"{ICEBERG_REST_URL}/namespaces/{namespace}")
         response.raise_for_status()
+        
+        # Also delete from PostgreSQL
+        from backend.services.postgres_service import PostgresService
+        postgres_service = PostgresService()
+        
+        postgres_service.execute_query("""
+            DELETE FROM spark_rapids.public.iceberg_namespaces WHERE name = %s
+        """, (namespace,))
+        
         return {"success": True}
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error communicating with Iceberg REST catalog: {str(e)}")
@@ -75,7 +118,27 @@ async def get_table_details(namespace: str, table_name: str):
     try:
         response = requests.get(f"{ICEBERG_REST_URL}/namespaces/{namespace}/tables/{table_name}")
         response.raise_for_status()
-        return response.json()
+        iceberg_response = response.json()
+        
+        # Also store/update table info in PostgreSQL
+        from backend.services.postgres_service import PostgresService
+        postgres_service = PostgresService()
+        
+        postgres_service.execute_query("""
+            INSERT INTO spark_rapids.public.iceberg_tables (name, namespace, location, schema_info, created_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            ON CONFLICT (name, namespace) DO UPDATE SET
+                location = EXCLUDED.location,
+                schema_info = EXCLUDED.schema_info,
+                updated_at = NOW()
+        """, (
+            table_name,
+            namespace,
+            iceberg_response.get('metadata', {}).get('location', ''),
+            json.dumps(iceberg_response.get('metadata', {}).get('schema', {}))
+        ))
+        
+        return iceberg_response
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error communicating with Iceberg REST catalog: {str(e)}")
 
@@ -85,6 +148,15 @@ async def delete_table(namespace: str, table_name: str):
     try:
         response = requests.delete(f"{ICEBERG_REST_URL}/namespaces/{namespace}/tables/{table_name}")
         response.raise_for_status()
+        
+        # Also delete from PostgreSQL
+        from backend.services.postgres_service import PostgresService
+        postgres_service = PostgresService()
+        
+        postgres_service.execute_query("""
+            DELETE FROM spark_rapids.public.iceberg_tables WHERE name = %s AND namespace = %s
+        """, (table_name, namespace))
+        
         return {"success": True}
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error communicating with Iceberg REST catalog: {str(e)}")
