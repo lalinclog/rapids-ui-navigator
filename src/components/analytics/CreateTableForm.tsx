@@ -17,6 +17,8 @@ interface CreateTableFormProps {
 }
 
 const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }) => {
+  console.log('CreateTableForm: Component rendered with props:', { onSuccess, onCancel });
+  
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: '',
@@ -28,20 +30,37 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
     csv_path: ''
   });
 
-  const { data: namespaces } = useQuery({
+  console.log('CreateTableForm: Initial formData state:', formData);
+
+  const { data: namespaces, isLoading: namespacesLoading, error: namespacesError } = useQuery({
     queryKey: ['iceberg-namespaces'],
     queryFn: async () => {
+      console.log('CreateTableForm: Fetching namespaces...');
       const token = await authService.getValidToken();
-      return getIcebergNamespaces(token || undefined);
+      console.log('CreateTableForm: Got token for namespaces:', !!token);
+      const result = await getIcebergNamespaces(token || undefined);
+      console.log('CreateTableForm: Namespaces result:', result);
+      return result;
     },
+  });
+
+  console.log('CreateTableForm: Namespaces query state:', {
+    data: namespaces,
+    isLoading: namespacesLoading,
+    error: namespacesError
   });
 
   const createTableMutation = useMutation({
     mutationFn: async (dataset: typeof formData & { source_id: number }) => {
+      console.log('CreateTableForm: Creating table with dataset:', dataset);
       const token = await authService.getValidToken();
-      return createIcebergDataset(dataset, token || undefined);
+      console.log('CreateTableForm: Got token for creation:', !!token);
+      const result = await createIcebergDataset(dataset, token || undefined);
+      console.log('CreateTableForm: Create table result:', result);
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('CreateTableForm: Table created successfully:', data);
       queryClient.invalidateQueries({ queryKey: ['iceberg-tables'] });
       toast({
         title: 'Table created',
@@ -50,6 +69,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
       onSuccess();
     },
     onError: (error) => {
+      console.error('CreateTableForm: Error creating table:', error);
       toast({
         variant: 'destructive',
         title: 'Error creating table',
@@ -60,7 +80,10 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('CreateTableForm: Form submitted with data:', formData);
+    
     if (!formData.name || !formData.namespace || !formData.table_name) {
+      console.log('CreateTableForm: Validation failed - missing required fields');
       toast({
         variant: 'destructive',
         title: 'Validation Error',
@@ -69,15 +92,25 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
       return;
     }
 
-    createTableMutation.mutate({
+    const datasetToCreate = {
       ...formData,
       source_id: 1, // Default source ID - adjust as needed
-    });
+    };
+    
+    console.log('CreateTableForm: About to create dataset with:', datasetToCreate);
+    createTableMutation.mutate(datasetToCreate);
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    console.log('CreateTableForm: Input changed -', field, ':', value);
+    setFormData(prev => {
+      const newData = { ...prev, [field]: value };
+      console.log('CreateTableForm: Updated formData:', newData);
+      return newData;
+    });
   };
+
+  console.log('CreateTableForm: About to render form. Namespaces available:', namespaces);
 
   return (
     <div>
@@ -110,16 +143,22 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
 
         <div>
           <Label htmlFor="namespace">Namespace *</Label>
-          <Select value={formData.namespace} onValueChange={(value) => handleInputChange('namespace', value)}>
+          <Select value={formData.namespace} onValueChange={(value) => {
+            console.log('CreateTableForm: Namespace selected:', value);
+            handleInputChange('namespace', value);
+          }}>
             <SelectTrigger>
               <SelectValue placeholder="Select namespace" />
             </SelectTrigger>
             <SelectContent>
-              {namespaces && Array.isArray(namespaces) && namespaces.map((namespace) => (
-                <SelectItem key={namespace} value={namespace}>
-                  {namespace}
-                </SelectItem>
-              ))}
+              {namespaces && Array.isArray(namespaces) && namespaces.map((namespace) => {
+                console.log('CreateTableForm: Rendering namespace option:', namespace);
+                return (
+                  <SelectItem key={namespace} value={namespace}>
+                    {namespace}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
