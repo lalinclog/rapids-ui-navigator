@@ -145,28 +145,50 @@ const IcebergNamespaceManager = () => {
       
       // Use Iceberg API with token
       const namespacesData = await listNamespaces(token || undefined);
-      console.log('Fetched namespaces:', namespacesData);
-      setNamespaces(namespacesData);
+      console.log('Raw namespaces response:', namespacesData);
       
-      // Fetch details for each namespace
-      const namespacesWithDetailsData = await Promise.all(
-        namespacesData.map(async (namespaceName: string) => {
-          try {
-            console.log('Fetching details for namespace:', namespaceName);
-            const details = await getNamespaceDetails(namespaceName, token || undefined);
-            console.log('Namespace details:', details);
-            return details;
-          } catch (error) {
-            console.error(`Error fetching details for namespace ${namespaceName}:`, error);
-            return {
-              name: namespaceName,
-              properties: {}
-            };
-          }
-        })
-      );
+      // Handle both string array and object array responses
+      let namespaceNames: string[];
+      let namespacesWithDetailsData: ApiNamespace[];
       
-      console.log('Namespaces with details:', namespacesWithDetailsData);
+      if (Array.isArray(namespacesData) && namespacesData.length > 0) {
+        if (typeof namespacesData[0] === 'string') {
+          // Response is array of strings
+          namespaceNames = namespacesData as string[];
+          console.log('Processing namespaces as string array:', namespaceNames);
+          
+          // Fetch details for each namespace
+          namespacesWithDetailsData = await Promise.all(
+            namespaceNames.map(async (namespaceName: string) => {
+              try {
+                console.log('Fetching details for namespace:', namespaceName);
+                const details = await getNamespaceDetails(namespaceName, token || undefined);
+                console.log('Namespace details:', details);
+                return details;
+              } catch (error) {
+                console.error(`Error fetching details for namespace ${namespaceName}:`, error);
+                return {
+                  name: namespaceName,
+                  properties: {}
+                };
+              }
+            })
+          );
+        } else {
+          // Response is array of objects
+          console.log('Processing namespaces as object array');
+          namespacesWithDetailsData = namespacesData as ApiNamespace[];
+          namespaceNames = namespacesWithDetailsData.map(ns => ns.name);
+        }
+      } else {
+        namespaceNames = [];
+        namespacesWithDetailsData = [];
+      }
+      
+      console.log('Final namespace names:', namespaceNames);
+      console.log('Final namespaces with details:', namespacesWithDetailsData);
+      
+      setNamespaces(namespaceNames);
       setNamespacesWithDetails(namespacesWithDetailsData);
     } catch (error) {
       console.error('Error fetching namespaces:', error);
@@ -650,7 +672,6 @@ const IcebergNamespaceManager = () => {
                       size="sm"
                       onClick={() => {
                         console.log('Edit button clicked for namespace:', namespace.name);
-                        // Ensure we're passing just the string name, not the object
                         fetchNamespaceProperties(namespace.name);
                       }}
                     >
@@ -662,7 +683,6 @@ const IcebergNamespaceManager = () => {
                       size="sm"
                       onClick={() => {
                         console.log('Delete button clicked for namespace:', namespace.name);
-                        // Ensure we're passing just the string name, not the object
                         handleDeleteNamespace(namespace.name);
                       }}
                     >
