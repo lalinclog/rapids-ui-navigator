@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +29,11 @@ interface Table {
   current_snapshot_id?: string; // Made optional to match IcebergTable
 }
 
+interface NamespaceItem {
+  name: string;
+  properties?: Record<string, string>;
+}
+
 const IcebergTableManager: React.FC = () => {
   const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -35,13 +41,29 @@ const IcebergTableManager: React.FC = () => {
   const [selectedTable, setSelectedTable] = useState<{ namespace: string; name: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'schema' | 'snapshots'>('overview');
 
-  const { data: namespaces, isLoading: isLoadingNamespaces, error: errorNamespaces } = useQuery({
+  const { data: namespacesData, isLoading: isLoadingNamespaces, error: errorNamespaces } = useQuery({
     queryKey: ['iceberg-namespaces'],
     queryFn: async () => {
       const token = await authService.getValidToken();
-      return await listNamespaces(token || undefined);
+      const result = await listNamespaces(token || undefined);
+      console.log('Namespaces query result:', result);
+      
+      // Handle both string array and object array responses
+      if (Array.isArray(result) && result.length > 0) {
+        if (typeof result[0] === 'string') {
+          // Convert string array to object array
+          return result.map((name: string) => ({ name, properties: {} }));
+        } else {
+          // Already object array
+          return result as NamespaceItem[];
+        }
+      }
+      return [];
     },
   });
+
+  // Extract namespace names for other queries
+  const namespaces = namespacesData?.map(ns => ns.name) || [];
 
   const { data: tableNames, isLoading: isLoadingTables, error: errorTables } = useQuery({
     queryKey: ['iceberg-tables', selectedNamespace],
@@ -152,20 +174,20 @@ const IcebergTableManager: React.FC = () => {
       return <div>Error loading namespaces: {errorNamespaces.message}</div>;
     }
 
-    if (!namespaces || namespaces.length === 0) {
+    if (!namespacesData || namespacesData.length === 0) {
       return <div>No namespaces found.</div>;
     }
 
     return (
       <div className="space-y-2">
-        {namespaces.map((namespace) => (
+        {namespacesData.map((namespace) => (
           <Button
-            key={namespace}
-            variant={selectedNamespace === namespace ? 'secondary' : 'outline'}
-            onClick={() => handleNamespaceSelect(namespace)}
+            key={namespace.name}
+            variant={selectedNamespace === namespace.name ? 'secondary' : 'outline'}
+            onClick={() => handleNamespaceSelect(namespace.name)}
             className="w-full justify-start"
           >
-            {namespace}
+            {namespace.name}
           </Button>
         ))}
       </div>
