@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -180,21 +181,24 @@ const IcebergNamespaceManager = () => {
   };
 
   const fetchNamespaceProperties = async (namespaceName: string) => {
-    console.log('Fetching properties for namespace:', namespaceName, typeof namespaceName);
+    // Add extra validation and logging
+    console.log('fetchNamespaceProperties called with:', namespaceName, 'type:', typeof namespaceName);
+    
+    if (!namespaceName || typeof namespaceName !== 'string') {
+      console.error('Invalid namespace name:', namespaceName);
+      toast({
+        title: "Error",
+        description: "Invalid namespace name provided",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const token = await AuthService.getValidToken();
       
-      // Ensure we're passing a string, not an object
-      if (typeof namespaceName !== 'string') {
-        console.error('Invalid namespace name type:', typeof namespaceName, namespaceName);
-        toast({
-          title: "Error",
-          description: "Invalid namespace name",
-          variant: "destructive"
-        });
-        return;
-      }
+      console.log('Fetching details for namespace string:', namespaceName);
       
       // Use Iceberg API with token
       const namespaceDetails = await getNamespaceDetails(namespaceName, token || undefined);
@@ -644,7 +648,11 @@ const IcebergNamespaceManager = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => fetchNamespaceProperties(namespace.name)}
+                      onClick={() => {
+                        console.log('Edit button clicked for namespace:', namespace.name);
+                        // Ensure we're passing just the string name, not the object
+                        fetchNamespaceProperties(namespace.name);
+                      }}
                     >
                       <Edit2 className="h-4 w-4 mr-2" />
                       Edit
@@ -652,7 +660,11 @@ const IcebergNamespaceManager = () => {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => handleDeleteNamespace(namespace.name)}
+                      onClick={() => {
+                        console.log('Delete button clicked for namespace:', namespace.name);
+                        // Ensure we're passing just the string name, not the object
+                        handleDeleteNamespace(namespace.name);
+                      }}
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Delete
