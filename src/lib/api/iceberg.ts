@@ -148,11 +148,20 @@ export async function listTables(namespace: string, token?: string): Promise<str
   try {
     const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
     const response = await get<{identifiers: Array<string[]>}>(`/api/iceberg/namespaces/${namespace}/tables`, config)
+    console.log('Raw listTables response:', response);
+    
+    // Handle the case where response.identifiers might be undefined
+    if (!response.identifiers) {
+      console.log('No identifiers found in response, returning empty array');
+      return [];
+    }
+    
     // Iceberg returns table identifiers as arrays, we need just the table names
     return response.identifiers.map(identifier => identifier[identifier.length - 1])
   } catch (error) {
     console.error('Error listing tables:', error);
-    throw error;
+    // Return empty array instead of throwing to gracefully handle empty namespaces
+    return [];
   }
 }
 

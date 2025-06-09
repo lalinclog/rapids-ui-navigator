@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -175,9 +174,14 @@ const IcebergNamespaceManager = () => {
             })
           );
         } else {
-          // Response is array of objects
+          // Response is array of objects - properly type cast
           console.log('Processing namespaces as object array');
-          namespacesWithDetailsData = namespacesData as ApiNamespace[];
+          namespacesWithDetailsData = namespacesData.map(ns => {
+            if (typeof ns === 'string') {
+              return { name: ns, properties: {} };
+            }
+            return ns as ApiNamespace;
+          });
           namespaceNames = namespacesWithDetailsData.map(ns => ns.name);
         }
       } else {

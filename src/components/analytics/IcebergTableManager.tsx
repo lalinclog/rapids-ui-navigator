@@ -54,8 +54,13 @@ const IcebergTableManager: React.FC = () => {
           // Convert string array to object array
           return result.map((name: string) => ({ name, properties: {} }));
         } else {
-          // Already object array
-          return result as NamespaceItem[];
+          // Already object array - properly type cast
+          return result.map(ns => {
+            if (typeof ns === 'string') {
+              return { name: ns, properties: {} };
+            }
+            return ns as NamespaceItem;
+          });
         }
       }
       return [];
@@ -70,7 +75,15 @@ const IcebergTableManager: React.FC = () => {
     queryFn: async () => {
       if (!selectedNamespace) return [];
       const token = await authService.getValidToken();
-      return await listTables(selectedNamespace, token || undefined);
+      console.log('Fetching tables for namespace:', selectedNamespace);
+      try {
+        const result = await listTables(selectedNamespace, token || undefined);
+        console.log('Tables result:', result);
+        return result || [];
+      } catch (error) {
+        console.error('Error fetching tables:', error);
+        return [];
+      }
     },
     enabled: !!selectedNamespace,
   });
@@ -207,8 +220,12 @@ const IcebergTableManager: React.FC = () => {
       return <div>Error loading tables: {errorTables.message}</div>;
     }
 
-    if (!tables || tables.length === 0) {
+    if (!tableNames || tableNames.length === 0) {
       return <div>No tables found in the selected namespace.</div>;
+    }
+
+    if (!tables || tables.length === 0) {
+      return <div>Loading table details...</div>;
     }
 
     return (
