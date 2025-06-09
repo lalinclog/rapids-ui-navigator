@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { DialogDescription } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
 import { createIcebergDataset, getIcebergNamespaces } from '@/lib/api/datasets';
 import authService from '@/services/AuthService';
@@ -79,95 +80,101 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <Label htmlFor="name">Dataset Name *</Label>
-        <Input
-          id="name"
-          value={formData.name}
-          onChange={(e) => handleInputChange('name', e.target.value)}
-          placeholder="Enter dataset name"
-          required
-        />
-      </div>
+    <div>
+      <DialogDescription>
+        Create a new Iceberg table by filling out the form below.
+      </DialogDescription>
+      
+      <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+        <div>
+          <Label htmlFor="name">Dataset Name *</Label>
+          <Input
+            id="name"
+            value={formData.name}
+            onChange={(e) => handleInputChange('name', e.target.value)}
+            placeholder="Enter dataset name"
+            required
+          />
+        </div>
 
-      <div>
-        <Label htmlFor="description">Description</Label>
-        <Textarea
-          id="description"
-          value={formData.description}
-          onChange={(e) => handleInputChange('description', e.target.value)}
-          placeholder="Enter description"
-          rows={3}
-        />
-      </div>
+        <div>
+          <Label htmlFor="description">Description</Label>
+          <Textarea
+            id="description"
+            value={formData.description}
+            onChange={(e) => handleInputChange('description', e.target.value)}
+            placeholder="Enter description"
+            rows={3}
+          />
+        </div>
 
-      <div>
-        <Label htmlFor="namespace">Namespace *</Label>
-        <Select value={formData.namespace} onValueChange={(value) => handleInputChange('namespace', value)}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select namespace" />
-          </SelectTrigger>
-          <SelectContent>
-            {namespaces && Array.isArray(namespaces) && namespaces.map((namespace) => (
-              <SelectItem key={namespace} value={namespace}>
-                {namespace}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        <div>
+          <Label htmlFor="namespace">Namespace *</Label>
+          <Select value={formData.namespace} onValueChange={(value) => handleInputChange('namespace', value)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select namespace" />
+            </SelectTrigger>
+            <SelectContent>
+              {namespaces && Array.isArray(namespaces) && namespaces.map((namespace) => (
+                <SelectItem key={namespace} value={namespace}>
+                  {namespace}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      <div>
-        <Label htmlFor="table_name">Table Name *</Label>
-        <Input
-          id="table_name"
-          value={formData.table_name}
-          onChange={(e) => handleInputChange('table_name', e.target.value)}
-          placeholder="Enter table name"
-          required
-        />
-      </div>
+        <div>
+          <Label htmlFor="table_name">Table Name *</Label>
+          <Input
+            id="table_name"
+            value={formData.table_name}
+            onChange={(e) => handleInputChange('table_name', e.target.value)}
+            placeholder="Enter table name"
+            required
+          />
+        </div>
 
-      <div>
-        <Label htmlFor="bucket">Bucket</Label>
-        <Input
-          id="bucket"
-          value={formData.bucket}
-          onChange={(e) => handleInputChange('bucket', e.target.value)}
-          placeholder="Enter bucket name"
-        />
-      </div>
+        <div>
+          <Label htmlFor="bucket">Bucket</Label>
+          <Input
+            id="bucket"
+            value={formData.bucket}
+            onChange={(e) => handleInputChange('bucket', e.target.value)}
+            placeholder="Enter bucket name"
+          />
+        </div>
 
-      <div>
-        <Label htmlFor="base_path">Base Path</Label>
-        <Input
-          id="base_path"
-          value={formData.base_path}
-          onChange={(e) => handleInputChange('base_path', e.target.value)}
-          placeholder="Enter base path"
-        />
-      </div>
+        <div>
+          <Label htmlFor="base_path">Base Path</Label>
+          <Input
+            id="base_path"
+            value={formData.base_path}
+            onChange={(e) => handleInputChange('base_path', e.target.value)}
+            placeholder="Enter base path"
+          />
+        </div>
 
-      <div>
-        <Label htmlFor="csv_path">CSV Path</Label>
-        <Input
-          id="csv_path"
-          value={formData.csv_path}
-          onChange={(e) => handleInputChange('csv_path', e.target.value)}
-          placeholder="Enter CSV path"
-        />
-      </div>
+        <div>
+          <Label htmlFor="csv_path">CSV Path</Label>
+          <Input
+            id="csv_path"
+            value={formData.csv_path}
+            onChange={(e) => handleInputChange('csv_path', e.target.value)}
+            placeholder="Enter CSV path"
+          />
+        </div>
 
-      <div className="flex justify-end space-x-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={createTableMutation.isPending}>
-          {createTableMutation.isPending ? 'Creating...' : 'Create Table'}
-        </Button>
-      </div>
-    </form>
+        <div className="flex justify-end space-x-2">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={createTableMutation.isPending}>
+            {createTableMutation.isPending ? 'Creating...' : 'Create Table'}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 };
 
