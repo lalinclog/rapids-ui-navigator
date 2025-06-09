@@ -15,16 +15,17 @@ import authService from '@/services/AuthService';
 interface CreateTableFormProps {
   onSuccess: () => void;
   onCancel: () => void;
+  selectedNamespace?: string; // Add this to pre-select namespace if passed from parent
 }
 
-const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }) => {
-  console.log('CreateTableForm: Component rendered with props:', { onSuccess, onCancel });
+const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, selectedNamespace }) => {
+  console.log('CreateTableForm: Component rendered with props:', { onSuccess, onCancel, selectedNamespace });
   
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    namespace: '',
+    namespace: selectedNamespace || '', // Pre-populate if provided
     table_name: '',
     bucket: '',
     base_path: '',
@@ -41,8 +42,27 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
       const token = await authService.getValidToken();
       console.log('CreateTableForm: Got token for namespaces:', !!token);
       const result = await listNamespaces(token || undefined);
-      console.log('CreateTableForm: Namespaces result:', result);
-      return result;
+      console.log('CreateTableForm: Raw namespaces result:', result);
+      console.log('CreateTableForm: Result type:', typeof result, 'Array?', Array.isArray(result));
+      
+      // Ensure we always return an array of strings
+      if (Array.isArray(result)) {
+        const stringNamespaces = result.map(ns => {
+          if (typeof ns === 'string') {
+            return ns;
+          } else if (ns && typeof ns === 'object' && 'name' in ns) {
+            return ns.name;
+          } else {
+            console.warn('CreateTableForm: Unexpected namespace format:', ns);
+            return String(ns);
+          }
+        });
+        console.log('CreateTableForm: Processed namespaces:', stringNamespaces);
+        return stringNamespaces;
+      }
+      
+      console.log('CreateTableForm: Result is not an array, returning empty array');
+      return [];
     },
   });
 
@@ -154,9 +174,9 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
             </SelectTrigger>
             <SelectContent>
               {namespaces && Array.isArray(namespaces) && namespaces.map((namespace) => {
-                console.log('CreateTableForm: Rendering namespace option:', namespace);
-                // Ensure we're working with strings
-                const namespaceString = typeof namespace === 'string' ? namespace : namespace;
+                console.log('CreateTableForm: Rendering namespace option:', namespace, 'type:', typeof namespace);
+                // Double-check that we have a string
+                const namespaceString = String(namespace);
                 return (
                   <SelectItem key={namespaceString} value={namespaceString}>
                     {namespaceString}

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,12 +40,14 @@ const IcebergTableManager: React.FC = () => {
   const [selectedTable, setSelectedTable] = useState<{ namespace: string; name: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'schema' | 'snapshots'>('overview');
 
+  console.log('IcebergTableManager: Component state:', { selectedNamespace, isCreateDialogOpen });
+
   const { data: namespacesData, isLoading: isLoadingNamespaces, error: errorNamespaces } = useQuery({
     queryKey: ['iceberg-namespaces'],
     queryFn: async () => {
       const token = await authService.getValidToken();
       const result = await listNamespaces(token || undefined);
-      console.log('Namespaces query result:', result);
+      console.log('IcebergTableManager: Namespaces query result:', result);
       
       // Handle both string array and object array responses
       if (Array.isArray(result) && result.length > 0) {
@@ -160,6 +161,7 @@ const IcebergTableManager: React.FC = () => {
   });
 
   const handleNamespaceSelect = (namespace: string) => {
+    console.log('IcebergTableManager: Namespace selected:', namespace);
     setSelectedNamespace(namespace);
   };
 
@@ -313,17 +315,25 @@ const IcebergTableManager: React.FC = () => {
         </div>
       </div>
 
-      <Dialog open={isCreateDialogOpen} onOpenChange={(open) => setIsCreateDialogOpen(open)}>
+      <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+        console.log('IcebergTableManager: Create dialog open changed:', open);
+        setIsCreateDialogOpen(open);
+      }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create New Iceberg Table</DialogTitle>
           </DialogHeader>
           <CreateTableForm 
+            selectedNamespace={selectedNamespace || undefined}
             onSuccess={() => {
+              console.log('IcebergTableManager: Table creation successful');
               setIsCreateDialogOpen(false);
               queryClient.invalidateQueries({ queryKey: ['iceberg-tables', selectedNamespace] });
             }}
-            onCancel={() => setIsCreateDialogOpen(false)}
+            onCancel={() => {
+              console.log('IcebergTableManager: Table creation cancelled');
+              setIsCreateDialogOpen(false);
+            }}
           />
         </DialogContent>
       </Dialog>
