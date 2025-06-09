@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { DialogDescription } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import { createIcebergDataset, getIcebergNamespaces } from '@/lib/api/datasets';
+import { createIcebergDataset } from '@/lib/api/datasets';
+import { listNamespaces } from '@/lib/api/iceberg';
 import authService from '@/services/AuthService';
 
 interface CreateTableFormProps {
@@ -32,13 +33,14 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
 
   console.log('CreateTableForm: Initial formData state:', formData);
 
+  // Use listNamespaces from iceberg.ts instead of getIcebergNamespaces from datasets.ts
   const { data: namespaces, isLoading: namespacesLoading, error: namespacesError } = useQuery({
     queryKey: ['iceberg-namespaces'],
     queryFn: async () => {
       console.log('CreateTableForm: Fetching namespaces...');
       const token = await authService.getValidToken();
       console.log('CreateTableForm: Got token for namespaces:', !!token);
-      const result = await getIcebergNamespaces(token || undefined);
+      const result = await listNamespaces(token || undefined);
       console.log('CreateTableForm: Namespaces result:', result);
       return result;
     },
@@ -153,9 +155,11 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel }
             <SelectContent>
               {namespaces && Array.isArray(namespaces) && namespaces.map((namespace) => {
                 console.log('CreateTableForm: Rendering namespace option:', namespace);
+                // Ensure we're working with strings
+                const namespaceString = typeof namespace === 'string' ? namespace : namespace;
                 return (
-                  <SelectItem key={namespace} value={namespace}>
-                    {namespace}
+                  <SelectItem key={namespaceString} value={namespaceString}>
+                    {namespaceString}
                   </SelectItem>
                 );
               })}
