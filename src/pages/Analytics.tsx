@@ -8,7 +8,6 @@ import DataSources from '@/components/analytics/DataSources';
 import Datasets from '@/components/analytics/Datasets';
 import Charts from '@/components/analytics/Charts';
 import Dashboards from '@/components/analytics/Dashboards';
-import IcebergNamespaceManager from '@/components/analytics/IcebergNamespaceManager';
 import IcebergTableManager from '@/components/analytics/IcebergTableManager';
 
 // Define supported chart types to maintain consistency across the application
@@ -29,13 +28,12 @@ const Analytics = () => {
       />
       
       <Tabs defaultValue="dashboards" className="w-full">
-        <TabsList className="grid grid-cols-6 mb-8">
+        <TabsList className="grid grid-cols-5 mb-8">
           <TabsTrigger value="dashboards">Dashboards</TabsTrigger>
           <TabsTrigger value="charts">Charts</TabsTrigger>
           <TabsTrigger value="datasets">Datasets</TabsTrigger>
           <TabsTrigger value="sources">Data Sources</TabsTrigger>
-          <TabsTrigger value="namespaces">Namespaces</TabsTrigger>
-          <TabsTrigger value="tables">Tables</TabsTrigger>
+          <TabsTrigger value="tables">Iceberg Tables</TabsTrigger>
         </TabsList>
         
         <TabsContent value="sources">
@@ -59,12 +57,6 @@ const Analytics = () => {
         <TabsContent value="dashboards">
           <Card className="p-6">
             <Dashboards />
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="namespaces">
-          <Card className="p-6">
-            <IcebergNamespaceManager />
           </Card>
         </TabsContent>
 

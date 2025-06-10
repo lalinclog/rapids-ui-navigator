@@ -81,9 +81,27 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
     }
   }, [selectedSourceId]);
 
-  // Auto-generate bucket and base_path based on table_name
+  // Get selected data source info
+  const selectedDataSource = dataSources?.find((ds: DataSource) => ds.id === formData.source_id);
+  const isIcebergCompatible = selectedDataSource?.type === 'minio' || selectedDataSource?.type === 'iceberg';
+
+  // Reset Iceberg-specific fields when switching to non-Iceberg source
   useEffect(() => {
-    if (formData.table_name) {
+    if (selectedDataSource && !isIcebergCompatible) {
+      console.log('CreateTableForm: Switching to non-Iceberg source, clearing Iceberg fields');
+      setFormData(prev => ({
+        ...prev,
+        namespace: '',
+        bucket: '',
+        base_path: '',
+        csv_path: ''
+      }));
+    }
+  }, [selectedDataSource, isIcebergCompatible]);
+
+  // Auto-generate bucket and base_path based on table_name for Iceberg sources
+  useEffect(() => {
+    if (isIcebergCompatible && formData.table_name) {
       const sanitizedTableName = formData.table_name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
       const newBucket = `iceberg-${sanitizedTableName}`;
       const newBasePath = `/tables/${formData.namespace}/${sanitizedTableName}`;
@@ -98,11 +116,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
         base_path: newBasePath
       }));
     }
-  }, [formData.table_name, formData.namespace]);
-
-  // Get selected data source info
-  const selectedDataSource = dataSources?.find((ds: DataSource) => ds.id === formData.source_id);
-  const isIcebergCompatible = selectedDataSource?.type === 'minio' || selectedDataSource?.type === 'iceberg';
+  }, [formData.table_name, formData.namespace, isIcebergCompatible]);
 
   const { data: namespaces, isLoading: namespacesLoading, error: namespacesError } = useQuery({
     queryKey: ['iceberg-namespaces'],
@@ -184,7 +198,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
       queryClient.invalidateQueries({ queryKey: ['iceberg-tables'] });
       queryClient.invalidateQueries({ queryKey: ['datasets'] });
       toast({
-        title: 'Table created',
+        title: isIcebergCompatible ? 'Iceberg table created' : 'Dataset created',
         description: isIcebergCompatible 
           ? 'Iceberg table has been successfully created'
           : 'Dataset has been successfully created',
@@ -195,7 +209,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
       console.error('CreateTableForm: Error creating table:', error);
       toast({
         variant: 'destructive',
-        title: 'Error creating table',
+        title: `Error creating ${isIcebergCompatible ? 'table' : 'dataset'}`,
         description: error instanceof Error ? error.message : 'An unknown error occurred',
       });
     },
@@ -229,7 +243,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
     createTableMutation.mutate(formData);
   };
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | number) => {
     console.log('CreateTableForm: Input changed -', field, ':', value);
     setFormData(prev => {
       const newData = { ...prev, [field]: value };
@@ -238,15 +252,24 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
     });
   };
 
+  const getFormDescription = () => {
+    if (!selectedDataSource) {
+      return 'Create a new dataset by selecting a data source and filling out the form below.';
+    }
+    
+    if (isIcebergCompatible) {
+      return 'Create a new Iceberg table with advanced features like time travel and schema evolution.';
+    } else {
+      return `Create a new dataset by connecting to an existing ${selectedDataSource.type.toUpperCase()} table.`;
+    }
+  };
+
   console.log('CreateTableForm: About to render form. Selected source:', selectedDataSource);
 
   return (
     <div>
       <DialogDescription>
-        {isIcebergCompatible 
-          ? 'Create a new Iceberg table by filling out the form below.'
-          : 'Create a new dataset by connecting to an existing database table.'
-        }
+        {getFormDescription()}
       </DialogDescription>
       
       <form onSubmit={handleSubmit} className="space-y-4 mt-4">
@@ -276,7 +299,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
           <Label htmlFor="source_id">Data Source *</Label>
           <Select 
             value={formData.source_id.toString()} 
-            onValueChange={(value) => handleInputChange('source_id', value)}
+            onValueChange={(value) => handleInputChange('source_id', parseInt(value))}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select data source" />
@@ -284,11 +307,16 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
             <SelectContent>
               {dataSources?.map((source: DataSource) => (
                 <SelectItem key={source.id} value={source.id.toString()}>
-                  {source.name} ({source.type})
+                  {source.name} ({source.type.toUpperCase()})
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {selectedDataSource && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Selected: {selectedDataSource.name} - {isIcebergCompatible ? 'Iceberg compatible' : 'Database source'}
+            </p>
+          )}
         </div>
 
         {isIcebergCompatible && (
@@ -313,6 +341,9 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
                 })}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Namespaces can be managed in the Data Sources tab
+            </p>
           </div>
         )}
 
@@ -324,15 +355,21 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
             id="table_name"
             value={formData.table_name}
             onChange={(e) => handleInputChange('table_name', e.target.value)}
-            placeholder={isIcebergCompatible ? "Enter table name" : "Enter existing database table name"}
+            placeholder={isIcebergCompatible ? "Enter new table name" : "Enter existing database table name"}
             required
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            {isIcebergCompatible 
+              ? "This will create a new Iceberg table" 
+              : "This should be an existing table in your database"
+            }
+          </p>
         </div>
 
         {isIcebergCompatible && (
           <>
             <div>
-              <Label htmlFor="bucket">Bucket</Label>
+              <Label htmlFor="bucket">Storage Bucket</Label>
               <Input
                 id="bucket"
                 value={formData.bucket}
@@ -340,7 +377,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
                 placeholder="Auto-generated from table name"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Auto-generated based on table name
+                Auto-generated based on table name (can be customized)
               </p>
             </div>
 
@@ -353,23 +390,26 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
                 placeholder="Auto-generated from table name"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Auto-generated based on namespace and table name
+                Auto-generated based on namespace and table name (can be customized)
               </p>
             </div>
 
             <div>
-              <Label htmlFor="csv_path">CSV Path</Label>
+              <Label htmlFor="csv_path">CSV Import Path (Optional)</Label>
               <Input
                 id="csv_path"
                 value={formData.csv_path}
                 onChange={(e) => handleInputChange('csv_path', e.target.value)}
-                placeholder="Enter CSV path (optional)"
+                placeholder="Path to CSV file for initial data import"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional: Specify a CSV file path to import initial data
+              </p>
             </div>
           </>
         )}
 
-        <div className="flex justify-end space-x-2">
+        <div className="flex justify-end space-x-2 pt-4">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
