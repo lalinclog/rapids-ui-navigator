@@ -30,20 +30,34 @@ class IcebergService:
     def _get_catalog(self):
         """Initialize and return Iceberg REST catalog with proper S3 configuration"""
         if self._catalog is None:
+            # Set environment variables for AWS SDK to prevent EC2 metadata lookup
+            os.environ['AWS_REGION'] = 'us-east-1'
+            os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
+            os.environ['AWS_ACCESS_KEY_ID'] = 'minioadmin'  # Default for local MinIO
+            os.environ['AWS_SECRET_ACCESS_KEY'] = 'minioadmin'  # Default for local MinIO
+            
             # Use REST catalog with S3 configuration
             rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
             
             # Get MinIO credentials using the existing method that returns tuple
-            access_key, secret_key = self.vault.get_minio_creds()
+            try:
+                access_key, secret_key = self.vault.get_minio_creds()
+                logger.info(f"Got MinIO credentials from Vault: {access_key[:4]}...")
+            except Exception as e:
+                logger.warning(f"Could not get MinIO credentials from Vault: {e}. Using defaults.")
+                access_key, secret_key = "minioadmin", "minioadmin"
             
             # Configure catalog properties for S3/MinIO
             catalog_properties = {
                 "s3.endpoint": "http://minio:9000",
                 "s3.access-key-id": access_key,
                 "s3.secret-access-key": secret_key,
-                "s3.region": "us-east-1",  # Set default region
+                "s3.region": "us-east-1",
                 "s3.path-style-access": "true",  # Required for MinIO
-                "client.region": "us-east-1"  # Additional region config
+                "client.region": "us-east-1",
+                "s3.signer-type": "S3SignerType",
+                "warehouse": "s3a://iceberg-warehouse/",
+                "io-impl": "org.apache.iceberg.aws.s3.S3FileIO"
             }
             
             self._catalog = RestCatalog(
