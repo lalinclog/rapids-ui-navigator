@@ -25,12 +25,20 @@ interface Table {
   namespace: string;
   location: string;
   schema: any;
-  current_snapshot_id?: string; // Made optional to match IcebergTable
+  current_snapshot_id?: string;
 }
 
 interface NamespaceItem {
   name: string;
   properties?: Record<string, string>;
+}
+
+interface DataSource {
+  id: number;
+  name: string;
+  type: string;
+  connection_string: string;
+  is_active: boolean;
 }
 
 const IcebergTableManager: React.FC = () => {
@@ -41,6 +49,23 @@ const IcebergTableManager: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'schema' | 'snapshots'>('overview');
 
   console.log('IcebergTableManager: Component state:', { selectedNamespace, isCreateDialogOpen });
+
+  // Fetch data sources to find Iceberg-compatible ones
+  const { data: dataSources } = useQuery({
+    queryKey: ['data-sources'],
+    queryFn: async () => {
+      const response = await fetch('/api/bi/data-sources');
+      if (!response.ok) {
+        throw new Error('Failed to fetch data sources');
+      }
+      return response.json() as DataSource[];
+    },
+  });
+
+  // Filter for Iceberg-compatible sources
+  const icebergSources = dataSources?.filter(ds => 
+    ds.type === 'minio' || ds.type === 'iceberg'
+  ) || [];
 
   const { data: namespacesData, isLoading: isLoadingNamespaces, error: errorNamespaces } = useQuery({
     queryKey: ['iceberg-namespaces'],
@@ -289,6 +314,9 @@ const IcebergTableManager: React.FC = () => {
     );
   };
 
+  // Get the primary Iceberg source for table creation
+  const primaryIcebergSource = icebergSources.find(ds => ds.is_active) || icebergSources[0];
+
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
@@ -297,12 +325,22 @@ const IcebergTableManager: React.FC = () => {
             <Database className="h-6 w-6" />
             Iceberg Tables
           </h2>
-          <p className="text-muted-foreground">Manage your Iceberg tables</p>
+          <p className="text-muted-foreground">Manage your Iceberg tables and datasets</p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)} size="lg">
+        <Button 
+          onClick={() => setIsCreateDialogOpen(true)} 
+          size="lg"
+          disabled={!primaryIcebergSource}
+        >
           <Plus className="mr-2 h-4 w-4" /> Create Table
         </Button>
       </div>
+
+      {!primaryIcebergSource && (
+        <div className="mb-6 p-4 border border-amber-200 bg-amber-50 text-amber-700 rounded-md">
+          <p>No Iceberg-compatible data sources found. Please add a MinIO or Iceberg data source first.</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-4 gap-6">
         <div className="col-span-1">
@@ -321,14 +359,16 @@ const IcebergTableManager: React.FC = () => {
       }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Create New Iceberg Table</DialogTitle>
+            <DialogTitle>Create New Table</DialogTitle>
           </DialogHeader>
           <CreateTableForm 
             selectedNamespace={selectedNamespace || undefined}
+            selectedSourceId={primaryIcebergSource?.id}
             onSuccess={() => {
               console.log('IcebergTableManager: Table creation successful');
               setIsCreateDialogOpen(false);
               queryClient.invalidateQueries({ queryKey: ['iceberg-tables', selectedNamespace] });
+              queryClient.invalidateQueries({ queryKey: ['datasets'] });
             }}
             onCancel={() => {
               console.log('IcebergTableManager: Table creation cancelled');
