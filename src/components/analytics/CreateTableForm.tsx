@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import authService from '@/services/AuthService';
 interface CreateTableFormProps {
   onSuccess: () => void;
   onCancel: () => void;
-  selectedNamespace?: string; // Add this to pre-select namespace if passed from parent
+  selectedNamespace?: string;
 }
 
 const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, selectedNamespace }) => {
@@ -25,7 +25,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, 
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    namespace: selectedNamespace || '', // Pre-populate if provided
+    namespace: selectedNamespace || '',
     table_name: '',
     bucket: '',
     base_path: '',
@@ -34,7 +34,33 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, 
 
   console.log('CreateTableForm: Initial formData state:', formData);
 
-  // Use listNamespaces from iceberg.ts instead of getIcebergNamespaces from datasets.ts
+  // Update namespace when selectedNamespace prop changes
+  useEffect(() => {
+    if (selectedNamespace) {
+      console.log('CreateTableForm: Setting namespace from prop:', selectedNamespace);
+      setFormData(prev => ({ ...prev, namespace: selectedNamespace }));
+    }
+  }, [selectedNamespace]);
+
+  // Auto-generate bucket and base_path based on table_name
+  useEffect(() => {
+    if (formData.table_name) {
+      const sanitizedTableName = formData.table_name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      const newBucket = `iceberg-${sanitizedTableName}`;
+      const newBasePath = `/tables/${formData.namespace}/${sanitizedTableName}`;
+      
+      console.log('CreateTableForm: Auto-generating paths for table:', formData.table_name);
+      console.log('CreateTableForm: Generated bucket:', newBucket);
+      console.log('CreateTableForm: Generated base_path:', newBasePath);
+      
+      setFormData(prev => ({
+        ...prev,
+        bucket: newBucket,
+        base_path: newBasePath
+      }));
+    }
+  }, [formData.table_name, formData.namespace]);
+
   const { data: namespaces, isLoading: namespacesLoading, error: namespacesError } = useQuery({
     queryKey: ['iceberg-namespaces'],
     queryFn: async () => {
@@ -47,7 +73,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, 
       
       // Ensure we always return an array of strings
       if (Array.isArray(result)) {
-        const stringNamespaces = result.map(ns => {
+        const stringNamespaces = result.map((ns: any) => {
           if (typeof ns === 'string') {
             return ns;
           } else if (ns && typeof ns === 'object' && 'name' in ns) {
@@ -116,7 +142,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, 
 
     const datasetToCreate = {
       ...formData,
-      source_id: 1, // Default source ID - adjust as needed
+      source_id: 1,
     };
     
     console.log('CreateTableForm: About to create dataset with:', datasetToCreate);
@@ -175,7 +201,6 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, 
             <SelectContent>
               {namespaces && Array.isArray(namespaces) && namespaces.map((namespace) => {
                 console.log('CreateTableForm: Rendering namespace option:', namespace, 'type:', typeof namespace);
-                // Double-check that we have a string
                 const namespaceString = String(namespace);
                 return (
                   <SelectItem key={namespaceString} value={namespaceString}>
@@ -204,8 +229,11 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, 
             id="bucket"
             value={formData.bucket}
             onChange={(e) => handleInputChange('bucket', e.target.value)}
-            placeholder="Enter bucket name"
+            placeholder="Auto-generated from table name"
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            Auto-generated based on table name
+          </p>
         </div>
 
         <div>
@@ -214,8 +242,11 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({ onSuccess, onCancel, 
             id="base_path"
             value={formData.base_path}
             onChange={(e) => handleInputChange('base_path', e.target.value)}
-            placeholder="Enter base path"
+            placeholder="Auto-generated from table name"
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            Auto-generated based on namespace and table name
+          </p>
         </div>
 
         <div>
