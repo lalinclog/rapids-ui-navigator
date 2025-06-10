@@ -62,7 +62,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
       if (!response.ok) {
         throw new Error('Failed to fetch data sources');
       }
-      return response.json() as DataSource[];
+      return response.json();
     },
   });
 
@@ -101,7 +101,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
   }, [formData.table_name, formData.namespace]);
 
   // Get selected data source info
-  const selectedDataSource = dataSources?.find(ds => ds.id === formData.source_id);
+  const selectedDataSource = dataSources?.find((ds: DataSource) => ds.id === formData.source_id);
   const isIcebergCompatible = selectedDataSource?.type === 'minio' || selectedDataSource?.type === 'iceberg';
 
   const { data: namespaces, isLoading: namespacesLoading, error: namespacesError } = useQuery({
@@ -282,7 +282,7 @@ const CreateTableForm: React.FC<CreateTableFormProps> = ({
               <SelectValue placeholder="Select data source" />
             </SelectTrigger>
             <SelectContent>
-              {dataSources?.map((source) => (
+              {dataSources?.map((source: DataSource) => (
                 <SelectItem key={source.id} value={source.id.toString()}>
                   {source.name} ({source.type})
                 </SelectItem>

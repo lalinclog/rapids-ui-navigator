@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,12 +59,12 @@ const IcebergTableManager: React.FC = () => {
       if (!response.ok) {
         throw new Error('Failed to fetch data sources');
       }
-      return response.json() as DataSource[];
+      return response.json();
     },
   });
 
   // Filter for Iceberg-compatible sources
-  const icebergSources = dataSources?.filter(ds => 
+  const icebergSources = dataSources?.filter((ds: DataSource) => 
     ds.type === 'minio' || ds.type === 'iceberg'
   ) || [];
 
@@ -315,7 +316,7 @@ const IcebergTableManager: React.FC = () => {
   };
 
   // Get the primary Iceberg source for table creation
-  const primaryIcebergSource = icebergSources.find(ds => ds.is_active) || icebergSources[0];
+  const primaryIcebergSource = icebergSources.find((ds: DataSource) => ds.is_active) || icebergSources[0];
 
   return (
     <div>

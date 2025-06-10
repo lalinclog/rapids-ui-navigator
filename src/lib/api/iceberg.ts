@@ -73,6 +73,18 @@ export async function listTables(namespace: string, token?: string): Promise<str
 }
 
 /**
+ * Create a new namespace
+ */
+export async function createNamespace(
+  namespace: string,
+  properties: Record<string, string>,
+  token?: string
+): Promise<IcebergNamespace> {
+  const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+  return post<IcebergNamespace>(`/api/iceberg/namespaces/${namespace}`, { properties }, config);
+}
+
+/**
  * Get detailed namespace information
  */
 export async function getNamespaceDetails(namespace: string, token?: string): Promise<IcebergNamespace> {
@@ -90,6 +102,14 @@ export async function updateNamespaceProperties(
 ): Promise<IcebergNamespace> {
   const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
   return put<IcebergNamespace>(`/api/iceberg/namespaces/${namespace}`, { properties }, config);
+}
+
+/**
+ * Delete namespace
+ */
+export async function deleteNamespace(namespace: string, token?: string): Promise<void> {
+  const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+  return del<void>(`/api/iceberg/namespaces/${namespace}`, config);
 }
 
 /**
