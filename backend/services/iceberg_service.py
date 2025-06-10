@@ -1,5 +1,3 @@
-
-
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -35,14 +33,14 @@ class IcebergService:
             # Use REST catalog with S3 configuration
             rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
             
-            # Get MinIO credentials and endpoint
-            minio_credentials = self.vault.get_minio_credentials()
+            # Get MinIO credentials using the existing method that returns tuple
+            access_key, secret_key = self.vault.get_minio_creds()
             
             # Configure catalog properties for S3/MinIO
             catalog_properties = {
-                "s3.endpoint": f"http://{minio_credentials['host']}:{minio_credentials['port']}",
-                "s3.access-key-id": minio_credentials['access_key'],
-                "s3.secret-access-key": minio_credentials['secret_key'],
+                "s3.endpoint": "http://minio:9000",
+                "s3.access-key-id": access_key,
+                "s3.secret-access-key": secret_key,
                 "s3.region": "us-east-1",  # Set default region
                 "s3.path-style-access": "true",  # Required for MinIO
                 "client.region": "us-east-1"  # Additional region config
@@ -175,8 +173,6 @@ class IcebergService:
             raise
         except Exception as e:
             self._log_and_raise_error("creating empty table", e, namespace, table_name)
-    
-    # ... keep existing code (all other methods remain the same)
     
     def list_namespaces(self) -> List[str]:
         """List all namespaces in the catalog"""
@@ -772,4 +768,3 @@ Tables will be listed here as they are created within this namespace.
             
         except Exception as e:
             self._log_and_raise_error("evolving schema", e, namespace, table_name)
-
