@@ -1,3 +1,4 @@
+
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -47,9 +48,12 @@ class IcebergService:
                 logger.warning(f"Could not get MinIO credentials from Vault: {e}. Using defaults.")
                 access_key, secret_key = "minioadmin", "minioadmin"
             
+            # Get MinIO endpoint from environment (same as MinioService uses)
+            minio_endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'minio')}:{os.environ.get('MINIO_PORT', '9000')}"
+            
             # Configure catalog properties for S3/MinIO
             catalog_properties = {
-                "s3.endpoint": "http://minio:9000",
+                "s3.endpoint": f"http://{minio_endpoint}",
                 "s3.access-key-id": access_key,
                 "s3.secret-access-key": secret_key,
                 "s3.region": "us-east-1",
