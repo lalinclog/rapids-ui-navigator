@@ -1,4 +1,5 @@
 
+
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -29,17 +30,31 @@ class IcebergService:
         self._catalog = None
         
     def _get_catalog(self):
-        """Initialize and return Iceberg REST catalog"""
+        """Initialize and return Iceberg REST catalog with proper S3 configuration"""
         if self._catalog is None:
-            # Use REST catalog instead of SQL catalog
+            # Use REST catalog with S3 configuration
             rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
+            
+            # Get MinIO credentials and endpoint
+            minio_credentials = self.vault.get_minio_credentials()
+            
+            # Configure catalog properties for S3/MinIO
+            catalog_properties = {
+                "s3.endpoint": f"http://{minio_credentials['host']}:{minio_credentials['port']}",
+                "s3.access-key-id": minio_credentials['access_key'],
+                "s3.secret-access-key": minio_credentials['secret_key'],
+                "s3.region": "us-east-1",  # Set default region
+                "s3.path-style-access": "true",  # Required for MinIO
+                "client.region": "us-east-1"  # Additional region config
+            }
             
             self._catalog = RestCatalog(
                 name="rest_catalog",
-                uri=rest_url
+                uri=rest_url,
+                properties=catalog_properties
             )
             
-            logger.info(f"Initialized REST catalog at {rest_url}")
+            logger.info(f"Initialized REST catalog at {rest_url} with S3 endpoint {catalog_properties['s3.endpoint']}")
         
         return self._catalog
     
@@ -130,8 +145,13 @@ class IcebergService:
             # Create table identifier
             table_identifier = f"{namespace}.{table_name}"
             
-            # Set table location in the bucket
-            table_location = f"s3://{bucket}/{base_path if base_path else namespace + '/' + table_name}"
+            # Set table location in the bucket - fix the double slash issue
+            if base_path:
+                # Remove leading slash from base_path to avoid double slashes
+                clean_base_path = base_path.lstrip('/')
+                table_location = f"s3a://{bucket}/{clean_base_path}"
+            else:
+                table_location = f"s3a://{bucket}/{namespace}/{table_name}"
             
             logger.info(f"Creating empty table {table_identifier} at location {table_location}")
             
@@ -499,7 +519,7 @@ Tables will be listed here as they are created within this namespace.
             table = catalog.create_table(
                 identifier=table_identifier,
                 schema=schema,
-                location=f"s3://{bucket}/{full_path}"
+                location=f"s3a://{bucket}/{full_path}"
             )
             
             # Load all CSV data into the table
@@ -593,7 +613,7 @@ Tables will be listed here as they are created within this namespace.
             table_identifier = f"{namespace}.{table_name}"
             
             # Set table location in the bucket - fix double slash issue
-            table_location = f"s3://{bucket}/{namespace}/{table_name}"
+            table_location = f"s3a://{bucket}/{namespace}/{table_name}"
             
             logger.info(f"Creating table {table_identifier} at location {table_location}")
             
@@ -752,3 +772,4 @@ Tables will be listed here as they are created within this namespace.
             
         except Exception as e:
             self._log_and_raise_error("evolving schema", e, namespace, table_name)
+
