@@ -1,3 +1,4 @@
+
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -100,6 +101,62 @@ class IcebergService:
             logger.info(f"Set bucket policy for {bucket_name}")
         except Exception as e:
             logger.warning(f"Could not set bucket policy for {bucket_name}: {e}")
+
+    def create_empty_table(
+        self,
+        namespace: str,
+        table_name: str,
+        bucket: str,
+        base_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create a new empty Iceberg table"""
+        try:
+            catalog = self._get_catalog()
+            
+            # Ensure namespace exists
+            try:
+                catalog.create_namespace(namespace)
+                logger.info(f"Created namespace {namespace}")
+            except Exception as e:
+                logger.info(f"Namespace {namespace} already exists or creation failed: {e}")
+            
+            # Create a basic schema for an empty table
+            schema = Schema(
+                NestedField(field_id=1, name="id", field_type=LongType(), required=True),
+                NestedField(field_id=2, name="created_at", field_type=TimestampType(), required=False),
+                NestedField(field_id=3, name="data", field_type=StringType(), required=False)
+            )
+            
+            # Create table identifier
+            table_identifier = f"{namespace}.{table_name}"
+            
+            # Set table location in the bucket
+            table_location = f"s3://{bucket}/{base_path if base_path else namespace + '/' + table_name}"
+            
+            logger.info(f"Creating empty table {table_identifier} at location {table_location}")
+            
+            # Create the table
+            table = catalog.create_table(
+                identifier=table_identifier,
+                schema=schema,
+                location=table_location
+            )
+            
+            logger.info(f"Successfully created empty table {table_identifier}")
+            
+            return {
+                "table_identifier": table_identifier,
+                "schema": self._iceberg_schema_to_dict(schema),
+                "location": table.location(),
+                "row_count": 0
+            }
+            
+        except IcebergServiceError:
+            raise
+        except Exception as e:
+            self._log_and_raise_error("creating empty table", e, namespace, table_name)
+    
+    # ... keep existing code (all other methods remain the same)
     
     def list_namespaces(self) -> List[str]:
         """List all namespaces in the catalog"""

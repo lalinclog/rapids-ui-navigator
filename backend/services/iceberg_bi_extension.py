@@ -27,8 +27,12 @@ class IcebergBIExtension:
     ) -> Dict[str, Any]:
         """Create a new dataset backed by an Iceberg table"""
         try:
+            # Ensure the bucket exists for the table
+            self.iceberg_service._ensure_bucket_exists(bucket)
+            
             # If creating from CSV, convert to Iceberg first
-            if csv_path:
+            if csv_path and csv_path.strip():
+                logger.info(f"Creating Iceberg table from CSV: {csv_path}")
                 table_info = self.iceberg_service.create_table_from_csv(
                     namespace=namespace,
                     table_name=table_name,
@@ -37,8 +41,14 @@ class IcebergBIExtension:
                     base_path=base_path
                 )
             else:
-                # Load existing Iceberg table
-                table_info = self.iceberg_service.get_table_info(namespace, table_name)
+                # Create a new empty Iceberg table
+                logger.info(f"Creating new empty Iceberg table: {namespace}.{table_name}")
+                table_info = self.iceberg_service.create_empty_table(
+                    namespace=namespace,
+                    table_name=table_name,
+                    bucket=bucket,
+                    base_path=base_path
+                )
             
             # Create dataset record in the database
             with self.bi_service.postgres_service._get_connection() as conn:
