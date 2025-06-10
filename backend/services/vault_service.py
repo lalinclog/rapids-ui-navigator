@@ -1,5 +1,7 @@
+
 import os
 import hvac
+import time
 
 class VaultService:
     def __init__(self):
@@ -10,15 +12,35 @@ class VaultService:
         assert self.client.is_authenticated(), "Vault authentication failed"
 
     def get_minio_creds(self):
-            retries = 5
-            for i in range(retries):
-                try:
-                    secret = self.client.secrets.kv.v2.read_secret_version(path="minio")
-                    data = secret['data']['data']
-                    return data['access_key'], data['secret_key']
-                except hvac.exceptions.InvalidPath:
-                    if i < retries - 1:
-                        print(f"MinIO secret not found, retrying... ({i+1}/{retries})")
-                        time.sleep(3)
-                    else:
-                        raise
+        retries = 5
+        for i in range(retries):
+            try:
+                secret = self.client.secrets.kv.v2.read_secret_version(path="minio")
+                data = secret['data']['data']
+                return data['access_key'], data['secret_key']
+            except hvac.exceptions.InvalidPath:
+                if i < retries - 1:
+                    print(f"MinIO secret not found, retrying... ({i+1}/{retries})")
+                    time.sleep(3)
+                else:
+                    raise
+    
+    def get_minio_credentials(self):
+        """Get MinIO credentials as a dictionary for Iceberg service"""
+        retries = 5
+        for i in range(retries):
+            try:
+                secret = self.client.secrets.kv.v2.read_secret_version(path="minio")
+                data = secret['data']['data']
+                return {
+                    'access_key': data['access_key'],
+                    'secret_key': data['secret_key'],
+                    'host': 'minio',  # Default MinIO host in Docker
+                    'port': '9000'    # Default MinIO port
+                }
+            except hvac.exceptions.InvalidPath:
+                if i < retries - 1:
+                    print(f"MinIO secret not found, retrying... ({i+1}/{retries})")
+                    time.sleep(3)
+                else:
+                    raise
