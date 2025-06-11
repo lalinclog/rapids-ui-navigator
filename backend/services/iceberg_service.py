@@ -36,9 +36,19 @@ class IcebergService:
             minio_endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'minio')}:{os.environ.get('MINIO_PORT', '9000')}"
             minio_region = os.environ.get('MINIO_REGION', 'af-south-1')  # Use the correct region
             
+            logger.info(f"=== MinIO Configuration Debug ===")
+            logger.info(f"MINIO_ENDPOINT: {os.environ.get('MINIO_ENDPOINT', 'minio')}")
+            logger.info(f"MINIO_PORT: {os.environ.get('MINIO_PORT', '9000')}")
+            logger.info(f"MINIO_REGION: {os.environ.get('MINIO_REGION', 'af-south-1')}")
+            logger.info(f"Computed minio_endpoint: {minio_endpoint}")
+            logger.info(f"Using minio_region: {minio_region}")
+            
             # Set environment variables for AWS SDK
             os.environ['AWS_REGION'] = minio_region
             os.environ['AWS_DEFAULT_REGION'] = minio_region
+            
+            logger.info(f"Set AWS_REGION to: {os.environ.get('AWS_REGION')}")
+            logger.info(f"Set AWS_DEFAULT_REGION to: {os.environ.get('AWS_DEFAULT_REGION')}")
             
             # Get MinIO credentials from Vault
             try:
@@ -51,6 +61,9 @@ class IcebergService:
             # Set AWS credentials in environment
             os.environ['AWS_ACCESS_KEY_ID'] = access_key
             os.environ['AWS_SECRET_ACCESS_KEY'] = secret_key
+            
+            logger.info(f"Set AWS_ACCESS_KEY_ID to: {access_key[:4]}...")
+            logger.info(f"Set AWS_SECRET_ACCESS_KEY to: {secret_key[:4]}...")
             
             # Use REST catalog with S3 configuration
             rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
@@ -67,6 +80,13 @@ class IcebergService:
                 "warehouse": "s3a://iceberg-warehouse/",
                 "io-impl": "org.apache.iceberg.aws.s3.S3FileIO"
             }
+            
+            logger.info(f"=== Catalog Properties Debug ===")
+            for key, value in catalog_properties.items():
+                if 'secret' in key.lower():
+                    logger.info(f"{key}: {str(value)[:4]}...")
+                else:
+                    logger.info(f"{key}: {value}")
             
             self._catalog = RestCatalog(
                 name="rest_catalog",
@@ -95,19 +115,51 @@ class IcebergService:
     def _ensure_bucket_exists(self, bucket_name: str) -> bool:
         """Ensure the MinIO bucket exists, create it if not"""
         try:
-            if not self.minio_service.client.bucket_exists(bucket_name):
+            logger.info(f"=== Bucket Creation Debug for: {bucket_name} ===")
+            logger.info(f"Checking if bucket exists: {bucket_name}")
+            
+            # Log the MinIO client configuration
+            logger.info(f"MinIO client endpoint: {self.minio_service.client._endpoint_url}")
+            logger.info(f"MinIO client region: {getattr(self.minio_service.client, '_region', 'Not set')}")
+            
+            bucket_exists = self.minio_service.client.bucket_exists(bucket_name)
+            logger.info(f"Bucket {bucket_name} exists: {bucket_exists}")
+            
+            if not bucket_exists:
                 logger.info(f"Creating bucket: {bucket_name}")
-                self.minio_service.client.make_bucket(bucket_name)
+                
+                # Try to create bucket with region specification
+                try:
+                    # Check if the client has a region set
+                    minio_region = os.environ.get('MINIO_REGION', 'af-south-1')
+                    logger.info(f"Attempting to create bucket with region: {minio_region}")
+                    
+                    self.minio_service.client.make_bucket(bucket_name, location=minio_region)
+                    logger.info(f"Successfully created bucket {bucket_name} with region {minio_region}")
+                except Exception as create_error:
+                    logger.error(f"Failed to create bucket with region {minio_region}: {create_error}")
+                    # Try without specifying region
+                    logger.info(f"Retrying bucket creation without explicit region...")
+                    self.minio_service.client.make_bucket(bucket_name)
+                    logger.info(f"Successfully created bucket {bucket_name} without explicit region")
+                
                 self.minio_service._create_placeholder_file(bucket_name)
                 self._set_bucket_policy(bucket_name)
-                logger.info(f"Successfully created bucket: {bucket_name}")
+                logger.info(f"Successfully created and configured bucket: {bucket_name}")
             else:
                 logger.info(f"Bucket {bucket_name} already exists")
             return True
             
         except S3Error as e:
+            logger.error(f"S3Error in _ensure_bucket_exists: {e}")
+            logger.error(f"S3Error code: {e.code}")
+            logger.error(f"S3Error message: {e.message}")
+            logger.error(f"S3Error resource: {getattr(e, 'resource', 'Not available')}")
+            logger.error(f"S3Error request_id: {getattr(e, 'request_id', 'Not available')}")
+            logger.error(f"S3Error host_id: {getattr(e, 'host_id', 'Not available')}")
             self._log_and_raise_error("ensuring bucket exists", e)
         except Exception as e:
+            logger.error(f"Unexpected error in _ensure_bucket_exists: {e}")
             self._log_and_raise_error("ensuring bucket exists (unexpected error)", e)
     
     def _set_bucket_policy(self, bucket_name: str):
