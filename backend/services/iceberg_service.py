@@ -287,12 +287,17 @@ class IcebergService:
             # Ensure the main iceberg-warehouse bucket exists
             self._ensure_bucket_exists("iceberg-warehouse")
             
-            # Ensure namespace exists
+            # Ensure namespace exists - handle gracefully if it already exists
             try:
                 catalog.create_namespace(namespace)
                 logger.info(f"Created namespace {namespace}")
             except Exception as e:
-                logger.info(f"Namespace {namespace} already exists or creation failed: {e}")
+                error_str = str(e).lower()
+                if "already exists" in error_str or "alreadyexistsexception" in error_str:
+                    logger.info(f"Namespace {namespace} already exists, continuing with table creation")
+                else:
+                    logger.warning(f"Unexpected error creating namespace {namespace}: {e}")
+                    # Don't fail, attempt to continue as namespace might exist
             
             # Create a basic schema for an empty table
             schema = Schema(
@@ -304,8 +309,7 @@ class IcebergService:
             # Create table identifier
             table_identifier = f"{namespace}.{table_name}"
             
-            # Set table location in the iceberg-warehouse bucket under namespace path
-            # This will create path like: iceberg-warehouse/sales_analytics/table_name/
+            # FIXED: Always use iceberg-warehouse bucket with namespace/table structure
             table_location = f"s3a://iceberg-warehouse/{namespace}/{table_name}"
             
             logger.info(f"Creating empty table {table_identifier} at location {table_location}")
@@ -355,7 +359,16 @@ class IcebergService:
             # Check if namespace already exists
             existing_namespaces = [".".join(ns) for ns in catalog.list_namespaces()]
             if namespace in existing_namespaces:
-                raise IcebergServiceError(f"Namespace '{namespace}' already exists")
+                logger.info(f"Namespace '{namespace}' already exists")
+                # Return the existing namespace info instead of raising an error
+                current_properties = catalog.load_namespace_properties(namespace)
+                return {
+                    "namespace": namespace,
+                    "properties": current_properties,
+                    "bucket_created": False,
+                    "location": current_properties.get('location', f's3a://iceberg-warehouse/{namespace}/'),
+                    "message": f"Namespace '{namespace}' already exists"
+                }
 
             # Ensure the iceberg-warehouse bucket exists
             self._ensure_bucket_exists("iceberg-warehouse")
@@ -363,7 +376,7 @@ class IcebergService:
             # Validate properties
             self._validate_namespace_properties(properties)
             
-            # Set default location if not provided
+            # Set default location if not provided - ALWAYS use iceberg-warehouse
             if not properties.get('location') or properties.get('location').strip() == '':
                 properties['location'] = f's3a://iceberg-warehouse/{namespace}/'
                 logger.info(f"Using default location for namespace '{namespace}': {properties['location']}")
@@ -385,7 +398,31 @@ class IcebergService:
         except IcebergServiceError:
             raise
         except Exception as e:
-            self._log_and_raise_error("creating namespace", e, namespace)
+            # Handle namespace already exists error gracefully
+            error_str = str(e).lower()
+            if "already exists" in error_str or "alreadyexistsexception" in error_str:
+                logger.info(f"Namespace '{namespace}' already exists, returning existing info")
+                try:
+                    existing_properties = catalog.load_namespace_properties(namespace)
+                    return {
+                        "namespace": namespace,
+                        "properties": existing_properties,
+                        "bucket_created": False,
+                        "location": existing_properties.get('location', f's3a://iceberg-warehouse/{namespace}/'),
+                        "message": f"Namespace '{namespace}' already exists"
+                    }
+                except Exception as load_error:
+                    logger.error(f"Error loading existing namespace properties: {load_error}")
+                    # Return minimal info if we can't load properties
+                    return {
+                        "namespace": namespace,
+                        "properties": {},
+                        "bucket_created": False,
+                        "location": f's3a://iceberg-warehouse/{namespace}/',
+                        "message": f"Namespace '{namespace}' already exists"
+                    }
+            else:
+                self._log_and_raise_error("creating namespace", e, namespace)
     
     def _validate_namespace_properties(self, properties: Optional[Dict[str, str]]):
         """Validate namespace properties"""
@@ -627,7 +664,7 @@ Tables will be listed here as they are created within this namespace.
                     continue
             
             # Remove duplicates and sort - ensure we return strings only
-            table_names = sorted(list(set(str(name) for name in table_names if isinstance(name, str))))
+            table_names = sorted(list(set(str(name) for name in table_names if isinstance(name, str)))
             
             logger.info(f"Final table names: {table_names}")
             logger.info(f"Successfully listed {len(table_names)} tables in namespace '{namespace}': {table_names}")
@@ -652,11 +689,15 @@ Tables will be listed here as they are created within this namespace.
         try:
             catalog = self._get_catalog()
             
-            # Ensure namespace exists
+            # Ensure namespace exists - handle gracefully if it already exists
             try:
                 catalog.create_namespace(namespace)
-            except Exception:
-                pass  # Namespace might already exist
+            except Exception as e:
+                error_str = str(e).lower()
+                if "already exists" in error_str or "alreadyexistsexception" in error_str:
+                    logger.info(f"Namespace {namespace} already exists, continuing with table creation")
+                else:
+                    logger.warning(f"Unexpected error creating namespace {namespace}: {e}")
             
             # Read sample CSV to infer schema
             full_path = f"{base_path}/{csv_path}" if base_path else csv_path
@@ -676,11 +717,14 @@ Tables will be listed here as they are created within this namespace.
             # Create table identifier
             table_identifier = f"{namespace}.{table_name}"
             
+            # FIXED: Always use iceberg-warehouse bucket structure
+            table_location = f"s3a://iceberg-warehouse/{namespace}/{table_name}"
+            
             # Create the table
             table = catalog.create_table(
                 identifier=table_identifier,
                 schema=schema,
-                location=f"s3a://{bucket}/{full_path}"
+                location=table_location
             )
             
             # Load all CSV data into the table
@@ -720,12 +764,16 @@ Tables will be listed here as they are created within this namespace.
         try:
             catalog = self._get_catalog()
             
-            # Ensure namespace exists
+            # Ensure namespace exists - handle gracefully if it already exists
             try:
                 catalog.create_namespace(namespace)
                 logger.info(f"Created namespace {namespace}")
             except Exception as e:
-                logger.info(f"Namespace {namespace} already exists or creation failed: {e}")
+                error_str = str(e).lower()
+                if "already exists" in error_str or "alreadyexistsexception" in error_str:
+                    logger.info(f"Namespace {namespace} already exists, continuing with table creation")
+                else:
+                    logger.warning(f"Unexpected error creating namespace {namespace}: {e}")
             
             # Clean and normalize the parquet path
             parquet_path = parquet_path.strip('/')
@@ -773,8 +821,8 @@ Tables will be listed here as they are created within this namespace.
             # Create table identifier
             table_identifier = f"{namespace}.{table_name}"
             
-            # Set table location in the bucket - fix double slash issue
-            table_location = f"s3a://{bucket}/{namespace}/{table_name}"
+            # FIXED: Always use iceberg-warehouse bucket structure
+            table_location = f"s3a://iceberg-warehouse/{namespace}/{table_name}"
             
             logger.info(f"Creating table {table_identifier} at location {table_location}")
             
