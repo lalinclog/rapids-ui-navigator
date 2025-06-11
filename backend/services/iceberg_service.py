@@ -1,5 +1,3 @@
-
-
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -16,6 +14,8 @@ from typing import Dict, Any, List, Optional
 from minio.error import S3Error
 from .vault_service import VaultService
 from .minio_service import MinioService
+import hvac
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +118,15 @@ class IcebergService:
             logger.info(f"=== Bucket Creation Debug for: {bucket_name} ===")
             logger.info(f"Checking if bucket exists: {bucket_name}")
             
-            # Log the MinIO client configuration
-            logger.info(f"MinIO client endpoint: {self.minio_service.client._endpoint_url}")
+            # Log the MinIO client configuration - fix the attribute access
+            logger.info(f"MinIO client endpoint: {getattr(self.minio_service.client, '_base_url', 'Not available')}")
             logger.info(f"MinIO client region: {getattr(self.minio_service.client, '_region', 'Not set')}")
+            logger.info(f"MinIO client secure: {getattr(self.minio_service.client, '_is_secure', 'Not available')}")
+            
+            # Log environment variables affecting region
+            logger.info(f"Environment AWS_REGION: {os.environ.get('AWS_REGION', 'Not set')}")
+            logger.info(f"Environment AWS_DEFAULT_REGION: {os.environ.get('AWS_DEFAULT_REGION', 'Not set')}")
+            logger.info(f"Environment MINIO_REGION: {os.environ.get('MINIO_REGION', 'Not set')}")
             
             bucket_exists = self.minio_service.client.bucket_exists(bucket_name)
             logger.info(f"Bucket {bucket_name} exists: {bucket_exists}")
