@@ -1,4 +1,5 @@
 
+
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -17,6 +18,7 @@ from .vault_service import VaultService
 from .minio_service import MinioService
 import hvac
 import time
+import socket
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +46,38 @@ class IcebergService:
             logger.info(f"Computed minio_endpoint: {minio_endpoint}")
             logger.info(f"Using minio_region: {minio_region}")
             
-            # Set environment variables for AWS SDK - both for this process and the catalog
+            # Test DNS resolution first
+            minio_host = os.environ.get('MINIO_ENDPOINT', 'minio')
+            try:
+                logger.info(f"Testing DNS resolution for MinIO host: {minio_host}")
+                minio_ip = socket.gethostbyname(minio_host)
+                logger.info(f"Successfully resolved {minio_host} to {minio_ip}")
+                
+                # Test connectivity
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(10)
+                result = sock.connect_ex((minio_host, 9000))
+                sock.close()
+                
+                if result == 0:
+                    logger.info(f"Successfully connected to {minio_host}:9000")
+                else:
+                    logger.error(f"Failed to connect to {minio_host}:9000, error code: {result}")
+                    
+                    # Try using IP directly if hostname fails
+                    logger.info(f"Attempting connection using IP {minio_ip}")
+                    minio_endpoint = f"{minio_ip}:{os.environ.get('MINIO_PORT', '9000')}"
+                    
+            except Exception as e:
+                logger.error(f"DNS resolution failed for {minio_host}: {e}")
+                # Fall back to localhost if we're in development
+                if minio_host == 'minio':
+                    logger.info("Falling back to localhost for MinIO endpoint")
+                    minio_endpoint = f"localhost:{os.environ.get('MINIO_PORT', '9000')}"
+            
+            # Set environment variables for AWS SDK
             os.environ['AWS_REGION'] = minio_region
             os.environ['AWS_DEFAULT_REGION'] = minio_region
-            # Also set the system property format that Java SDK might expect
             os.environ['aws.region'] = minio_region
             
             logger.info(f"Set AWS_REGION to: {os.environ.get('AWS_REGION')}")
@@ -72,37 +102,38 @@ class IcebergService:
             # Use REST catalog with S3 configuration
             rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
             
-            # Configure catalog properties for S3/MinIO with comprehensive region settings
+            # Configure catalog properties for S3/MinIO with DNS-friendly settings
             catalog_properties = {
                 "s3.endpoint": f"https://{minio_endpoint}",
                 "s3.access-key-id": access_key,
                 "s3.secret-access-key": secret_key,
                 "s3.region": minio_region,
-                "s3.path-style-access": "true",  # Force path-style access
+                "s3.path-style-access": "true",
                 "client.region": minio_region,
                 "s3.signer-type": "S3SignerType",
                 "warehouse": "s3a://iceberg-warehouse/",
                 "io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
-                # Additional region configurations for AWS SDK
+                # Additional region configurations
                 "aws.region": minio_region,
                 "aws.s3.region": minio_region,
                 "s3.client.region": minio_region,
-                # REST catalog specific region configuration
-                "catalog-impl.region": minio_region,
-                "rest.region": minio_region,
-                # Try both formats for region specification
-                "AWS_REGION": minio_region,
-                "AWS_DEFAULT_REGION": minio_region,
                 # SSL configuration
                 "s3.ssl.enabled": "true",
-                # Force path-style access to prevent virtual-hosted style
+                # Force path-style access
                 "s3.force-virtual-addressing": "false",
                 "s3.force-path-style": "true",
                 "s3.use-path-style-access": "true",
                 "client.s3.path-style-access": "true",
-                # Additional AWS SDK path-style settings
                 "aws.s3.path-style-access": "true",
-                "aws.s3.force-path-style": "true"
+                "aws.s3.force-path-style": "true",
+                # Network and DNS settings
+                "s3.client.socket-timeout": "30000",
+                "s3.client.connection-timeout": "10000",
+                "s3.client.max-connections": "50",
+                "s3.client.max-error-retry": "3",
+                # DNS cache settings
+                "networkaddress.cache.ttl": "60",
+                "networkaddress.cache.negative.ttl": "10"
             }
             
             logger.info(f"=== Catalog Properties Debug ===")
@@ -114,29 +145,6 @@ class IcebergService:
             
             logger.info(f"=== REST URL Debug ===")
             logger.info(f"REST URL: {rest_url}")
-            
-            # Test network connectivity before creating catalog
-            logger.info(f"=== Network Connectivity Test ===")
-            try:
-                import socket
-                # Test if we can resolve minio hostname
-                minio_host = os.environ.get('MINIO_ENDPOINT', 'minio')
-                logger.info(f"Testing DNS resolution for: {minio_host}")
-                minio_ip = socket.gethostbyname(minio_host)
-                logger.info(f"Successfully resolved {minio_host} to {minio_ip}")
-                
-                # Test if we can connect to MinIO port
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(5)
-                result = sock.connect_ex((minio_host, 9000))
-                sock.close()
-                if result == 0:
-                    logger.info(f"Successfully connected to {minio_host}:9000")
-                else:
-                    logger.error(f"Failed to connect to {minio_host}:9000, error code: {result}")
-                    
-            except Exception as e:
-                logger.error(f"Network connectivity test failed: {e}")
             
             try:
                 logger.info(f"=== Creating REST Catalog ===")
@@ -152,16 +160,22 @@ class IcebergService:
                 
                 logger.info(f"Successfully initialized REST catalog at {rest_url}")
                 
-                # Test the catalog connection
-                try:
-                    logger.info(f"=== Testing Catalog Connection ===")
-                    namespaces = list(self._catalog.list_namespaces())
-                    logger.info(f"Catalog connection test successful. Found {len(namespaces)} namespaces: {namespaces}")
-                except Exception as e:
-                    logger.error(f"Catalog connection test failed: {e}")
-                    logger.error(f"Error type: {type(e)}")
-                    logger.error(f"Error args: {e.args}")
-                    raise
+                # Test the catalog connection with retries
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        logger.info(f"=== Testing Catalog Connection (Attempt {attempt + 1}/{max_retries}) ===")
+                        namespaces = list(self._catalog.list_namespaces())
+                        logger.info(f"Catalog connection test successful. Found {len(namespaces)} namespaces: {namespaces}")
+                        break
+                    except Exception as e:
+                        logger.error(f"Catalog connection test attempt {attempt + 1} failed: {e}")
+                        if attempt == max_retries - 1:
+                            logger.error(f"All catalog connection attempts failed")
+                            raise
+                        else:
+                            logger.info(f"Retrying catalog connection in 2 seconds...")
+                            time.sleep(2)
                     
             except Exception as e:
                 logger.error(f"Failed to initialize REST catalog: {e}")
@@ -188,46 +202,24 @@ class IcebergService:
     def _ensure_bucket_exists(self, bucket_name: str = "iceberg-warehouse", namespace: str = None) -> bool:
         """Ensure the main iceberg-warehouse bucket exists and create namespace directory structure"""
         try:
-            # Always use the warehouse bucket name - this is the only bucket we create
+            # Always use the warehouse bucket name
             warehouse = "iceberg-warehouse"
             
-            # Safely handle namespace parameter - ensure it's a string
+            # Safely handle namespace parameter
             namespace_str = ""
             if namespace is not None:
                 if isinstance(namespace, str):
                     namespace_str = namespace.strip()
-                else:
+                elif hasattr(namespace, '__str__'):
                     namespace_str = str(namespace).strip()
+                else:
+                    namespace_str = ""
             
             logger.info(f"=== Bucket Creation Debug ===")
             logger.info(f"Ensuring bucket exists: {warehouse}")
             if namespace_str:
                 logger.info(f"For namespace: {namespace_str}")
                 logger.info(f"Full path will be: {warehouse}/{namespace_str}/")
-            
-            # Log the MinIO client configuration - safely handle potential None values
-            try:
-                base_url = getattr(self.minio_service.client, '_base_url', None)
-                region = getattr(self.minio_service.client, '_region', None)
-                is_secure = getattr(self.minio_service.client, '_is_secure', None)
-                
-                logger.info(f"MinIO client endpoint: {base_url if base_url is not None else 'Not available'}")
-                logger.info(f"MinIO client region: {region if region is not None else 'Not set'}")
-                logger.info(f"MinIO client secure: {is_secure if is_secure is not None else 'Not available'}")
-            except Exception as e:
-                logger.warning(f"Could not get MinIO client attributes: {e}")
-            
-            # Log environment variables affecting region - safely handle None values
-            try:
-                aws_region = os.environ.get('AWS_REGION', 'Not set')
-                aws_default_region = os.environ.get('AWS_DEFAULT_REGION', 'Not set')
-                minio_region = os.environ.get('MINIO_REGION', 'Not set')
-                
-                logger.info(f"Environment AWS_REGION: {aws_region}")
-                logger.info(f"Environment AWS_DEFAULT_REGION: {aws_default_region}")
-                logger.info(f"Environment MINIO_REGION: {minio_region}")
-            except Exception as e:
-                logger.warning(f"Could not get environment variables: {e}")
             
             # Check if the main warehouse bucket exists
             try:
@@ -240,9 +232,7 @@ class IcebergService:
             if not bucket_exists:
                 logger.info(f"Creating bucket: {warehouse}")
                 
-                # Try to create bucket with region specification
                 try:
-                    # Check if the client has a region set
                     region_to_use = os.environ.get('MINIO_REGION', 'us-east-1')
                     if not region_to_use or region_to_use == 'Not set':
                         region_to_use = 'us-east-1'
@@ -253,8 +243,6 @@ class IcebergService:
                     logger.info(f"Successfully created bucket {warehouse} with region {region_to_use}")
                 except Exception as create_error:
                     logger.error(f"Failed to create bucket with region {region_to_use}: {create_error}")
-                    # Try without specifying region
-                    logger.info(f"Retrying bucket creation without explicit region...")
                     try:
                         self.minio_service.client.make_bucket(warehouse)
                         logger.info(f"Successfully created bucket {warehouse} without explicit region")
@@ -282,7 +270,6 @@ class IcebergService:
                     
                     if not objects:
                         logger.info(f"Creating namespace directory structure: {namespace_path}")
-                        # Create a placeholder file to ensure the namespace directory exists
                         try:
                             current_time = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')
                             placeholder_content = f"# {namespace_str} Namespace Directory\n\nThis directory contains Iceberg tables for the '{namespace_str}' namespace.\n\nCreated: {current_time}\nLocation: s3a://{warehouse}/{namespace_str}/\n"
@@ -317,7 +304,6 @@ class IcebergService:
             logger.error(f"Unexpected error in _ensure_bucket_exists: {e}")
             logger.error(f"Error type: {type(e)}")
             logger.error(f"Error args: {getattr(e, 'args', 'Not available')}")
-            # Add more detailed debugging information
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             self._log_and_raise_error("ensuring bucket exists (unexpected error)", e)
@@ -349,7 +335,7 @@ class IcebergService:
         except Exception as e:
             logger.warning(f"Could not set bucket policy for {bucket_name}: {e}")
 
-    # ... keep existing code (create_empty_table and other methods remain the same)
+    # ... keep existing code (all other methods remain the same)
 
     def create_empty_table(
         self,
@@ -1094,3 +1080,4 @@ Tables will be listed here as they are created within this namespace.
             
         except Exception as e:
             self._log_and_raise_error("evolving schema", e, namespace, table_name)
+
