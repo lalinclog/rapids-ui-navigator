@@ -34,12 +34,12 @@ class IcebergService:
         if self._catalog is None:
             # Get MinIO configuration from environment
             minio_endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'minio')}:{os.environ.get('MINIO_PORT', '9000')}"
-            minio_region = os.environ.get('MINIO_REGION', 'af-south-1')  # Use the correct region
+            minio_region = os.environ.get('MINIO_REGION', 'us-east-1')
             
             logger.info(f"=== MinIO Configuration Debug ===")
             logger.info(f"MINIO_ENDPOINT: {os.environ.get('MINIO_ENDPOINT', 'minio')}")
             logger.info(f"MINIO_PORT: {os.environ.get('MINIO_PORT', '9000')}")
-            logger.info(f"MINIO_REGION: {os.environ.get('MINIO_REGION', 'af-south-1')}")
+            logger.info(f"MINIO_REGION: {os.environ.get('MINIO_REGION', 'us-east-1')}")
             logger.info(f"Computed minio_endpoint: {minio_endpoint}")
             logger.info(f"Using minio_region: {minio_region}")
             
@@ -59,7 +59,7 @@ class IcebergService:
                 logger.info(f"Got MinIO credentials from Vault: {access_key[:4]}...")
             except Exception as e:
                 logger.warning(f"Could not get MinIO credentials from Vault: {e}. Using defaults.")
-                access_key, secret_key = "minioadmin", "minioadmin"
+                access_key, secret_key = "admin", "password"
             
             # Set AWS credentials in environment
             os.environ['AWS_ACCESS_KEY_ID'] = access_key
@@ -73,7 +73,7 @@ class IcebergService:
             
             # Configure catalog properties for S3/MinIO with comprehensive region settings
             catalog_properties = {
-                "s3.endpoint": f"http://{minio_endpoint}",
+                "s3.endpoint": f"https://{minio_endpoint}",
                 "s3.access-key-id": access_key,
                 "s3.secret-access-key": secret_key,
                 "s3.region": minio_region,
@@ -91,7 +91,12 @@ class IcebergService:
                 "rest.region": minio_region,
                 # Try both formats for region specification
                 "AWS_REGION": minio_region,
-                "AWS_DEFAULT_REGION": minio_region
+                "AWS_DEFAULT_REGION": minio_region,
+                # SSL configuration
+                "s3.ssl.enabled": "true",
+                # DNS resolution debugging
+                "s3.force-virtual-addressing": "false",
+                "s3.force-path-style": "true"
             }
             
             logger.info(f"=== Catalog Properties Debug ===")
@@ -104,7 +109,35 @@ class IcebergService:
             logger.info(f"=== REST URL Debug ===")
             logger.info(f"REST URL: {rest_url}")
             
+            # Test network connectivity before creating catalog
+            logger.info(f"=== Network Connectivity Test ===")
             try:
+                import socket
+                # Test if we can resolve minio hostname
+                minio_host = os.environ.get('MINIO_ENDPOINT', 'minio')
+                logger.info(f"Testing DNS resolution for: {minio_host}")
+                minio_ip = socket.gethostbyname(minio_host)
+                logger.info(f"Successfully resolved {minio_host} to {minio_ip}")
+                
+                # Test if we can connect to MinIO port
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                result = sock.connect_ex((minio_host, 9000))
+                sock.close()
+                if result == 0:
+                    logger.info(f"Successfully connected to {minio_host}:9000")
+                else:
+                    logger.error(f"Failed to connect to {minio_host}:9000, error code: {result}")
+                    
+            except Exception as e:
+                logger.error(f"Network connectivity test failed: {e}")
+            
+            try:
+                logger.info(f"=== Creating REST Catalog ===")
+                logger.info(f"Initializing catalog with name: rest_catalog")
+                logger.info(f"URI: {rest_url}")
+                logger.info(f"Properties count: {len(catalog_properties)}")
+                
                 self._catalog = RestCatalog(
                     name="rest_catalog",
                     uri=rest_url,
@@ -115,14 +148,19 @@ class IcebergService:
                 
                 # Test the catalog connection
                 try:
+                    logger.info(f"=== Testing Catalog Connection ===")
                     namespaces = list(self._catalog.list_namespaces())
                     logger.info(f"Catalog connection test successful. Found {len(namespaces)} namespaces: {namespaces}")
                 except Exception as e:
                     logger.error(f"Catalog connection test failed: {e}")
+                    logger.error(f"Error type: {type(e)}")
+                    logger.error(f"Error args: {e.args}")
                     raise
                     
             except Exception as e:
                 logger.error(f"Failed to initialize REST catalog: {e}")
+                logger.error(f"Error type: {type(e)}")
+                logger.error(f"Error args: {e.args}")
                 raise
         
         return self._catalog
@@ -166,7 +204,7 @@ class IcebergService:
                 # Try to create bucket with region specification
                 try:
                     # Check if the client has a region set
-                    minio_region = os.environ.get('MINIO_REGION', 'af-south-1')
+                    minio_region = os.environ.get('MINIO_REGION', 'us-east-1')
                     logger.info(f"Attempting to create bucket with region: {minio_region}")
                     
                     self.minio_service.client.make_bucket(bucket_name, location=minio_region)
@@ -891,5 +929,3 @@ Tables will be listed here as they are created within this namespace.
             
         except Exception as e:
             self._log_and_raise_error("evolving schema", e, namespace, table_name)
-
-</edits_to_apply>

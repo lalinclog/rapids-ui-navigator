@@ -60,7 +60,7 @@ services:
       - CATALOG_S3_PATH_STYLE_ACCESS=true
       - CATALOG_S3_SSL_ENABLED=true
       - CATALOG_S3_REGION=us-east-1
-      - JAVA_OPTS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/minio/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit -Daws.region=us-east-1 -Djava.net.preferIPv4Stack=true -Djava.net.useSystemProxies=false
+      - JAVA_OPTS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/minio/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit -Daws.region=us-east-1 -Djava.net.preferIPv4Stack=true -Djava.net.useSystemProxies=false -Djava.net.debug=ssl,handshake,data,verbose
     depends_on:
       postgres:
         condition: service_started
@@ -70,9 +70,7 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
     networks:
-      - default
-    extra_hosts:
-      - "minio:host-gateway"
+      - iceberg-network
 
   vault:
     image: hashicorp/vault:1.19
@@ -124,6 +122,8 @@ services:
       timeout: 20s
       start_period: 180s  # Added to give more startup time
       retries: 5
+    networks:
+      - iceberg-network
 
   keycloak-init:
     build: 
@@ -139,6 +139,8 @@ services:
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
       - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
       - PYTHONPATH=/app
+    networks:
+      - iceberg-network
 
   minio:
     image: minio/minio
@@ -163,6 +165,8 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+    networks:
+      - iceberg-network
 
   minio-init:
     build:
@@ -180,6 +184,8 @@ services:
     volumes:
       - ./certs:/root/.minio/certs:ro
       - ./certs/public.crt:/usr/local/share/ca-certificates/minio.crt:ro
+    networks:
+      - iceberg-network
 
   vault-init:
     build:
@@ -206,6 +212,9 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=spark_rapids
       - POSTGRES_MULTIPLE_DATABASES=keycloak_db,iceberg_db
+    networks:
+      - iceberg-network
+
   nextjs:
     build:
       context: .
@@ -224,6 +233,8 @@ services:
       - keycloak
       - web
     restart: unless-stopped
+    networks:
+      - iceberg-network
 
 volumes:
   minio_data:
@@ -236,5 +247,8 @@ secrets:
     file: ./secrets/minio_root_password.txt
 
 networks:
+  iceberg-network:
+    driver: bridge
+
   default:
     driver: bridge

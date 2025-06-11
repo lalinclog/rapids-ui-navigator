@@ -2,23 +2,29 @@
 FROM openjdk:11-jre-slim
 
 # Install keytool and openssl
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssl curl && rm -rf /var/lib/apt/lists/*
 
 # Copy certificate files
 COPY certs/public.crt /tmp/minio.crt
 
 # Create Java truststore with MinIO certificate
-RUN keytool -import -alias minio -keystore /etc/ssl/certs/minio/truststore.jks -file /tmp/minio.crt -storepass changeit -noprompt
+RUN mkdir -p /etc/ssl/certs/minio && \
+    keytool -import -alias minio -keystore /etc/ssl/certs/minio/truststore.jks -file /tmp/minio.crt -storepass changeit -noprompt
 
-# Create entrypoint script that sets AWS credentials from secrets
+# Create entrypoint script that sets AWS credentials from secrets and tests connectivity
 RUN echo '#!/bin/bash\n\
-export AWS_ACCESS_KEY_ID=$(cat /run/secrets/minio_root_user)\n\
-export AWS_SECRET_ACCESS_KEY=$(cat /run/secrets/minio_root_password)\n\
-export AWS_REGION=af-south-1\n\
-export AWS_DEFAULT_REGION=af-south-1\n\
-echo "AWS credentials set from secrets"\n\
+export AWS_ACCESS_KEY_ID=admin\n\
+export AWS_SECRET_ACCESS_KEY=password\n\
+export AWS_REGION=us-east-1\n\
+export AWS_DEFAULT_REGION=us-east-1\n\
+echo "AWS credentials set"\n\
+echo "Testing MinIO connectivity..."\n\
+curl -k https://minio:9000/minio/health/live || echo "MinIO health check failed"\n\
+echo "Testing DNS resolution..."\n\
+nslookup minio || echo "DNS resolution failed"\n\
+echo "Truststore created successfully"\n\
+ls -la /etc/ssl/certs/minio/\n\
 exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["echo", "Truststore created successfully"]
-
+CMD ["echo", "Iceberg REST init completed"]
