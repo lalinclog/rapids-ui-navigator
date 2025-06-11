@@ -1,3 +1,4 @@
+
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -279,13 +280,17 @@ class IcebergService:
             logger.info(f"=== Create Empty Table Debug ===")
             logger.info(f"Namespace: {namespace}")
             logger.info(f"Table name: {table_name}")
-            logger.info(f"Bucket: {bucket}")
+            logger.info(f"Requested bucket: {bucket}")
             logger.info(f"Base path: {base_path}")
             
             catalog = self._get_catalog()
             
+            # ALWAYS use iceberg-warehouse bucket regardless of what was passed in
+            warehouse_bucket = "iceberg-warehouse"
+            logger.info(f"Using warehouse bucket: {warehouse_bucket}")
+            
             # Ensure the main iceberg-warehouse bucket exists
-            self._ensure_bucket_exists("iceberg-warehouse")
+            self._ensure_bucket_exists(warehouse_bucket)
             
             # Ensure namespace exists - handle gracefully if it already exists
             try:
@@ -293,7 +298,7 @@ class IcebergService:
                 logger.info(f"Created namespace {namespace}")
             except Exception as e:
                 error_str = str(e).lower()
-                if "already exists" in error_str or "alreadyexistsexception" in error_str:
+                if "already exists" in error_str or "alreadyexistsexception" in error_str or "409" in str(e):
                     logger.info(f"Namespace {namespace} already exists, continuing with table creation")
                 else:
                     logger.warning(f"Unexpected error creating namespace {namespace}: {e}")
@@ -310,7 +315,7 @@ class IcebergService:
             table_identifier = f"{namespace}.{table_name}"
             
             # FIXED: Always use iceberg-warehouse bucket with namespace/table structure
-            table_location = f"s3a://iceberg-warehouse/{namespace}/{table_name}"
+            table_location = f"s3a://{warehouse_bucket}/{namespace}/{table_name}"
             
             logger.info(f"Creating empty table {table_identifier} at location {table_location}")
             
@@ -342,6 +347,8 @@ class IcebergService:
             raise
         except Exception as e:
             self._log_and_raise_error("creating empty table", e, namespace, table_name)
+
+    # ... keep existing code (all other methods remain the same)
     
     def list_namespaces(self) -> List[str]:
         """List all namespaces in the catalog"""
@@ -664,7 +671,7 @@ Tables will be listed here as they are created within this namespace.
                     continue
             
             # Remove duplicates and sort - ensure we return strings only
-            table_names = sorted(list(set(str(name) for name in table_names if isinstance(name, str)))
+            table_names = sorted(list(set(str(name) for name in table_names if isinstance(name, str))))
             
             logger.info(f"Final table names: {table_names}")
             logger.info(f"Successfully listed {len(table_names)} tables in namespace '{namespace}': {table_names}")
