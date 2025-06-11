@@ -1,5 +1,4 @@
 
-
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -189,6 +188,7 @@ class IcebergService:
     def _ensure_bucket_exists(self, bucket_name: str = "iceberg-warehouse", namespace: str = None) -> bool:
         """Ensure the main iceberg-warehouse bucket exists and create namespace directory structure"""
         try:
+            # Always use the warehouse bucket name - this is the only bucket we create
             warehouse = "iceberg-warehouse"
             logger.info(f"=== Bucket Creation Debug ===")
             logger.info(f"Ensuring bucket exists: {warehouse}")
@@ -280,6 +280,8 @@ Location: s3a://{warehouse}/{namespace}/
             self._log_and_raise_error("ensuring bucket exists", e)
         except Exception as e:
             logger.error(f"Unexpected error in _ensure_bucket_exists: {e}")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error args: {e.args}")
             self._log_and_raise_error("ensuring bucket exists (unexpected error)", e)
     
     def _set_bucket_policy(self, bucket_name: str):
