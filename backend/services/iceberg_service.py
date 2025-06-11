@@ -1,4 +1,5 @@
 
+
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -348,7 +349,7 @@ class IcebergService:
         except Exception as e:
             self._log_and_raise_error("creating empty table", e, namespace, table_name)
 
-    # ... keep existing code (all other methods remain the same)
+    # ... keep existing code (list_namespaces, create_namespace, _validate_namespace_properties, _create_namespace_readme, delete_namespace, get_namespace_properties, update_namespace_properties, list_tables methods remain the same)
     
     def list_namespaces(self) -> List[str]:
         """List all namespaces in the catalog"""
@@ -696,6 +697,19 @@ Tables will be listed here as they are created within this namespace.
         try:
             catalog = self._get_catalog()
             
+            # ALWAYS use iceberg-warehouse bucket regardless of what was passed in
+            warehouse_bucket = "iceberg-warehouse"
+            logger.info(f"=== Create Table from CSV Debug ===")
+            logger.info(f"Namespace: {namespace}")
+            logger.info(f"Table name: {table_name}")
+            logger.info(f"Requested bucket: {bucket}")
+            logger.info(f"Using warehouse bucket: {warehouse_bucket}")
+            logger.info(f"CSV path: {csv_path}")
+            logger.info(f"Base path: {base_path}")
+            
+            # Ensure the main iceberg-warehouse bucket exists
+            self._ensure_bucket_exists(warehouse_bucket)
+            
             # Ensure namespace exists - handle gracefully if it already exists
             try:
                 catalog.create_namespace(namespace)
@@ -725,7 +739,7 @@ Tables will be listed here as they are created within this namespace.
             table_identifier = f"{namespace}.{table_name}"
             
             # FIXED: Always use iceberg-warehouse bucket structure
-            table_location = f"s3a://iceberg-warehouse/{namespace}/{table_name}"
+            table_location = f"s3a://{warehouse_bucket}/{namespace}/{table_name}"
             
             # Create the table
             table = catalog.create_table(
@@ -770,6 +784,18 @@ Tables will be listed here as they are created within this namespace.
         """Create an Iceberg table from Parquet files in MinIO"""
         try:
             catalog = self._get_catalog()
+            
+            # ALWAYS use iceberg-warehouse bucket regardless of what was passed in
+            warehouse_bucket = "iceberg-warehouse"
+            logger.info(f"=== Create Table from Parquet Debug ===")
+            logger.info(f"Namespace: {namespace}")
+            logger.info(f"Table name: {table_name}")
+            logger.info(f"Requested bucket: {bucket}")
+            logger.info(f"Using warehouse bucket: {warehouse_bucket}")
+            logger.info(f"Parquet path: {parquet_path}")
+            
+            # Ensure the main iceberg-warehouse bucket exists
+            self._ensure_bucket_exists(warehouse_bucket)
             
             # Ensure namespace exists - handle gracefully if it already exists
             try:
@@ -829,7 +855,7 @@ Tables will be listed here as they are created within this namespace.
             table_identifier = f"{namespace}.{table_name}"
             
             # FIXED: Always use iceberg-warehouse bucket structure
-            table_location = f"s3a://iceberg-warehouse/{namespace}/{table_name}"
+            table_location = f"s3a://{warehouse_bucket}/{namespace}/{table_name}"
             
             logger.info(f"Creating table {table_identifier} at location {table_location}")
             
@@ -988,3 +1014,4 @@ Tables will be listed here as they are created within this namespace.
             
         except Exception as e:
             self._log_and_raise_error("evolving schema", e, namespace, table_name)
+
