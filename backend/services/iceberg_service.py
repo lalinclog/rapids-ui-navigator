@@ -43,12 +43,15 @@ class IcebergService:
             logger.info(f"Computed minio_endpoint: {minio_endpoint}")
             logger.info(f"Using minio_region: {minio_region}")
             
-            # Set environment variables for AWS SDK
+            # Set environment variables for AWS SDK - both for this process and the catalog
             os.environ['AWS_REGION'] = minio_region
             os.environ['AWS_DEFAULT_REGION'] = minio_region
+            # Also set the system property format that Java SDK might expect
+            os.environ['aws.region'] = minio_region
             
             logger.info(f"Set AWS_REGION to: {os.environ.get('AWS_REGION')}")
             logger.info(f"Set AWS_DEFAULT_REGION to: {os.environ.get('AWS_DEFAULT_REGION')}")
+            logger.info(f"Set aws.region to: {os.environ.get('aws.region')}")
             
             # Get MinIO credentials from Vault
             try:
@@ -68,7 +71,7 @@ class IcebergService:
             # Use REST catalog with S3 configuration
             rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
             
-            # Configure catalog properties for S3/MinIO
+            # Configure catalog properties for S3/MinIO with comprehensive region settings
             catalog_properties = {
                 "s3.endpoint": f"http://{minio_endpoint}",
                 "s3.access-key-id": access_key,
@@ -78,7 +81,17 @@ class IcebergService:
                 "client.region": minio_region,
                 "s3.signer-type": "S3SignerType",
                 "warehouse": "s3a://iceberg-warehouse/",
-                "io-impl": "org.apache.iceberg.aws.s3.S3FileIO"
+                "io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
+                # Additional region configurations for AWS SDK
+                "aws.region": minio_region,
+                "aws.s3.region": minio_region,
+                "s3.client.region": minio_region,
+                # REST catalog specific region configuration
+                "catalog-impl.region": minio_region,
+                "rest.region": minio_region,
+                # Try both formats for region specification
+                "AWS_REGION": minio_region,
+                "AWS_DEFAULT_REGION": minio_region
             }
             
             logger.info(f"=== Catalog Properties Debug ===")
@@ -88,13 +101,29 @@ class IcebergService:
                 else:
                     logger.info(f"{key}: {value}")
             
-            self._catalog = RestCatalog(
-                name="rest_catalog",
-                uri=rest_url,
-                properties=catalog_properties
-            )
+            logger.info(f"=== REST URL Debug ===")
+            logger.info(f"REST URL: {rest_url}")
             
-            logger.info(f"Initialized REST catalog at {rest_url} with S3 endpoint {catalog_properties['s3.endpoint']} and region {minio_region}")
+            try:
+                self._catalog = RestCatalog(
+                    name="rest_catalog",
+                    uri=rest_url,
+                    properties=catalog_properties
+                )
+                
+                logger.info(f"Successfully initialized REST catalog at {rest_url}")
+                
+                # Test the catalog connection
+                try:
+                    namespaces = list(self._catalog.list_namespaces())
+                    logger.info(f"Catalog connection test successful. Found {len(namespaces)} namespaces: {namespaces}")
+                except Exception as e:
+                    logger.error(f"Catalog connection test failed: {e}")
+                    raise
+                    
+            except Exception as e:
+                logger.error(f"Failed to initialize REST catalog: {e}")
+                raise
         
         return self._catalog
     
@@ -204,6 +233,12 @@ class IcebergService:
     ) -> Dict[str, Any]:
         """Create a new empty Iceberg table"""
         try:
+            logger.info(f"=== Create Empty Table Debug ===")
+            logger.info(f"Namespace: {namespace}")
+            logger.info(f"Table name: {table_name}")
+            logger.info(f"Bucket: {bucket}")
+            logger.info(f"Base path: {base_path}")
+            
             catalog = self._get_catalog()
             
             # Ensure namespace exists
@@ -232,6 +267,14 @@ class IcebergService:
                 table_location = f"s3a://{bucket}/{namespace}/{table_name}"
             
             logger.info(f"Creating empty table {table_identifier} at location {table_location}")
+            
+            # Log the current environment variables before calling the REST service
+            logger.info(f"=== Environment Variables Before REST Call ===")
+            logger.info(f"AWS_REGION: {os.environ.get('AWS_REGION', 'Not set')}")
+            logger.info(f"AWS_DEFAULT_REGION: {os.environ.get('AWS_DEFAULT_REGION', 'Not set')}")
+            logger.info(f"aws.region: {os.environ.get('aws.region', 'Not set')}")
+            logger.info(f"AWS_ACCESS_KEY_ID: {os.environ.get('AWS_ACCESS_KEY_ID', 'Not set')[:4]}...")
+            logger.info(f"AWS_SECRET_ACCESS_KEY: {os.environ.get('AWS_SECRET_ACCESS_KEY', 'Not set')[:4]}...")
             
             # Create the table
             table = catalog.create_table(
@@ -848,3 +891,5 @@ Tables will be listed here as they are created within this namespace.
             
         except Exception as e:
             self._log_and_raise_error("evolving schema", e, namespace, table_name)
+
+</edits_to_apply>
