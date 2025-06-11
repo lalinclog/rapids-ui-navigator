@@ -1,4 +1,5 @@
 
+
 from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.exceptions import NoSuchTableError, NoSuchNamespaceError
 from pyiceberg.schema import Schema
@@ -31,16 +32,15 @@ class IcebergService:
     def _get_catalog(self):
         """Initialize and return Iceberg REST catalog with proper S3 configuration"""
         if self._catalog is None:
-            # Set environment variables for AWS SDK to prevent EC2 metadata lookup
-            os.environ['AWS_REGION'] = 'us-east-1'
-            os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
-            os.environ['AWS_ACCESS_KEY_ID'] = 'minioadmin'  # Default for local MinIO
-            os.environ['AWS_SECRET_ACCESS_KEY'] = 'minioadmin'  # Default for local MinIO
+            # Get MinIO configuration from environment
+            minio_endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'minio')}:{os.environ.get('MINIO_PORT', '9000')}"
+            minio_region = os.environ.get('MINIO_REGION', 'af-south-1')  # Use the correct region
             
-            # Use REST catalog with S3 configuration
-            rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
+            # Set environment variables for AWS SDK
+            os.environ['AWS_REGION'] = minio_region
+            os.environ['AWS_DEFAULT_REGION'] = minio_region
             
-            # Get MinIO credentials using the existing method that returns tuple
+            # Get MinIO credentials from Vault
             try:
                 access_key, secret_key = self.vault.get_minio_creds()
                 logger.info(f"Got MinIO credentials from Vault: {access_key[:4]}...")
@@ -48,17 +48,21 @@ class IcebergService:
                 logger.warning(f"Could not get MinIO credentials from Vault: {e}. Using defaults.")
                 access_key, secret_key = "minioadmin", "minioadmin"
             
-            # Get MinIO endpoint from environment (same as MinioService uses)
-            minio_endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'minio')}:{os.environ.get('MINIO_PORT', '9000')}"
+            # Set AWS credentials in environment
+            os.environ['AWS_ACCESS_KEY_ID'] = access_key
+            os.environ['AWS_SECRET_ACCESS_KEY'] = secret_key
+            
+            # Use REST catalog with S3 configuration
+            rest_url = os.environ.get("ICEBERG_REST_URL", "http://iceberg-rest:8181")
             
             # Configure catalog properties for S3/MinIO
             catalog_properties = {
                 "s3.endpoint": f"http://{minio_endpoint}",
                 "s3.access-key-id": access_key,
                 "s3.secret-access-key": secret_key,
-                "s3.region": "us-east-1",
+                "s3.region": minio_region,
                 "s3.path-style-access": "true",  # Required for MinIO
-                "client.region": "us-east-1",
+                "client.region": minio_region,
                 "s3.signer-type": "S3SignerType",
                 "warehouse": "s3a://iceberg-warehouse/",
                 "io-impl": "org.apache.iceberg.aws.s3.S3FileIO"
@@ -70,7 +74,7 @@ class IcebergService:
                 properties=catalog_properties
             )
             
-            logger.info(f"Initialized REST catalog at {rest_url} with S3 endpoint {catalog_properties['s3.endpoint']}")
+            logger.info(f"Initialized REST catalog at {rest_url} with S3 endpoint {catalog_properties['s3.endpoint']} and region {minio_region}")
         
         return self._catalog
     
