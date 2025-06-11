@@ -186,13 +186,17 @@ class IcebergService:
         logger.error(error_msg)
         raise IcebergServiceError(error_msg) from error
     
-    def _ensure_bucket_exists(self, bucket_name: str = "iceberg-warehouse") -> bool:
-        """Ensure the main iceberg-warehouse bucket exists"""
+    def _ensure_bucket_exists(self, bucket_name: str = "iceberg-warehouse", namespace: str = None) -> bool:
+        """Ensure the main iceberg-warehouse bucket exists and create namespace directory structure"""
         try:
-            logger.info(f"=== Bucket Creation Debug for: {bucket_name} ===")
-            logger.info(f"Checking if bucket exists: {bucket_name}")
+            warehouse = "iceberg-warehouse"
+            logger.info(f"=== Bucket Creation Debug ===")
+            logger.info(f"Ensuring bucket exists: {warehouse}")
+            if namespace:
+                logger.info(f"For namespace: {namespace}")
+                logger.info(f"Full path will be: {warehouse}/{namespace}/")
             
-            # Log the MinIO client configuration - fix the attribute access
+            # Log the MinIO client configuration
             logger.info(f"MinIO client endpoint: {getattr(self.minio_service.client, '_base_url', 'Not available')}")
             logger.info(f"MinIO client region: {getattr(self.minio_service.client, '_region', 'Not set')}")
             logger.info(f"MinIO client secure: {getattr(self.minio_service.client, '_is_secure', 'Not available')}")
@@ -202,11 +206,12 @@ class IcebergService:
             logger.info(f"Environment AWS_DEFAULT_REGION: {os.environ.get('AWS_DEFAULT_REGION', 'Not set')}")
             logger.info(f"Environment MINIO_REGION: {os.environ.get('MINIO_REGION', 'Not set')}")
             
-            bucket_exists = self.minio_service.client.bucket_exists(bucket_name)
-            logger.info(f"Bucket {bucket_name} exists: {bucket_exists}")
+            # Check if the main warehouse bucket exists
+            bucket_exists = self.minio_service.client.bucket_exists(warehouse)
+            logger.info(f"Bucket {warehouse} exists: {bucket_exists}")
             
             if not bucket_exists:
-                logger.info(f"Creating bucket: {bucket_name}")
+                logger.info(f"Creating bucket: {warehouse}")
                 
                 # Try to create bucket with region specification
                 try:
@@ -214,20 +219,55 @@ class IcebergService:
                     minio_region = os.environ.get('MINIO_REGION', 'us-east-1')
                     logger.info(f"Attempting to create bucket with region: {minio_region}")
                     
-                    self.minio_service.client.make_bucket(bucket_name, location=minio_region)
-                    logger.info(f"Successfully created bucket {bucket_name} with region {minio_region}")
+                    self.minio_service.client.make_bucket(warehouse, location=minio_region)
+                    logger.info(f"Successfully created bucket {warehouse} with region {minio_region}")
                 except Exception as create_error:
                     logger.error(f"Failed to create bucket with region {minio_region}: {create_error}")
                     # Try without specifying region
                     logger.info(f"Retrying bucket creation without explicit region...")
-                    self.minio_service.client.make_bucket(bucket_name)
-                    logger.info(f"Successfully created bucket {bucket_name} without explicit region")
+                    self.minio_service.client.make_bucket(warehouse)
+                    logger.info(f"Successfully created bucket {warehouse} without explicit region")
                 
-                self.minio_service._create_placeholder_file(bucket_name)
-                self._set_bucket_policy(bucket_name)
-                logger.info(f"Successfully created and configured bucket: {bucket_name}")
+                self.minio_service._create_placeholder_file(warehouse)
+                self._set_bucket_policy(warehouse)
+                logger.info(f"Successfully created and configured bucket: {warehouse}")
             else:
-                logger.info(f"Bucket {bucket_name} already exists")
+                logger.info(f"Bucket {warehouse} already exists")
+            
+            # If namespace is provided, ensure the namespace directory structure exists
+            if namespace:
+                namespace_path = f"{namespace}/"
+                logger.info(f"Ensuring namespace directory exists: {namespace_path}")
+                
+                # Check if namespace directory already has any objects
+                objects = list(self.minio_service.client.list_objects(warehouse, prefix=namespace_path, max_keys=1))
+                
+                if not objects:
+                    logger.info(f"Creating namespace directory structure: {namespace_path}")
+                    # Create a placeholder file to ensure the namespace directory exists
+                    placeholder_content = f"""# {namespace} Namespace Directory
+
+This directory contains Iceberg tables for the '{namespace}' namespace.
+
+Created: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+Location: s3a://{warehouse}/{namespace}/
+"""
+                    
+                    import io
+                    content_stream = io.BytesIO(placeholder_content.encode('utf-8'))
+                    
+                    self.minio_service.client.put_object(
+                        bucket_name=warehouse,
+                        object_name=f"{namespace_path}.namespace-info",
+                        data=content_stream,
+                        length=len(placeholder_content.encode('utf-8')),
+                        content_type="text/plain"
+                    )
+                    
+                    logger.info(f"Created namespace directory structure at: {warehouse}/{namespace_path}")
+                else:
+                    logger.info(f"Namespace directory {namespace_path} already exists")
+            
             return True
             
         except S3Error as e:
@@ -290,8 +330,8 @@ class IcebergService:
             warehouse_bucket = "iceberg-warehouse"
             logger.info(f"Using warehouse bucket: {warehouse_bucket}")
             
-            # Ensure the main iceberg-warehouse bucket exists
-            self._ensure_bucket_exists(warehouse_bucket)
+            # Ensure the main iceberg-warehouse bucket exists and create namespace directory
+            self._ensure_bucket_exists(warehouse_bucket, namespace)
             
             # Ensure namespace exists - handle gracefully if it already exists
             try:
@@ -378,8 +418,8 @@ class IcebergService:
                     "message": f"Namespace '{namespace}' already exists"
                 }
 
-            # Ensure the iceberg-warehouse bucket exists
-            self._ensure_bucket_exists("iceberg-warehouse")
+            # Ensure the iceberg-warehouse bucket exists and create namespace directory
+            self._ensure_bucket_exists("iceberg-warehouse", namespace)
             
             # Validate properties
             self._validate_namespace_properties(properties)
@@ -707,8 +747,8 @@ Tables will be listed here as they are created within this namespace.
             logger.info(f"CSV path: {csv_path}")
             logger.info(f"Base path: {base_path}")
             
-            # Ensure the main iceberg-warehouse bucket exists
-            self._ensure_bucket_exists(warehouse_bucket)
+            # Ensure the main iceberg-warehouse bucket exists and create namespace directory
+            self._ensure_bucket_exists(warehouse_bucket, namespace)
             
             # Ensure namespace exists - handle gracefully if it already exists
             try:
@@ -794,8 +834,8 @@ Tables will be listed here as they are created within this namespace.
             logger.info(f"Using warehouse bucket: {warehouse_bucket}")
             logger.info(f"Parquet path: {parquet_path}")
             
-            # Ensure the main iceberg-warehouse bucket exists
-            self._ensure_bucket_exists(warehouse_bucket)
+            # Ensure the main iceberg-warehouse bucket exists and create namespace directory
+            self._ensure_bucket_exists(warehouse_bucket, namespace)
             
             # Ensure namespace exists - handle gracefully if it already exists
             try:
