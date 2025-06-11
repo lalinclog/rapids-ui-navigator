@@ -10,4 +10,15 @@ COPY certs/public.crt /tmp/minio.crt
 # Create Java truststore with MinIO certificate
 RUN keytool -import -alias minio -keystore /etc/ssl/certs/minio/truststore.jks -file /tmp/minio.crt -storepass changeit -noprompt
 
+# Create entrypoint script that sets AWS credentials from secrets
+RUN echo '#!/bin/bash\n\
+export AWS_ACCESS_KEY_ID=$(cat /run/secrets/minio_root_user)\n\
+export AWS_SECRET_ACCESS_KEY=$(cat /run/secrets/minio_root_password)\n\
+export AWS_REGION=af-south-1\n\
+export AWS_DEFAULT_REGION=af-south-1\n\
+echo "AWS credentials set from secrets"\n\
+exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["echo", "Truststore created successfully"]
+

@@ -43,6 +43,7 @@ services:
       - "8181:8181"
     volumes:
       - ./certs:/etc/ssl/certs/minio:ro
+      - ./secrets:/run/secrets:ro
     environment:
       - CATALOG_WAREHOUSE=s3a://iceberg-warehouse/
       - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
@@ -52,12 +53,13 @@ services:
       - CATALOG_JDBC_USER=postgres
       - CATALOG_JDBC_PASSWORD=postgres
       - CATALOG_S3_ENDPOINT=https://minio:9000
-      - CATALOG_S3_ACCESS_KEY_ID_FILE=/run/secrets/minio_root_user
-      - CATALOG_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/minio_root_password
       - CATALOG_S3_PATH_STYLE_ACCESS=true
       - CATALOG_S3_SSL_ENABLED=true
       - CATALOG_S3_SSL_TRUST_ALL=true
-      - JAVA_OPTS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/minio/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit
+      - CATALOG_S3_REGION=af-south-1
+      - AWS_REGION=af-south-1
+      - AWS_DEFAULT_REGION=af-south-1
+      - JAVA_OPTS=-Djavax.net.ssl.trustStore=/etc/ssl/certs/minio/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit -Daws.region=af-south-1
     secrets:
       - minio_root_user
       - minio_root_password
@@ -66,6 +68,15 @@ services:
       - minio
       - vault
     restart: unless-stopped
+    command: >
+      sh -c "
+        export AWS_ACCESS_KEY_ID=$$(cat /run/secrets/minio_root_user);
+        export AWS_SECRET_ACCESS_KEY=$$(cat /run/secrets/minio_root_password);
+        export AWS_REGION=af-south-1;
+        export AWS_DEFAULT_REGION=af-south-1;
+        echo 'AWS credentials set: AWS_ACCESS_KEY_ID='$$AWS_ACCESS_KEY_ID;
+        java -jar /opt/iceberg-rest/iceberg-rest.jar;
+      "
 
   vault:
     image: hashicorp/vault:1.19
@@ -223,3 +234,4 @@ secrets:
     file: ./secrets/minio_root_user.txt
   minio_root_password:
     file: ./secrets/minio_root_password.txt
+
