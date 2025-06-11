@@ -77,7 +77,7 @@ class IcebergService:
                 "s3.access-key-id": access_key,
                 "s3.secret-access-key": secret_key,
                 "s3.region": minio_region,
-                "s3.path-style-access": "true",  # Required for MinIO
+                "s3.path-style-access": "true",  # Force path-style access
                 "client.region": minio_region,
                 "s3.signer-type": "S3SignerType",
                 "warehouse": "s3a://iceberg-warehouse/",
@@ -94,9 +94,14 @@ class IcebergService:
                 "AWS_DEFAULT_REGION": minio_region,
                 # SSL configuration
                 "s3.ssl.enabled": "true",
-                # DNS resolution debugging
+                # Force path-style access to prevent virtual-hosted style
                 "s3.force-virtual-addressing": "false",
-                "s3.force-path-style": "true"
+                "s3.force-path-style": "true",
+                "s3.use-path-style-access": "true",
+                "client.s3.path-style-access": "true",
+                # Additional AWS SDK path-style settings
+                "aws.s3.path-style-access": "true",
+                "aws.s3.force-path-style": "true"
             }
             
             logger.info(f"=== Catalog Properties Debug ===")
@@ -179,8 +184,8 @@ class IcebergService:
         logger.error(error_msg)
         raise IcebergServiceError(error_msg) from error
     
-    def _ensure_bucket_exists(self, bucket_name: str) -> bool:
-        """Ensure the MinIO bucket exists, create it if not"""
+    def _ensure_bucket_exists(self, bucket_name: str = "iceberg-warehouse") -> bool:
+        """Ensure the main iceberg-warehouse bucket exists"""
         try:
             logger.info(f"=== Bucket Creation Debug for: {bucket_name} ===")
             logger.info(f"Checking if bucket exists: {bucket_name}")
@@ -266,10 +271,10 @@ class IcebergService:
         self,
         namespace: str,
         table_name: str,
-        bucket: str,
+        bucket: str = "iceberg-warehouse",
         base_path: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Create a new empty Iceberg table"""
+        """Create a new empty Iceberg table under iceberg-warehouse bucket"""
         try:
             logger.info(f"=== Create Empty Table Debug ===")
             logger.info(f"Namespace: {namespace}")
@@ -278,6 +283,9 @@ class IcebergService:
             logger.info(f"Base path: {base_path}")
             
             catalog = self._get_catalog()
+            
+            # Ensure the main iceberg-warehouse bucket exists
+            self._ensure_bucket_exists("iceberg-warehouse")
             
             # Ensure namespace exists
             try:
@@ -296,13 +304,9 @@ class IcebergService:
             # Create table identifier
             table_identifier = f"{namespace}.{table_name}"
             
-            # Set table location in the bucket - fix the double slash issue
-            if base_path:
-                # Remove leading slash from base_path to avoid double slashes
-                clean_base_path = base_path.lstrip('/')
-                table_location = f"s3a://{bucket}/{clean_base_path}"
-            else:
-                table_location = f"s3a://{bucket}/{namespace}/{table_name}"
+            # Set table location in the iceberg-warehouse bucket under namespace path
+            # This will create path like: iceberg-warehouse/sales_analytics/table_name/
+            table_location = f"s3a://iceberg-warehouse/{namespace}/{table_name}"
             
             logger.info(f"Creating empty table {table_identifier} at location {table_location}")
             
