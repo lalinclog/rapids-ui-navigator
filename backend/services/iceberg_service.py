@@ -191,8 +191,13 @@ class IcebergService:
             # Always use the warehouse bucket name - this is the only bucket we create
             warehouse = "iceberg-warehouse"
             
-            # Safely handle namespace parameter
-            namespace_str = str(namespace) if namespace is not None else ""
+            # Safely handle namespace parameter - ensure it's a string
+            namespace_str = ""
+            if namespace is not None:
+                if isinstance(namespace, str):
+                    namespace_str = namespace.strip()
+                else:
+                    namespace_str = str(namespace).strip()
             
             logger.info(f"=== Bucket Creation Debug ===")
             logger.info(f"Ensuring bucket exists: {warehouse}")
@@ -201,26 +206,36 @@ class IcebergService:
                 logger.info(f"Full path will be: {warehouse}/{namespace_str}/")
             
             # Log the MinIO client configuration - safely handle potential None values
-            base_url = getattr(self.minio_service.client, '_base_url', None)
-            region = getattr(self.minio_service.client, '_region', None)
-            is_secure = getattr(self.minio_service.client, '_is_secure', None)
-            
-            logger.info(f"MinIO client endpoint: {base_url if base_url is not None else 'Not available'}")
-            logger.info(f"MinIO client region: {region if region is not None else 'Not set'}")
-            logger.info(f"MinIO client secure: {is_secure if is_secure is not None else 'Not available'}")
+            try:
+                base_url = getattr(self.minio_service.client, '_base_url', None)
+                region = getattr(self.minio_service.client, '_region', None)
+                is_secure = getattr(self.minio_service.client, '_is_secure', None)
+                
+                logger.info(f"MinIO client endpoint: {base_url if base_url is not None else 'Not available'}")
+                logger.info(f"MinIO client region: {region if region is not None else 'Not set'}")
+                logger.info(f"MinIO client secure: {is_secure if is_secure is not None else 'Not available'}")
+            except Exception as e:
+                logger.warning(f"Could not get MinIO client attributes: {e}")
             
             # Log environment variables affecting region - safely handle None values
-            aws_region = os.environ.get('AWS_REGION')
-            aws_default_region = os.environ.get('AWS_DEFAULT_REGION')
-            minio_region = os.environ.get('MINIO_REGION')
-            
-            logger.info(f"Environment AWS_REGION: {aws_region if aws_region is not None else 'Not set'}")
-            logger.info(f"Environment AWS_DEFAULT_REGION: {aws_default_region if aws_default_region is not None else 'Not set'}")
-            logger.info(f"Environment MINIO_REGION: {minio_region if minio_region is not None else 'Not set'}")
+            try:
+                aws_region = os.environ.get('AWS_REGION', 'Not set')
+                aws_default_region = os.environ.get('AWS_DEFAULT_REGION', 'Not set')
+                minio_region = os.environ.get('MINIO_REGION', 'Not set')
+                
+                logger.info(f"Environment AWS_REGION: {aws_region}")
+                logger.info(f"Environment AWS_DEFAULT_REGION: {aws_default_region}")
+                logger.info(f"Environment MINIO_REGION: {minio_region}")
+            except Exception as e:
+                logger.warning(f"Could not get environment variables: {e}")
             
             # Check if the main warehouse bucket exists
-            bucket_exists = self.minio_service.client.bucket_exists(warehouse)
-            logger.info(f"Bucket {warehouse} exists: {bucket_exists}")
+            try:
+                bucket_exists = self.minio_service.client.bucket_exists(warehouse)
+                logger.info(f"Bucket {warehouse} exists: {bucket_exists}")
+            except Exception as e:
+                logger.error(f"Error checking if bucket exists: {e}")
+                bucket_exists = False
             
             if not bucket_exists:
                 logger.info(f"Creating bucket: {warehouse}")
@@ -229,6 +244,9 @@ class IcebergService:
                 try:
                     # Check if the client has a region set
                     region_to_use = os.environ.get('MINIO_REGION', 'us-east-1')
+                    if not region_to_use or region_to_use == 'Not set':
+                        region_to_use = 'us-east-1'
+                    
                     logger.info(f"Attempting to create bucket with region: {region_to_use}")
                     
                     self.minio_service.client.make_bucket(warehouse, location=region_to_use)
@@ -237,64 +255,68 @@ class IcebergService:
                     logger.error(f"Failed to create bucket with region {region_to_use}: {create_error}")
                     # Try without specifying region
                     logger.info(f"Retrying bucket creation without explicit region...")
-                    self.minio_service.client.make_bucket(warehouse)
-                    logger.info(f"Successfully created bucket {warehouse} without explicit region")
+                    try:
+                        self.minio_service.client.make_bucket(warehouse)
+                        logger.info(f"Successfully created bucket {warehouse} without explicit region")
+                    except Exception as e2:
+                        logger.error(f"Failed to create bucket without region: {e2}")
+                        raise
                 
-                self.minio_service._create_placeholder_file(warehouse)
-                self._set_bucket_policy(warehouse)
-                logger.info(f"Successfully created and configured bucket: {warehouse}")
+                try:
+                    self.minio_service._create_placeholder_file(warehouse)
+                    self._set_bucket_policy(warehouse)
+                    logger.info(f"Successfully created and configured bucket: {warehouse}")
+                except Exception as e:
+                    logger.warning(f"Could not configure bucket {warehouse}: {e}")
             else:
                 logger.info(f"Bucket {warehouse} already exists")
             
             # If namespace is provided, ensure the namespace directory structure exists
             if namespace_str:
-                namespace_path = f"{namespace_str}/"
-                logger.info(f"Ensuring namespace directory exists: {namespace_path}")
-                
-                # Check if namespace directory already has any objects
-                objects = list(self.minio_service.client.list_objects(warehouse, prefix=namespace_path, max_keys=1))
-                
-                if not objects:
-                    logger.info(f"Creating namespace directory structure: {namespace_path}")
-                    # Create a placeholder file to ensure the namespace directory exists
-                    current_time = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')
-                    placeholder_content = f"""# {namespace_str} Namespace Directory
-
-This directory contains Iceberg tables for the '{namespace_str}' namespace.
-
-Created: {current_time}
-Location: s3a://{warehouse}/{namespace_str}/
-"""
+                try:
+                    namespace_path = f"{namespace_str}/"
+                    logger.info(f"Ensuring namespace directory exists: {namespace_path}")
                     
-                    import io
-                    content_stream = io.BytesIO(placeholder_content.encode('utf-8'))
+                    # Check if namespace directory already has any objects
+                    objects = list(self.minio_service.client.list_objects(warehouse, prefix=namespace_path, max_keys=1))
                     
-                    self.minio_service.client.put_object(
-                        bucket_name=warehouse,
-                        object_name=f"{namespace_path}.namespace-info",
-                        data=content_stream,
-                        length=len(placeholder_content.encode('utf-8')),
-                        content_type="text/plain"
-                    )
-                    
-                    logger.info(f"Created namespace directory structure at: {warehouse}/{namespace_path}")
-                else:
-                    logger.info(f"Namespace directory {namespace_path} already exists")
+                    if not objects:
+                        logger.info(f"Creating namespace directory structure: {namespace_path}")
+                        # Create a placeholder file to ensure the namespace directory exists
+                        try:
+                            current_time = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+                            placeholder_content = f"# {namespace_str} Namespace Directory\n\nThis directory contains Iceberg tables for the '{namespace_str}' namespace.\n\nCreated: {current_time}\nLocation: s3a://{warehouse}/{namespace_str}/\n"
+                            
+                            import io
+                            content_stream = io.BytesIO(placeholder_content.encode('utf-8'))
+                            
+                            self.minio_service.client.put_object(
+                                bucket_name=warehouse,
+                                object_name=f"{namespace_path}.namespace-info",
+                                data=content_stream,
+                                length=len(placeholder_content.encode('utf-8')),
+                                content_type="text/plain"
+                            )
+                            
+                            logger.info(f"Created namespace directory structure at: {warehouse}/{namespace_path}")
+                        except Exception as e:
+                            logger.warning(f"Could not create namespace placeholder file: {e}")
+                    else:
+                        logger.info(f"Namespace directory {namespace_path} already exists")
+                except Exception as e:
+                    logger.warning(f"Could not ensure namespace directory: {e}")
             
             return True
             
         except S3Error as e:
             logger.error(f"S3Error in _ensure_bucket_exists: {e}")
-            logger.error(f"S3Error code: {e.code}")
-            logger.error(f"S3Error message: {e.message}")
-            logger.error(f"S3Error resource: {getattr(e, 'resource', 'Not available')}")
-            logger.error(f"S3Error request_id: {getattr(e, 'request_id', 'Not available')}")
-            logger.error(f"S3Error host_id: {getattr(e, 'host_id', 'Not available')}")
+            logger.error(f"S3Error code: {getattr(e, 'code', 'Not available')}")
+            logger.error(f"S3Error message: {getattr(e, 'message', 'Not available')}")
             self._log_and_raise_error("ensuring bucket exists", e)
         except Exception as e:
             logger.error(f"Unexpected error in _ensure_bucket_exists: {e}")
             logger.error(f"Error type: {type(e)}")
-            logger.error(f"Error args: {e.args}")
+            logger.error(f"Error args: {getattr(e, 'args', 'Not available')}")
             # Add more detailed debugging information
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
@@ -326,6 +348,8 @@ Location: s3a://{warehouse}/{namespace_str}/
             logger.info(f"Set bucket policy for {bucket_name}")
         except Exception as e:
             logger.warning(f"Could not set bucket policy for {bucket_name}: {e}")
+
+    # ... keep existing code (create_empty_table and other methods remain the same)
 
     def create_empty_table(
         self,
@@ -407,8 +431,6 @@ Location: s3a://{warehouse}/{namespace_str}/
         except Exception as e:
             self._log_and_raise_error("creating empty table", e, namespace, table_name)
 
-    # ... keep existing code (list_namespaces, create_namespace, _validate_namespace_properties, _create_namespace_readme, delete_namespace, get_namespace_properties, update_namespace_properties, list_tables methods remain the same)
-    
     def list_namespaces(self) -> List[str]:
         """List all namespaces in the catalog"""
         try:
@@ -1072,4 +1094,3 @@ Tables will be listed here as they are created within this namespace.
             
         except Exception as e:
             self._log_and_raise_error("evolving schema", e, namespace, table_name)
-
