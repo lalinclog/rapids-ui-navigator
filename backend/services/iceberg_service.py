@@ -190,21 +190,33 @@ class IcebergService:
         try:
             # Always use the warehouse bucket name - this is the only bucket we create
             warehouse = "iceberg-warehouse"
+            
+            # Safely handle namespace parameter
+            namespace_str = str(namespace) if namespace is not None else ""
+            
             logger.info(f"=== Bucket Creation Debug ===")
             logger.info(f"Ensuring bucket exists: {warehouse}")
-            if namespace:
-                logger.info(f"For namespace: {namespace}")
-                logger.info(f"Full path will be: {warehouse}/{namespace}/")
+            if namespace_str:
+                logger.info(f"For namespace: {namespace_str}")
+                logger.info(f"Full path will be: {warehouse}/{namespace_str}/")
             
-            # Log the MinIO client configuration
-            logger.info(f"MinIO client endpoint: {getattr(self.minio_service.client, '_base_url', 'Not available')}")
-            logger.info(f"MinIO client region: {getattr(self.minio_service.client, '_region', 'Not set')}")
-            logger.info(f"MinIO client secure: {getattr(self.minio_service.client, '_is_secure', 'Not available')}")
+            # Log the MinIO client configuration - safely handle potential None values
+            base_url = getattr(self.minio_service.client, '_base_url', None)
+            region = getattr(self.minio_service.client, '_region', None)
+            is_secure = getattr(self.minio_service.client, '_is_secure', None)
             
-            # Log environment variables affecting region
-            logger.info(f"Environment AWS_REGION: {os.environ.get('AWS_REGION', 'Not set')}")
-            logger.info(f"Environment AWS_DEFAULT_REGION: {os.environ.get('AWS_DEFAULT_REGION', 'Not set')}")
-            logger.info(f"Environment MINIO_REGION: {os.environ.get('MINIO_REGION', 'Not set')}")
+            logger.info(f"MinIO client endpoint: {base_url if base_url is not None else 'Not available'}")
+            logger.info(f"MinIO client region: {region if region is not None else 'Not set'}")
+            logger.info(f"MinIO client secure: {is_secure if is_secure is not None else 'Not available'}")
+            
+            # Log environment variables affecting region - safely handle None values
+            aws_region = os.environ.get('AWS_REGION')
+            aws_default_region = os.environ.get('AWS_DEFAULT_REGION')
+            minio_region = os.environ.get('MINIO_REGION')
+            
+            logger.info(f"Environment AWS_REGION: {aws_region if aws_region is not None else 'Not set'}")
+            logger.info(f"Environment AWS_DEFAULT_REGION: {aws_default_region if aws_default_region is not None else 'Not set'}")
+            logger.info(f"Environment MINIO_REGION: {minio_region if minio_region is not None else 'Not set'}")
             
             # Check if the main warehouse bucket exists
             bucket_exists = self.minio_service.client.bucket_exists(warehouse)
@@ -216,13 +228,13 @@ class IcebergService:
                 # Try to create bucket with region specification
                 try:
                     # Check if the client has a region set
-                    minio_region = os.environ.get('MINIO_REGION', 'us-east-1')
-                    logger.info(f"Attempting to create bucket with region: {minio_region}")
+                    region_to_use = os.environ.get('MINIO_REGION', 'us-east-1')
+                    logger.info(f"Attempting to create bucket with region: {region_to_use}")
                     
-                    self.minio_service.client.make_bucket(warehouse, location=minio_region)
-                    logger.info(f"Successfully created bucket {warehouse} with region {minio_region}")
+                    self.minio_service.client.make_bucket(warehouse, location=region_to_use)
+                    logger.info(f"Successfully created bucket {warehouse} with region {region_to_use}")
                 except Exception as create_error:
-                    logger.error(f"Failed to create bucket with region {minio_region}: {create_error}")
+                    logger.error(f"Failed to create bucket with region {region_to_use}: {create_error}")
                     # Try without specifying region
                     logger.info(f"Retrying bucket creation without explicit region...")
                     self.minio_service.client.make_bucket(warehouse)
@@ -235,8 +247,8 @@ class IcebergService:
                 logger.info(f"Bucket {warehouse} already exists")
             
             # If namespace is provided, ensure the namespace directory structure exists
-            if namespace:
-                namespace_path = f"{namespace}/"
+            if namespace_str:
+                namespace_path = f"{namespace_str}/"
                 logger.info(f"Ensuring namespace directory exists: {namespace_path}")
                 
                 # Check if namespace directory already has any objects
@@ -245,12 +257,13 @@ class IcebergService:
                 if not objects:
                     logger.info(f"Creating namespace directory structure: {namespace_path}")
                     # Create a placeholder file to ensure the namespace directory exists
-                    placeholder_content = f"""# {namespace} Namespace Directory
+                    current_time = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+                    placeholder_content = f"""# {namespace_str} Namespace Directory
 
-This directory contains Iceberg tables for the '{namespace}' namespace.
+This directory contains Iceberg tables for the '{namespace_str}' namespace.
 
-Created: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
-Location: s3a://{warehouse}/{namespace}/
+Created: {current_time}
+Location: s3a://{warehouse}/{namespace_str}/
 """
                     
                     import io
@@ -282,6 +295,9 @@ Location: s3a://{warehouse}/{namespace}/
             logger.error(f"Unexpected error in _ensure_bucket_exists: {e}")
             logger.error(f"Error type: {type(e)}")
             logger.error(f"Error args: {e.args}")
+            # Add more detailed debugging information
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             self._log_and_raise_error("ensuring bucket exists (unexpected error)", e)
     
     def _set_bucket_policy(self, bucket_name: str):
