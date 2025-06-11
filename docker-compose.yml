@@ -74,7 +74,7 @@ services:
         export AWS_REGION=af-south-1;
         export AWS_DEFAULT_REGION=af-south-1;
         echo 'AWS credentials set: AWS_ACCESS_KEY_ID='$$AWS_ACCESS_KEY_ID;
-        java -jar /opt/iceberg-rest/iceberg-rest.jar;
+        exec java $$JAVA_OPTS -jar /app/iceberg-rest.jar;
       "
 
   vault:
