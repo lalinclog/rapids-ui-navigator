@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class IcebergBIExtension:
-    """Extension to BIService for Iceberg table management"""
+    """Extension to BIService for Iceberg table management using default catalog"""
     
     def __init__(self):
         logger.info("IcebergBIExtension.__init__ started")
@@ -25,16 +25,16 @@ class IcebergBIExtension:
         self,
         name: str,
         description: str,
-        namespace: str,
-        dataset_type: str,
-        user_id: str,
+        namespace: str = "default",
+        dataset_type: str = "iceberg_table",
+        user_id: str = "1",
         source_id: int = 1,
         table_name: Optional[str] = None,
-        bucket: str = "iceberg-data",
+        bucket: str = "warehouse",
         base_path: Optional[str] = None,
         csv_path: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Create a new dataset backed by an Iceberg table"""
+        """Create a new dataset backed by an Iceberg table using default catalog"""
         logger.info("=== IcebergBIExtension.create_iceberg_dataset START ===")
         logger.info(f"Parameters - name: {name}, namespace: {namespace}, dataset_type: {dataset_type}")
         logger.info(f"Parameters - table_name: {table_name}, bucket: {bucket}, base_path: {base_path}")
@@ -46,7 +46,7 @@ class IcebergBIExtension:
                 table_name = name
                 logger.info(f"Using name as table_name: {table_name}")
             
-            # Ensure the bucket exists for the table
+            # Ensure the bucket exists
             logger.info(f"Ensuring bucket '{bucket}' exists...")
             self.iceberg_service._ensure_bucket_exists(bucket)
             logger.info(f"Bucket '{bucket}' verified/created successfully")
@@ -136,8 +136,8 @@ class IcebergBIExtension:
     
     def preview_iceberg_dataset(
         self,
-        namespace: str,
-        table_name: str,
+        namespace: str = "default",
+        table_name: str = "",
         limit: int = 100
     ) -> Dict[str, Any]:
         """Preview an Iceberg table"""
@@ -171,7 +171,7 @@ class IcebergBIExtension:
                 if not result:
                     raise ValueError(f"Iceberg dataset {dataset_id} not found")
                 
-                namespace = result[0]["iceberg_namespace"]
+                namespace = result[0]["iceberg_namespace"] or "default"
                 table_name = result[0]["iceberg_table"]
                 
                 # Query the Iceberg table
