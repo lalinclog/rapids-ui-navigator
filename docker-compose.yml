@@ -5,7 +5,7 @@ services:
   web:
     build: .
     ports:
-      - "8080:8080"
+      - "8090:8080"  # Changed from 8080:8080 to avoid conflict with spark-iceberg
     volumes:
       - ./:/app
       - ./certs:/etc/ssl/certs/minio:ro
@@ -18,8 +18,8 @@ services:
     environment:
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=/run/secrets/minio_root_user
-      - MINIO_SECRET_KEY=/run/secrets/minio_root_password
+      - MINIO_ACCESS_KEY=admin
+      - MINIO_SECRET_KEY=password
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_USER=postgres
@@ -29,7 +29,7 @@ services:
       - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
       - KEYCLOAK_URL=http://keycloak:8080
       - VAULT_TOKEN=root
-      - ICEBERG_REST_URL=http://iceberg-rest:8181
+      - ICEBERG_REST_URL=http://rest:8181
     command: ["sh", "-c", "./wait-for-minio-secret.sh"]
     networks:
       - iceberg_net
@@ -142,7 +142,7 @@ services:
         - NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:8081
         - NEXT_PUBLIC_KEYCLOAK_REALM=rapids-realm
         - NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=nextjs-app
-        - NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+        - NEXT_PUBLIC_API_BASE_URL=http://localhost:8090  # Updated to match new web service port
     environment:
       - API_BASE_URL=http://web:8080
     ports:
