@@ -78,7 +78,7 @@ class ApiClient {
 // Create and export singleton instance
 const apiClient = new ApiClient();
 
-// Export HTTP methods for backend API (including proxied Iceberg requests)
+// Export HTTP methods for backend API (including proxied Iceberg requests to external iceberg-rest)
 export const get = <T>(url: string, config?: AxiosRequestConfig): Promise<T> => 
   apiClient['executeRequest']<T>('get', url, undefined, config);
 

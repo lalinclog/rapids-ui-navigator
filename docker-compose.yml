@@ -9,16 +9,12 @@ services:
     volumes:
       - ./:/app
       - ./certs:/etc/ssl/certs/minio:ro
-      #- ./backend:/app/backend
-      #- ./dist:/app/dist  # <-- Only if you want live frontend reload (dev only)
       - /app/node_modules
     depends_on:
-      - minio
       - postgres
       - keycloak
       - vault
       - vault-init
-      - iceberg-rest
     environment:
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
@@ -34,10 +30,10 @@ services:
       - KEYCLOAK_URL=http://keycloak:8080
       - VAULT_TOKEN=root
       - ICEBERG_REST_URL=http://iceberg-rest:8181
-    #command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080","--log-level", "debug"] #, "--reload"]
     command: ["sh", "-c", "./wait-for-minio-secret.sh"]
     networks:
       - iceberg_net
+
   vault:
     image: hashicorp/vault:1.19
     container_name: vault
@@ -76,8 +72,6 @@ services:
       - KC_BOOTSTRAP_ADMIN_USERNAME=admin
       - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
       - KC_HOSTNAME_STRICT=false
-      #- KC_HOSTNAME_URL=http://localhost:8081
-      #- KC_HTTP_RELATIVE_PATH=/auth
       - KC_PROXY=edge
       - KC_HEALTH_ENABLED=true
       - KC_METRICS_ENABLED=true
@@ -88,7 +82,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
       interval: 60s
       timeout: 20s
-      start_period: 180s  # Added to give more startup time
+      start_period: 180s
       retries: 5
     networks:
       - iceberg_net
@@ -109,6 +103,7 @@ services:
       - PYTHONPATH=/app
     networks:
       - iceberg_net
+
   vault-init:
     build:
       context: .
@@ -138,16 +133,16 @@ services:
       - POSTGRES_MULTIPLE_DATABASES=keycloak_db,iceberg_db
     networks:
       - iceberg_net
+
   nextjs:
     build:
       context: .
       dockerfile: Dockerfile.nextjs
       args:
-        #- NEXT_PUBLIC_KEYCLOAK_URL=http://keycloak:8080
         - NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:8081
         - NEXT_PUBLIC_KEYCLOAK_REALM=rapids-realm
         - NEXT_PUBLIC_KEYCLOAK_CLIENT_ID=nextjs-app
-        - NEXT_PUBLIC_API_BASE_URL=http://localhost:8080  # Changed from web:8080
+        - NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
     environment:
       - API_BASE_URL=http://web:8080
     ports:
