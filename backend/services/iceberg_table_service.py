@@ -1,4 +1,3 @@
-
 from .iceberg_service import IcebergService
 from .minio_service import MinioService
 from typing import Dict, Any, List, Optional
@@ -6,6 +5,7 @@ import logging
 import pandas as pd
 import pyarrow as pa
 import io
+from .vault_service import VaultService
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ class IcebergTableService:
     def __init__(self):
         self.iceberg_service = IcebergService()
         self.minio_service = MinioService()
+        self.vault_service = VaultService()
     
     def list_tables_in_namespace(self, namespace: str = "default") -> Dict[str, Any]:
         """List all tables in a specific namespace"""
@@ -118,20 +119,20 @@ class IcebergTableService:
             
             # Get the Parquet file from MinIO
             objects = list(self.minio_service.list_objects(bucket, prefix=full_path))
-            
+                
             if not objects:
                 raise FileNotFoundError(f"No Parquet files found at path: s3://{bucket}/{full_path}")
-            
+                
             # Find a .parquet file
             parquet_object = None
             for obj in objects:
                 if obj.object_name == full_path or obj.object_name.endswith('.parquet'):
                     parquet_object = obj
                     break
-            
+           
             if not parquet_object:
                 raise FileNotFoundError(f"No .parquet files found at path: s3://{bucket}/{full_path}")
-            
+
             # Read the Parquet file
             response = self.minio_service.client.get_object(bucket, parquet_object.object_name)
             parquet_data = response.read()
@@ -171,7 +172,7 @@ class IcebergTableService:
         except Exception as e:
             logger.error(f"Error creating table from Parquet: {e}")
             raise
-    
+
     def delete_table(self, namespace: str, table_name: str) -> Dict[str, Any]:
         """Delete an Iceberg table"""
         try:
