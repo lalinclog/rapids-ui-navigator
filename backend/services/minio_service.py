@@ -21,22 +21,16 @@ class MinioService:
     def __init__(self):
         endpoint = f"{os.environ.get('MINIO_ENDPOINT', 'minio')}:{os.environ.get('MINIO_PORT', '9000')}"
 
-        # For external MinIO from iceberg_stack, use the standard credentials
-        access_key = os.environ.get('MINIO_ACCESS_KEY_VALUE', 'admin')
-        secret_key = os.environ.get('MINIO_SECRET_KEY_VALUE', 'password')
-        
-        # Try to get from vault first, fallback to env vars for external MinIO
-        try:
-            vault = VaultService()
-            access_key, secret_key = vault.get_minio_creds()
-            logger.info("Using MinIO credentials from Vault")
-        except Exception as e:
-            logger.info(f"Vault credentials not available, using external MinIO credentials: {e}")
-            # Use credentials compatible with iceberg_stack MinIO
-            access_key = 'admin'
-            secret_key = 'password'
+        vault = VaultService()
+        access_key, secret_key = vault.get_minio_creds()
 
-        # Use HTTP for local development with iceberg_stack
+        # Use certs/public.crt as CA root
+        #cert_path = "/etc/ssl/certs/minio/public.crt"
+        #ssl_context = ssl.create_default_context()
+        #ssl_context.load_verify_locations(cafile=cert_path)
+
+        #http_client = urllib3.PoolManager() #(ssl_context=ssl_context)
+        # Use HTTP for local development with iceberg_stackAdd commentMore actions
         secure = os.environ.get('MINIO_SECURE', 'false').lower() == 'true'
         
         if secure:
@@ -51,8 +45,8 @@ class MinioService:
 
         self.client = Minio(
             endpoint,
-            access_key=access_key,
-            secret_key=secret_key,
+            access_key='admin',
+            secret_key='password',
             secure=secure,
             http_client=http_client
         )
@@ -62,12 +56,12 @@ class MinioService:
         try:
             placeholder_content = f"""# {bucket_name} Bucket
 
-This is a placeholder file created to ensure the bucket is visible.
-You can safely delete this file once you start adding your own data.
+            This is a placeholder file created to ensure the bucket is visible.
+            You can safely delete this file once you start adding your own data.
 
-Created: {os.environ.get('HOSTNAME', 'unknown')}
-Purpose: Iceberg table storage
-"""
+            Created: {os.environ.get('HOSTNAME', 'unknown')}
+            Purpose: Iceberg table storage
+            """
             
             content_stream = io.BytesIO(placeholder_content.encode('utf-8'))
             
@@ -92,7 +86,6 @@ Purpose: Iceberg table storage
                 self.client.make_bucket(bucket)
                 self._create_placeholder_file(bucket)
 
-    # ... keep existing code (upload_file, get_file_url, get_file, store_file, list_objects, list_minio_datasets, _analyze_minio_file_schema methods)
     async def upload_file(self, file: UploadFile, object_name: str):
         """Upload a file to MinIO"""
         bucket = "uploads"
