@@ -1,4 +1,3 @@
-
 import os
 import logging
 from typing import Dict, Any, List, Optional
@@ -66,11 +65,20 @@ class IcebergService:
             raise
 
     def list_tables(self, namespace: str = "default") -> List[str]:
-        """List tables in a namespace"""
+        """List tables in a namespace - returns just table names"""
         try:
             catalog = self._get_catalog()
-            tables = catalog.list_tables(namespace)
-            return [str(table) for table in tables]
+            table_identifiers = catalog.list_tables(namespace)
+            # Extract just the table names from the identifiers
+            table_names = []
+            for identifier in table_identifiers:
+                if hasattr(identifier, 'name'):
+                    table_names.append(identifier.name)
+                elif isinstance(identifier, tuple) and len(identifier) > 1:
+                    table_names.append(identifier[1])  # namespace.table format
+                else:
+                    table_names.append(str(identifier).split('.')[-1])  # Get last part after dot
+            return table_names
         except Exception as e:
             logger.error(f"Error listing tables in namespace {namespace}: {e}")
             raise

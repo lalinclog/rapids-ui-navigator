@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, List, Optional
 from .iceberg_service import IcebergService, IcebergServiceError
@@ -93,8 +92,9 @@ async def delete_namespace(namespace: str) -> Dict[str, Any]:
 async def list_tables_in_namespace(namespace: str) -> Dict[str, List[str]]:
     """List all tables in a namespace"""
     try:
-        result = iceberg_service.list_tables(namespace)
-        return {"tables": result.get("tables", [])}
+        # Get just the table names, not full table objects
+        table_names = iceberg_service.list_tables(namespace)
+        return {"tables": table_names}
     except IcebergServiceError as e:
         logger.error(f"Error listing tables in namespace: {e}")
         raise HTTPException(status_code=400, detail=str(e))
