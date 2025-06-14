@@ -7,12 +7,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 class IcebergBIExtension:
-    """Extension to BIService for Iceberg table management using default catalog"""
+    """Extension to BIService for Iceberg table management"""
     
-    def __init__(self):
+    def __init__(self,  bi_service: BIService):
         logger.info("IcebergBIExtension.__init__ started")
         try:
-            self.bi_service = BIService()
+            self.bi_service = bi_service
             logger.info("BIService initialized successfully")
             self.iceberg_service = IcebergService()
             logger.info("IcebergService initialized successfully")
@@ -20,14 +20,16 @@ class IcebergBIExtension:
         except Exception as e:
             logger.error(f"Error in IcebergBIExtension.__init__: {e}", exc_info=True)
             raise
+
+
     
     def create_iceberg_dataset(
         self,
         name: str,
         description: str,
         namespace: str = "default",
-        dataset_type: str = "iceberg_table",
-        user_id: str = "1",
+        #dataset_type: = "iceberg_table",
+        user_id: int = 1,
         source_id: int = 1,
         table_name: Optional[str] = None,
         bucket: str = "warehouse",
@@ -35,23 +37,18 @@ class IcebergBIExtension:
         csv_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a new dataset backed by an Iceberg table using default catalog"""
-        logger.info("=== IcebergBIExtension.create_iceberg_dataset START ===")
-        logger.info(f"Parameters - name: {name}, namespace: {namespace}, dataset_type: {dataset_type}")
-        logger.info(f"Parameters - table_name: {table_name}, bucket: {bucket}, base_path: {base_path}")
-        logger.info(f"Parameters - csv_path: {csv_path}, user_id: {user_id}, source_id: {source_id}")
-        
         try:
             # Use name as table_name if not provided
             if not table_name:
                 table_name = name
                 logger.info(f"Using name as table_name: {table_name}")
-            
+
             # Ensure the bucket exists
             logger.info(f"Ensuring bucket '{bucket}' exists...")
-            self.iceberg_service._ensure_bucket_exists(bucket)
+            self.iceberg_service._ensure_bucket_exists(bucket, namespace)
             logger.info(f"Bucket '{bucket}' verified/created successfully")
-            
-            # Create table based on type
+
+            # If creating from CSV, convert to Iceberg first
             if csv_path and csv_path.strip():
                 logger.info(f"Creating Iceberg table from CSV: {csv_path}")
                 table_info = self.iceberg_service.create_table_from_csv(
@@ -63,6 +60,7 @@ class IcebergBIExtension:
                 )
                 logger.info(f"Table created from CSV successfully: {table_info}")
             else:
+                # Create a new empty Iceberg table
                 logger.info(f"Creating new empty Iceberg table: {namespace}.{table_name}")
                 table_info = self.iceberg_service.create_empty_table(
                     namespace=namespace,
@@ -70,7 +68,6 @@ class IcebergBIExtension:
                     bucket=bucket,
                     base_path=base_path
                 )
-                logger.info(f"Empty table created successfully: {table_info}")
             
             # Create dataset record in the database
             logger.info("Creating dataset record in database...")
@@ -82,7 +79,7 @@ class IcebergBIExtension:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """
-                
+
                 logger.info(f"Executing database insert query...")
                 result = self.bi_service._execute_query(conn, query, (
                     name,
@@ -92,16 +89,15 @@ class IcebergBIExtension:
                     f"{namespace}.{table_name}",
                     table_info["schema"],
                     str(user_id),
-                    int(user_id) if str(user_id).isdigit() else 1,
+                    user_id,
                     base_path,
                     namespace,
                     table_name
                 ))
                 
                 dataset_id = result[0]["id"]
-                logger.info(f"Dataset record created with ID: {dataset_id}")
                 
-                final_result = {
+                return {
                     "success": True,
                     "id": dataset_id,
                     "name": name,
@@ -114,10 +110,6 @@ class IcebergBIExtension:
                     "iceberg_table": table_name,
                     "base_path": base_path
                 }
-                
-                logger.info(f"=== IcebergBIExtension.create_iceberg_dataset SUCCESS ===")
-                logger.info(f"Final result: {final_result}")
-                return final_result
                 
         except Exception as e:
             logger.error(f"=== IcebergBIExtension.create_iceberg_dataset ERROR ===")
