@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast';
 import { Plus, Edit, Trash2, Database } from 'lucide-react';
 import { getTableDetails, updateTableSchema, SchemaColumn, SchemaUpdate } from '@/lib/api/iceberg';
+import authService from '@/services/AuthService';
 
 interface SchemaManagerProps {
   namespace: string;
@@ -28,12 +29,17 @@ const SchemaManager: React.FC<SchemaManagerProps> = ({ namespace, tableName }) =
 
   const { data: tableDetails, isLoading } = useQuery({
     queryKey: ['table-details', namespace, tableName],
-    queryFn: () => getTableDetails(namespace, tableName),
+    queryFn: async () => {
+      const token = await authService.getValidToken();
+      return getTableDetails(namespace, tableName, token || undefined);
+    },
   });
 
   const updateSchemaMutation = useMutation({
-    mutationFn: (updates: SchemaUpdate[]) => 
-      updateTableSchema({ namespace, table_name: tableName, updates }),
+    mutationFn: async (updates: SchemaUpdate[]) => {
+      const token = await authService.getValidToken();
+      return updateTableSchema({ namespace, table_name: tableName, updates }, token || undefined);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['table-details', namespace, tableName] });
       toast({
