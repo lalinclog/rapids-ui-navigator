@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,11 +10,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { Camera, RotateCcw, Plus, Clock } from 'lucide-react';
 import { 
-  getTableSnapshots, 
   rollbackToSnapshot, 
   createTableSnapshot, 
   Snapshot 
 } from '@/lib/api/iceberg';
+import { useIcebergSnapshots } from '@/hooks/useIcebergSnapshots';
+import authService from '@/services/AuthService';
 
 interface SnapshotManagerProps {
   namespace: string;
@@ -26,17 +27,16 @@ const SnapshotManager: React.FC<SnapshotManagerProps> = ({ namespace, tableName 
   const [isCreateSnapshotOpen, setIsCreateSnapshotOpen] = useState(false);
   const [snapshotSummary, setSnapshotSummary] = useState('');
 
-  const { data: snapshots, isLoading } = useQuery({
-    queryKey: ['table-snapshots', namespace, tableName],
-    queryFn: () => getTableSnapshots(namespace, tableName),
-  });
+  const { data: snapshots, isLoading, error } = useIcebergSnapshots(namespace, tableName);
 
   const rollbackMutation = useMutation({
-    mutationFn: (snapshotId: string) => 
-      rollbackToSnapshot(namespace, tableName, snapshotId),
+    mutationFn: async (snapshotId: string) => {
+      const token = await authService.getValidToken();
+      return rollbackToSnapshot(namespace, tableName, snapshotId, token || undefined);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['table-snapshots', namespace, tableName] });
-      queryClient.invalidateQueries({ queryKey: ['table-details', namespace, tableName] });
+      queryClient.invalidateQueries({ queryKey: ['iceberg-snapshots', namespace, tableName] });
+      queryClient.invalidateQueries({ queryKey: ['iceberg-schema', namespace, tableName] });
       toast({
         title: 'Rollback successful',
         description: 'Table has been rolled back to the selected snapshot',
@@ -52,10 +52,13 @@ const SnapshotManager: React.FC<SnapshotManagerProps> = ({ namespace, tableName 
   });
 
   const createSnapshotMutation = useMutation({
-    mutationFn: () => createTableSnapshot(namespace, tableName, 
-      snapshotSummary ? { description: snapshotSummary } : undefined),
+    mutationFn: async () => {
+      const token = await authService.getValidToken();
+      return createTableSnapshot(namespace, tableName, 
+        snapshotSummary ? { description: snapshotSummary } : undefined, token || undefined);
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['table-snapshots', namespace, tableName] });
+      queryClient.invalidateQueries({ queryKey: ['iceberg-snapshots', namespace, tableName] });
       toast({
         title: 'Snapshot created',
         description: 'New table snapshot has been created successfully',
@@ -88,6 +91,10 @@ const SnapshotManager: React.FC<SnapshotManagerProps> = ({ namespace, tableName 
 
   if (isLoading) {
     return <div>Loading snapshot information...</div>;
+  }
+
+  if (error) {
+    return <div>Error loading snapshots: {error.message}</div>;
   }
 
   return (

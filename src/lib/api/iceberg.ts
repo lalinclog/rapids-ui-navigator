@@ -1,4 +1,3 @@
-
 import { get, post, put, del } from "./api-client"
 
 export interface IcebergNamespace {
@@ -227,13 +226,56 @@ export async function updateTableSchema(schemaUpdate: SchemaUpdateRequest, token
 }
 
 /**
- * Get table snapshots
+ * Get table schema specifically
  */
-export async function getTableSnapshots(namespace: string, table_name: string, token?: string): Promise<Snapshot[]> {
-  const response = await get<{snapshots: Snapshot[]}>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}/snapshots`, {
+export async function getTableSchema(namespace: string, table_name: string, token?: string): Promise<SchemaInfo> {
+  const response = await get<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
-  })
-  return response.snapshots
+  });
+  
+  console.log('[getTableSchema] Raw backend response:', response);
+  
+  // Extract schema from various possible locations in the response
+  let schema: SchemaInfo;
+  
+  if (response.table?.metadata?.schema) {
+    schema = response.table.metadata.schema;
+  } else if (response.table?.schema) {
+    schema = response.table.schema;
+  } else if (response.metadata?.schema) {
+    schema = response.metadata.schema;
+  } else if (response.schema) {
+    schema = response.schema;
+  } else {
+    // Fallback empty schema
+    schema = { columns: [] };
+  }
+  
+  console.log('[getTableSchema] Extracted schema:', schema);
+  return schema;
+}
+
+/**
+ * Get table snapshots specifically
+ */
+export async function getTableSnapshotsOnly(namespace: string, table_name: string, token?: string): Promise<Snapshot[]> {
+  try {
+    const response = await get<{snapshots: Snapshot[]}>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}/snapshots`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    
+    console.log('[getTableSnapshotsOnly] Raw response:', response);
+    
+    if (response && response.snapshots) {
+      return response.snapshots;
+    }
+    
+    // Return empty array if no snapshots found
+    return [];
+  } catch (error) {
+    console.error('[getTableSnapshotsOnly] Error fetching snapshots:', error);
+    return [];
+  }
 }
 
 /**

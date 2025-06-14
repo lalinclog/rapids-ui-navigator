@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast';
 import { Plus, Edit, Trash2, Database } from 'lucide-react';
 import { getTableDetails, updateTableSchema, SchemaColumn, SchemaUpdate } from '@/lib/api/iceberg';
+import { useIcebergSchema } from '@/hooks/useIcebergSchema';
 import authService from '@/services/AuthService';
 
 interface SchemaManagerProps {
@@ -28,35 +28,7 @@ const SchemaManager: React.FC<SchemaManagerProps> = ({ namespace, tableName }) =
     description: ''
   });
 
-  const { data: tableDetails, isLoading } = useQuery({
-    queryKey: ['table-details', namespace, tableName],
-    queryFn: async () => {
-      const token = await authService.getValidToken();
-      console.log('[SchemaManager] Fetching table details for:', { 
-        namespace, 
-        tableName,
-        token: token ? '*****' : 'null' 
-      });
-
-      try {
-        const response = await getTableDetails(namespace, tableName, token || undefined);
-        console.log('[SchemaManager] Received table details:', {
-          status: 'success',
-          data: response,
-          timestamp: new Date().toISOString()
-        });
-        return response;
-      } catch (error) {
-        console.error('[SchemaManager] Error fetching table details:', {
-          error,
-          namespace,
-          tableName,
-          timestamp: new Date().toISOString()
-        });
-        throw error;
-      }
-    },
-  });
+  const { data: schema, isLoading, error } = useIcebergSchema(namespace, tableName);
 
   const updateSchemaMutation = useMutation({
     mutationFn: async (updates: SchemaUpdate[]) => {
@@ -64,7 +36,7 @@ const SchemaManager: React.FC<SchemaManagerProps> = ({ namespace, tableName }) =
       return updateTableSchema({ namespace, table_name: tableName, updates }, token || undefined);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['table-details', namespace, tableName] });
+      queryClient.invalidateQueries({ queryKey: ['iceberg-schema', namespace, tableName] });
       toast({
         title: 'Schema updated',
         description: 'Table schema has been successfully updated',
@@ -118,9 +90,30 @@ const SchemaManager: React.FC<SchemaManagerProps> = ({ namespace, tableName }) =
     return <div>Loading schema information...</div>;
   }
 
-  const schema = tableDetails?.schema;
-  if (!schema) {
-    return <div>No schema information available</div>;
+  if (error) {
+    return <div>Error loading schema: {error.message}</div>;
+  }
+
+  if (!schema || !schema.columns || schema.columns.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Schema Management
+            </h3>
+            <p className="text-muted-foreground">
+              Manage the schema for {namespace}.{tableName}
+            </p>
+          </div>
+          <Button onClick={() => setIsAddColumnOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Add Column
+          </Button>
+        </div>
+        <div>No schema information available</div>
+      </div>
+    );
   }
 
   return (
