@@ -1,4 +1,3 @@
-
 import { get, post, put, del } from "./api-client"
 
 export interface IcebergNamespace {
@@ -119,38 +118,52 @@ export async function getTableDetails(namespace: string, table_name: string, tok
   const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
   const response = await get<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`, config);
   
-  // Handle nested response structure from backend
-  if (response.table && response.table.metadata) {
-    // Backend returns: { table: { metadata: { schema: {...}, location: "...", ... } } }
+  console.log('Raw backend response:', response);
+  
+  // Handle the specific response structure from your backend
+  if (response.table) {
     const tableData = response.table;
-    const metadata = tableData.metadata;
+    
+    // Extract schema from either metadata.schema or schema directly
+    let schema = null;
+    if (tableData.metadata && tableData.metadata.schema) {
+      schema = tableData.metadata.schema;
+    } else if (tableData.schema) {
+      schema = tableData.schema;
+    } else if (response.schema) {
+      schema = response.schema;
+    }
+    
+    // Extract location from metadata or table level
+    const location = (tableData.metadata && tableData.metadata.location) || 
+                    tableData.location || 
+                    '';
+    
+    // Extract current_snapshot_id from metadata
+    const current_snapshot_id = (tableData.metadata && tableData.metadata.current_snapshot_id) || 
+                               tableData.current_snapshot_id;
+    
+    console.log('Extracted schema:', schema);
+    console.log('Extracted location:', location);
+    console.log('Extracted snapshot ID:', current_snapshot_id);
     
     return {
       name: table_name,
       namespace: namespace,
-      location: metadata.location || '',
-      schema: metadata.schema || { columns: [] },
-      current_snapshot_id: metadata.current_snapshot_id?.toString(),
-    };
-  } else if (response.name || response.location || response.schema) {
-    // Direct structure: { name: "...", location: "...", schema: {...} }
-    return {
-      name: response.name || table_name,
-      namespace: response.namespace || namespace,
-      location: response.location || '',
-      schema: response.schema || { columns: [] },
-      current_snapshot_id: response.current_snapshot_id?.toString(),
-    };
-  } else {
-    // Fallback for any other structure
-    return {
-      name: table_name,
-      namespace: namespace,
-      location: '',
-      schema: { columns: [] },
-      current_snapshot_id: undefined,
+      location: location,
+      schema: schema || { columns: [] },
+      current_snapshot_id: current_snapshot_id?.toString(),
     };
   }
+  
+  // Fallback for direct structure
+  return {
+    name: table_name,
+    namespace: namespace,
+    location: response.location || '',
+    schema: response.schema || { columns: [] },
+    current_snapshot_id: response.current_snapshot_id?.toString(),
+  };
 }
 
 /**
