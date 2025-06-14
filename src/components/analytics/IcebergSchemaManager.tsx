@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,7 +32,29 @@ const SchemaManager: React.FC<SchemaManagerProps> = ({ namespace, tableName }) =
     queryKey: ['table-details', namespace, tableName],
     queryFn: async () => {
       const token = await authService.getValidToken();
-      return getTableDetails(namespace, tableName, token || undefined);
+      console.log('[SchemaManager] Fetching table details for:', { 
+        namespace, 
+        tableName,
+        token: token ? '*****' : 'null' 
+      });
+
+      try {
+        const response = await getTableDetails(namespace, tableName, token || undefined);
+        console.log('[SchemaManager] Received table details:', {
+          status: 'success',
+          data: response,
+          timestamp: new Date().toISOString()
+        });
+        return response;
+      } catch (error) {
+        console.error('[SchemaManager] Error fetching table details:', {
+          error,
+          namespace,
+          tableName,
+          timestamp: new Date().toISOString()
+        });
+        throw error;
+      }
     },
   });
 
