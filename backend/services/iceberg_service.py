@@ -17,6 +17,11 @@ from .minio_service import MinioService
 logger = logging.getLogger(__name__)
 
 
+class IcebergServiceError(Exception):
+    """Custom exception for Iceberg service errors"""
+    pass
+
+
 class IcebergService:
     """Service for managing Iceberg operations using the default catalog"""
 
