@@ -15,7 +15,7 @@ export default defineConfig({
     port: 8080,
     proxy: {
       '/api': {
-        target: 'http://localhost:8090',  // Updated to match new web service port
+        target: 'http://localhost:8080',  // Updated to match new web service port
         changeOrigin: true,
       }
     }
