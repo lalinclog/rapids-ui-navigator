@@ -34,7 +34,7 @@ services:
       - AWS_REGION=us-east-1
     ports:
       - 8888:8888
-      - 8080:8080
+      - 8090:8080
       - 10000:10000
       - 10001:10001
   rest:
@@ -66,6 +66,8 @@ services:
       - 9001:9001
       - 9000:9000
     command: ["server", "/data", "--console-address", ":9001"]
+    volumes:
+      - minio-data:/data
   mc:
     depends_on:
       - minio
@@ -84,7 +86,15 @@ services:
       /usr/bin/mc anonymous set public minio/warehouse;
       tail -f /dev/null
       "
+secrets:
+  minio_root_user:
+    file: ./secrets/minio_root_user.txt
+  minio_root_password:
+    file: ./secrets/minio_root_password.txt
+
 networks:
   iceberg_net:
     external: true
 
+volumes:
+  minio-data:
