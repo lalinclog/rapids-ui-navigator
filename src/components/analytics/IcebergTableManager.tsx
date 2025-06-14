@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +25,7 @@ interface Table {
   namespace: string;
   location: string;
   schema: any;
-  current_snapshot_id?: string;
+  current_snapshot_id?: string; // Made optional to match IcebergTable
 }
 
 interface NamespaceItem {
@@ -74,7 +73,7 @@ const IcebergTableManager: React.FC = () => {
       const token = await authService.getValidToken();
       const result = await listNamespaces(token || undefined);
       console.log('IcebergTableManager: Namespaces query result:', result);
-      
+
       // Handle both string array and object array responses
       if (Array.isArray(result) && result.length > 0) {
         if (typeof result[0] === 'string') {
@@ -106,7 +105,14 @@ const IcebergTableManager: React.FC = () => {
       try {
         const result = await listTables(selectedNamespace, token || undefined);
         console.log('Tables result:', result);
-        return result || [];
+
+         // Handle the API response format
+        if (result && result.tables) {
+          // Filter out any tables with errors
+          const validTables = result.tables.filter(table => !table.error);
+          return validTables.map(table => table.name);
+        }
+        return [];
       } catch (error) {
         console.error('Error fetching tables:', error);
         return [];
@@ -120,7 +126,7 @@ const IcebergTableManager: React.FC = () => {
     queryFn: async () => {
       if (!selectedNamespace || !tableNames || tableNames.length === 0) return [];
       const token = await authService.getValidToken();
-      
+
       const tableDetails = await Promise.all(
         tableNames.map(async (tableName) => {
           try {
@@ -138,7 +144,7 @@ const IcebergTableManager: React.FC = () => {
           }
         })
       );
-      
+
       return tableDetails;
     },
     enabled: !!selectedNamespace && !!tableNames && tableNames.length > 0,
@@ -200,7 +206,7 @@ const IcebergTableManager: React.FC = () => {
   const handlePreview = (table: Table) => {
     previewTableMutation.mutate({ namespace: selectedNamespace!, tableName: table.name });
   };
-  
+
   const handleViewTable = (namespace: string, tableName: string) => {
     setSelectedTable({ namespace, name: tableName });
     setActiveTab('overview');
@@ -285,11 +291,11 @@ const IcebergTableManager: React.FC = () => {
                 </div>
               </div>
             </CardHeader>
-            
+
             <CardFooter className="pt-3 flex justify-between border-t">
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => handleViewTable(selectedNamespace, table.name)}
                 className="flex-1 mr-2"
               >
@@ -299,10 +305,10 @@ const IcebergTableManager: React.FC = () => {
                 <Button variant="ghost" size="sm" onClick={() => handlePreview(table)} className="px-2">
                   <FileText className="h-4 w-4" />
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => handleDelete(selectedNamespace, table)} 
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleDelete(selectedNamespace, table)}
                   className="px-2 text-destructive hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -332,7 +338,7 @@ const IcebergTableManager: React.FC = () => {
           onClick={() => setIsCreateDialogOpen(true)} 
           size="lg"
           disabled={!primaryIcebergSource}
-        >
+        >          
           <Plus className="mr-2 h-4 w-4" /> Create Table
         </Button>
       </div>
@@ -362,7 +368,7 @@ const IcebergTableManager: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Create New Table</DialogTitle>
           </DialogHeader>
-          <CreateTableForm 
+          <CreateTableForm
             selectedNamespace={selectedNamespace || undefined}
             selectedSourceId={primaryIcebergSource?.id}
             onSuccess={() => {
@@ -387,14 +393,14 @@ const IcebergTableManager: React.FC = () => {
                 {selectedTable.namespace}.{selectedTable.name}
               </DialogTitle>
             </DialogHeader>
-            
+
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
               <TabsList className="grid grid-cols-3 mb-6">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="schema">Schema</TabsTrigger>
                 <TabsTrigger value="snapshots">Snapshots</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="overview">
                 <Card>
                   <CardHeader>
@@ -414,18 +420,18 @@ const IcebergTableManager: React.FC = () => {
                   </CardContent>
                 </Card>
               </TabsContent>
-              
+
               <TabsContent value="schema">
-                <SchemaManager 
-                  namespace={selectedTable.namespace} 
-                  tableName={selectedTable.name} 
+                <SchemaManager
+                  namespace={selectedTable.namespace}
+                  tableName={selectedTable.name}
                 />
               </TabsContent>
-              
+
               <TabsContent value="snapshots">
-                <SnapshotManager 
-                  namespace={selectedTable.namespace} 
-                  tableName={selectedTable.name} 
+                <SnapshotManager
+                  namespace={selectedTable.namespace}
+                  tableName={selectedTable.name}
                 />
               </TabsContent>
             </Tabs>
