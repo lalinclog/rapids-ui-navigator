@@ -117,7 +117,40 @@ export async function deleteNamespace(namespace: string, token?: string): Promis
  */
 export async function getTableDetails(namespace: string, table_name: string, token?: string): Promise<IcebergTable> {
   const config = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
-  return get<IcebergTable>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`, config);
+  const response = await get<any>(`/api/iceberg/namespaces/${namespace}/tables/${table_name}`, config);
+  
+  // Handle nested response structure from backend
+  if (response.table && response.table.metadata) {
+    // Backend returns: { table: { metadata: { schema: {...}, location: "...", ... } } }
+    const tableData = response.table;
+    const metadata = tableData.metadata;
+    
+    return {
+      name: table_name,
+      namespace: namespace,
+      location: metadata.location || '',
+      schema: metadata.schema || { columns: [] },
+      current_snapshot_id: metadata.current_snapshot_id?.toString(),
+    };
+  } else if (response.name || response.location || response.schema) {
+    // Direct structure: { name: "...", location: "...", schema: {...} }
+    return {
+      name: response.name || table_name,
+      namespace: response.namespace || namespace,
+      location: response.location || '',
+      schema: response.schema || { columns: [] },
+      current_snapshot_id: response.current_snapshot_id?.toString(),
+    };
+  } else {
+    // Fallback for any other structure
+    return {
+      name: table_name,
+      namespace: namespace,
+      location: '',
+      schema: { columns: [] },
+      current_snapshot_id: undefined,
+    };
+  }
 }
 
 /**
