@@ -18,15 +18,7 @@ import authService from '@/services/AuthService';
 
 import SchemaManager from './IcebergSchemaManager';
 import SnapshotManager from './IcebergSnapshotManager';
-import { listNamespaces, listTables, deleteTable, getTableDetails } from '@/lib/api/iceberg';
-
-interface Table {
-  name: string;
-  namespace: string;
-  location: string;
-  schema: any;
-  current_snapshot_id?: string; // Made optional to match IcebergTable
-}
+import { listNamespaces, listTables, deleteTable, getTableDetails, IcebergTable } from '@/lib/api/iceberg';
 
 interface NamespaceItem {
   name: string;
@@ -135,12 +127,18 @@ const IcebergTableManager: React.FC = () => {
           } catch (error) {
             console.error(`Error fetching details for table ${tableName}:`, error);
             return {
+              identifier: `${selectedNamespace}.${tableName}`,
               name: tableName,
               namespace: selectedNamespace,
               location: '',
+              metadata: {
+                table_identifier: `${selectedNamespace}.${tableName}`,
+                location: '',
+                schema: { columns: [] }
+              },
               schema: { columns: [] },
               current_snapshot_id: ''
-            };
+            } as IcebergTable;
           }
         })
       );
@@ -197,13 +195,13 @@ const IcebergTableManager: React.FC = () => {
     setSelectedNamespace(namespace);
   };
 
-  const handleDelete = (namespace: string, table: Table) => {
+  const handleDelete = (namespace: string, table: IcebergTable) => {
     if (confirm(`Are you sure you want to delete the table "${table.name}" in namespace "${namespace}"?`)) {
       deleteTableMutation.mutate({ namespace: namespace, tableName: table.name });
     }
   };
 
-  const handlePreview = (table: Table) => {
+  const handlePreview = (table: IcebergTable) => {
     previewTableMutation.mutate({ namespace: selectedNamespace!, tableName: table.name });
   };
 
