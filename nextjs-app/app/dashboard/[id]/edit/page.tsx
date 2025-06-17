@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/components/auth/auth-context"
 import { getDashboardById, updateDashboard, deleteDashboard } from "@/lib/api/api-client"
 import type { Dashboard } from "@/lib/types"
+import type { FilterType } from "@/components/types/filter"
 import DashboardApp from "@/components/dashboard-app"
 import {
   AlertDialog,
@@ -24,7 +25,7 @@ import {
 
 interface DashboardData {
   items: any[]
-  globalFilters: Record<string, any> 
+  globalFilters: FilterType[]
   dimensions: { width: number, height: number }
 }
 
@@ -42,7 +43,7 @@ export default function DashboardEditPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     items: [],
-    globalFilters: {},
+    globalFilters: [],
     dimensions: { width: 1200, height: 800 }
   })
 
@@ -81,9 +82,30 @@ export default function DashboardEditPage() {
         const data = await getDashboardById(dashboardId);
         console.log("[DashboardEditPage] API response data:", data);
         
+        // Convert globalFilters from Record to FilterType[] if needed
+        let globalFilters: FilterType[] = [];
+        if (data.data?.globalFilters) {
+          if (Array.isArray(data.data.globalFilters)) {
+            globalFilters = data.data.globalFilters;
+          } else {
+            // Convert Record<string, any> to FilterType[]
+            globalFilters = Object.entries(data.data.globalFilters).map(([key, value]) => ({
+              id: key,
+              name: key,
+              type: 'text' as const,
+              field: key,
+              operator: 'equals' as const,
+              value: value,
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            }));
+          }
+        }
+        
         const initialData = {
           items: Array.isArray(data.data?.items) ? data.data.items : [],
-          globalFilters: data.data?.globalFilters || {},
+          globalFilters,
           dimensions: data.data?.dimensions || { width: 1200, height: 800 }
         };
         console.log("[DashboardEditPage] Initial dashboard data:", initialData);
@@ -113,7 +135,7 @@ export default function DashboardEditPage() {
       const newData = {
         ...prev,
         items: Array.isArray(data.items) ? data.items : prev.items,
-        globalFilters: data.globalFilters || prev.globalFilters,
+        globalFilters: Array.isArray(data.globalFilters) ? data.globalFilters : prev.globalFilters,
         dimensions: data.dimensions || prev.dimensions
       };
       console.log("[DashboardEditPage] Updated dashboard data:", newData);
@@ -147,17 +169,23 @@ export default function DashboardEditPage() {
         zIndex: item.zIndex || 0,
         chart_id: item.chart_id || null,
       })) : [];
+
+      // Convert FilterType[] back to Record<string, any> for API
+      const globalFiltersRecord = dashboardData.globalFilters.reduce((acc, filter) => {
+        acc[filter.field || filter.id] = filter.value;
+        return acc;
+      }, {} as Record<string, any>);
   
       const payload = {
         name: dashboard.name,
         description: dashboard.description,
-        global_filters: dashboardData?.globalFilters || {},
+        global_filters: globalFiltersRecord,
         layout: {
           dimensions: dashboardData?.dimensions || { width: 1200, height: 800 },
         },
         data: {
           items,
-          globalFilters: dashboardData?.globalFilters || {},
+          globalFilters: globalFiltersRecord,
           dimensions: dashboardData?.dimensions || { width: 1200, height: 800 },
         },
       };
@@ -291,7 +319,7 @@ export default function DashboardEditPage() {
           readOnly={false}
           onChange={handleDashboardChange}
           items={dashboardData.items || []}
-          globalFilters={dashboardData.globalFilters || {}}
+          globalFilters={dashboardData.globalFilters || []}
           dashboardWidth={dashboardData.dimensions?.width || 1200}
           dashboardHeight={dashboardData.dimensions?.height || 800}
           initialData={dashboardData}
