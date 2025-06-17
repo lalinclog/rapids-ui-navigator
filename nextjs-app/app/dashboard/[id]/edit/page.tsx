@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
@@ -127,19 +128,61 @@ export default function DashboardEditPage() {
     fetchDashboard()
   }, [dashboardId, toast, authState.isAuthenticated, offlineMode])
 
-  // Handle dashboard data change
+  // Handle dashboard data change with comprehensive logging
   const handleDashboardChange = useCallback((data: any) => {
-    console.log("[DashboardEditPage] Dashboard change received:", data);
-    setDashboardData((prev: DashboardData) => {
-      const newData = {
-        ...prev,
-        items: Array.isArray(data.items) ? data.items : prev.items,
-        globalFilters: Array.isArray(data.globalFilters) ? data.globalFilters : prev.globalFilters,
-        dimensions: data.dimensions || prev.dimensions
-      };
-      console.log("[DashboardEditPage] Updated dashboard data:", newData);
-      return newData;
+    console.log("[DashboardEditPage] Dashboard change received - RAW DATA:", data);
+    console.log("[DashboardEditPage] Data type:", typeof data);
+    console.log("[DashboardEditPage] Data keys:", Object.keys(data || {}));
+    console.log("[DashboardEditPage] Data.items:", {
+      exists: !!data?.items,
+      isArray: Array.isArray(data?.items),
+      length: data?.items?.length,
+      type: typeof data?.items
     });
+    console.log("[DashboardEditPage] Data.globalFilters:", {
+      exists: !!data?.globalFilters,
+      isArray: Array.isArray(data?.globalFilters),
+      type: typeof data?.globalFilters,
+      keys: data?.globalFilters ? Object.keys(data.globalFilters) : []
+    });
+
+    try {
+      setDashboardData((prev: DashboardData) => {
+        const newData = {
+          ...prev,
+          items: Array.isArray(data?.items) ? data.items.map((item: any) => {
+            // Ensure each item has all required properties
+            const validatedItem = {
+              id: item.id || nanoid(),
+              type: item.type || 'unknown',
+              x: typeof item.x === 'number' ? item.x : 0,
+              y: typeof item.y === 'number' ? item.y : 0,
+              width: typeof item.width === 'number' ? item.width : 200,
+              height: typeof item.height === 'number' ? item.height : 200,
+              content: item.content || [],
+              config: item.config || {},
+              title: item.title || '',
+              pageId: item.pageId || 'main',
+              zIndex: typeof item.zIndex === 'number' ? item.zIndex : 1,
+              chart_id: item.chart_id || null
+            };
+            console.log("[DashboardEditPage] Validated item:", validatedItem);
+            return validatedItem;
+          }) : prev.items,
+          globalFilters: Array.isArray(data?.globalFilters) ? data.globalFilters : prev.globalFilters,
+          dimensions: data?.dimensions || prev.dimensions
+        };
+        console.log("[DashboardEditPage] New dashboard data:", {
+          itemsCount: newData.items.length,
+          globalFiltersCount: newData.globalFilters.length,
+          dimensions: newData.dimensions
+        });
+        return newData;
+      });
+    } catch (error) {
+      console.error("[DashboardEditPage] Error in handleDashboardChange:", error);
+      console.error("[DashboardEditPage] Problematic data:", JSON.stringify(data, null, 2));
+    }
   }, [])
 
   // Handle save

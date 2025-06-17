@@ -1,3 +1,4 @@
+
 "use client"
 
 import type React from "react"
@@ -320,7 +321,7 @@ const DashboardCanvas = ({
           break
       }
 
-      // Create new item
+      // Create new item with comprehensive logging
       const newItem = {
         id: nanoid(),
         chart_id: nextChartId.current++,
@@ -330,9 +331,13 @@ const DashboardCanvas = ({
         width,
         height,
         content,
-        config,
+        config: config || {},
         zIndex: nextZIndex,
+        title: config?.title || itemType,
+        pageId: 'main'
       }
+
+      console.log("CANVAS - Created new item:", JSON.stringify(newItem, null, 2))
 
       // Check for collisions before adding
       if (checkCollision(newItem)) {
@@ -348,8 +353,21 @@ const DashboardCanvas = ({
         })
       }
 
+      const updatedItems = [...items, newItem]
+      console.log("CANVAS - Updated items array:", {
+        length: updatedItems.length,
+        items: updatedItems.map(item => ({
+          id: item.id,
+          type: item.type,
+          hasContent: !!item.content,
+          hasConfig: !!item.config,
+          contentType: typeof item.content,
+          configType: typeof item.config
+        }))
+      })
+
       // First update items
-      onItemsChange([...items, newItem])
+      onItemsChange(updatedItems)
 
       // Then schedule selection for the next tick
       setTimeout(() => {
