@@ -1,4 +1,4 @@
-// app/dashboard/[id]/edit/.tsx
+
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
@@ -9,7 +9,7 @@ import { Loader2, ArrowLeft, Save, Trash2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/components/auth/auth-context"
 import { getDashboardById, updateDashboard, deleteDashboard } from "@/lib/api/api-client"
-import type { Dashboard, DashboardItem } from "@/lib/types"
+import type { Dashboard } from "@/lib/types"
 import DashboardApp from "@/components/dashboard-app"
 import {
   AlertDialog,
@@ -22,11 +22,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-
 interface DashboardData {
   items: any[]
   globalFilters: Record<string, any> 
-  dimensions:  { width: number, height: number }
+  dimensions: { width: number, height: number }
 }
 
 export default function DashboardEditPage() {
@@ -43,7 +42,7 @@ export default function DashboardEditPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     items: [],
-    globalFilters: [],
+    globalFilters: {},
     dimensions: { width: 1200, height: 800 }
   })
 
@@ -83,7 +82,7 @@ export default function DashboardEditPage() {
         console.log("[DashboardEditPage] API response data:", data);
         
         const initialData = {
-          items: data.data?.items || [],
+          items: Array.isArray(data.data?.items) ? data.data.items : [],
           globalFilters: data.data?.globalFilters || {},
           dimensions: data.data?.dimensions || { width: 1200, height: 800 }
         };
@@ -110,10 +109,10 @@ export default function DashboardEditPage() {
   // Handle dashboard data change
   const handleDashboardChange = useCallback((data: any) => {
     console.log("[DashboardEditPage] Dashboard change received:", data);
-    setDashboardData((prev: any) => {
+    setDashboardData((prev: DashboardData) => {
       const newData = {
         ...prev,
-        items: data.items || prev.items,
+        items: Array.isArray(data.items) ? data.items : prev.items,
         globalFilters: data.globalFilters || prev.globalFilters,
         dimensions: data.dimensions || prev.dimensions
       };
@@ -134,7 +133,7 @@ export default function DashboardEditPage() {
     console.log("[DashboardEditPage] Saving dashboard with data:", dashboardData);
   
     try {
-      const items = dashboardData?.items?.map((item: any) => ({
+      const items = Array.isArray(dashboardData?.items) ? dashboardData.items.map((item: any) => ({
         id: item.id || uuidv4(),
         type: item.type || 'chart',
         x: item.x || 0,
@@ -147,7 +146,7 @@ export default function DashboardEditPage() {
         pageId: item.pageId || 'main',
         zIndex: item.zIndex || 0,
         chart_id: item.chart_id || null,
-      })) || [];
+      })) : [];
   
       const payload = {
         name: dashboard.name,
@@ -227,10 +226,6 @@ export default function DashboardEditPage() {
     )
   }
 
-  // Check if dev mode is enabled with auth bypass
-  const devMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
-  const bypassAuth = process.env.NEXT_PUBLIC_BYPASS_AUTH === "true"
-
   // If not admin, show unauthorized message
   if (!isAdmin) {
     console.log("[DashboardEditPage] User not admin");
@@ -290,18 +285,19 @@ export default function DashboardEditPage() {
 
       <p className="text-muted-foreground mb-6">{dashboard.description}</p>
 
-      <DashboardApp
-        dashboard={dashboard}
-        readOnly={false}
-        onChange={handleDashboardChange}
-        items={dashboardData?.items || []}
-        globalFilters={dashboardData?.globalFilters || {}}
-        dashboardWidth={dashboardData?.dimensions?.width || 1200}
-        dashboardHeight={dashboardData?.dimensions?.height || 800}
-        initialData={dashboardData}
-      />
+      {dashboard && dashboardData && (
+        <DashboardApp
+          dashboard={dashboard}
+          readOnly={false}
+          onChange={handleDashboardChange}
+          items={dashboardData.items || []}
+          globalFilters={dashboardData.globalFilters || {}}
+          dashboardWidth={dashboardData.dimensions?.width || 1200}
+          dashboardHeight={dashboardData.dimensions?.height || 800}
+          initialData={dashboardData}
+        />
+      )}
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
