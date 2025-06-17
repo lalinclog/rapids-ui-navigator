@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
@@ -243,8 +242,8 @@ export default function DashboardEditPage() {
     return null
   }
 
-  // Loading state
-  if (authState.isLoading || isLoading) {
+  // Loading state - use authLoading instead of authState.isLoading
+  if (authLoading || isLoading) {
     console.log("[DashboardEditPage] Loading state");
     return (
       <div className="flex items-center justify-center h-screen">
