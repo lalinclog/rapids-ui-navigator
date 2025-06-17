@@ -52,6 +52,21 @@ const DashboardItem: React.FC<DashboardItemProps> = ({
   getFilteredData,
   onClose,
 }) => {
+  console.log("DASHBOARD ITEM - Rendering with item:", {
+    id: item.id,
+    type: item.type,
+    x: item.x,
+    y: item.y,
+    width: item.width,
+    height: item.height,
+    hasContent: !!item.content,
+    hasConfig: !!item.config,
+    contentType: typeof item.content,
+    configType: typeof item.config,
+    isActive,
+    editable
+  });
+
   const [showDataEditor, setShowDataEditor] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const itemRef = useRef<HTMLDivElement>(null)
@@ -87,15 +102,24 @@ const DashboardItem: React.FC<DashboardItemProps> = ({
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      console.log("DASHBOARD ITEM - Mouse down:", { itemId: item.id, editable });
       if (!editable) return
       e.stopPropagation()
       onSelect()
     },
-    [editable, onSelect],
+    [editable, onSelect, item.id],
   )
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
+      console.log("DASHBOARD ITEM - Drag start:", { 
+        itemId: item.id, 
+        editable, 
+        clientX: e.clientX, 
+        clientY: e.clientY,
+        currentPosition: { x: item.x, y: item.y }
+      });
+      
       if (!editable) return
       e.stopPropagation()
       e.preventDefault()
@@ -109,11 +133,26 @@ const DashboardItem: React.FC<DashboardItemProps> = ({
         const dx = e.clientX - dragStartPos.current.x
         const dy = e.clientY - dragStartPos.current.y
 
+        console.log("DASHBOARD ITEM - Mouse move during drag:", {
+          itemId: item.id,
+          dx,
+          dy,
+          newClientPos: { x: e.clientX, y: e.clientY },
+          dragStartPos: dragStartPos.current
+        });
+
         dragStartPos.current = { x: e.clientX, y: e.clientY }
-        onDrag(item.id, dx, dy)
+        
+        try {
+          onDrag(item.id, dx, dy)
+          console.log("DASHBOARD ITEM - onDrag called successfully");
+        } catch (error) {
+          console.error("DASHBOARD ITEM - Error in onDrag:", error);
+        }
       }
 
       const handleMouseUp = () => {
+        console.log("DASHBOARD ITEM - Drag end:", { itemId: item.id });
         dragStartPos.current = null
         document.removeEventListener("mousemove", handleMouseMove)
         document.removeEventListener("mouseup", handleMouseUp)
@@ -122,11 +161,18 @@ const DashboardItem: React.FC<DashboardItemProps> = ({
       document.addEventListener("mousemove", handleMouseMove)
       document.addEventListener("mouseup", handleMouseUp)
     },
-    [editable, item.id, onDrag, onSelect],
+    [editable, item.id, item.x, item.y, onDrag, onSelect],
   )
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent, corner: string) => {
+      console.log("DASHBOARD ITEM - Resize start:", { 
+        itemId: item.id, 
+        corner, 
+        editable,
+        currentSize: { width: item.width, height: item.height }
+      });
+      
       if (!editable) return
       e.stopPropagation()
       e.preventDefault()
@@ -183,16 +229,31 @@ const DashboardItem: React.FC<DashboardItemProps> = ({
           }
         }
 
-        // Apply changes
-        onResize(id, newWidth, newHeight)
+        console.log("DASHBOARD ITEM - Resize move:", {
+          itemId: id,
+          newWidth,
+          newHeight,
+          newX,
+          newY
+        });
 
-        // If position changed, update it
-        if (newX !== item.x || newY !== item.y) {
-          onDrag(item.id, newX - item.x, newY - item.y)
+        // Apply changes
+        try {
+          onResize(id, newWidth, newHeight)
+          console.log("DASHBOARD ITEM - onResize called successfully");
+
+          // If position changed, update it
+          if (newX !== item.x || newY !== item.y) {
+            onDrag(item.id, newX - item.x, newY - item.y)
+            console.log("DASHBOARD ITEM - onDrag called for position update");
+          }
+        } catch (error) {
+          console.error("DASHBOARD ITEM - Error in resize handlers:", error);
         }
       }
 
       const handleMouseUp = () => {
+        console.log("DASHBOARD ITEM - Resize end:", { itemId: item.id });
         resizeStartData.current = null
         document.removeEventListener("mousemove", handleMouseMove)
         document.removeEventListener("mouseup", handleMouseUp)
@@ -505,6 +566,15 @@ const DashboardItem: React.FC<DashboardItemProps> = ({
   const cardTitleAlign = item.config?.cardTitleAlign || "left"
   const cardFooterAlign = item.config?.cardFooterAlign || "left"
   const cardDescriptionAlign = item.config?.cardDescriptionAlign || "left"
+
+  console.log("DASHBOARD ITEM - About to render main component with:", {
+    itemId: item.id,
+    position: { x: item.x, y: item.y },
+    size: { width: item.width, height: item.height },
+    zIndex: item.zIndex,
+    isActive,
+    editable
+  });
 
   return (
     <>
