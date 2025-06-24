@@ -1,17 +1,18 @@
-
+// app/dashboard/[id]/edit/.tsx
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid"
 import { Button } from "@/components/ui/button"
 import { Loader2, ArrowLeft, Save, Trash2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/components/auth/auth-context"
 import { getDashboardById, updateDashboard, deleteDashboard } from "@/lib/api/api-client"
-import type { Dashboard } from "@/lib/types"
+import type { Dashboard, DashboardItem } from "@/lib/types"
 import type { FilterType } from "@/components/types/filter"
 import DashboardApp from "@/components/dashboard-app"
+import isEqual from "lodash.isequal"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,13 +25,13 @@ import {
 } from "@/components/ui/alert-dialog"
 
 interface DashboardData {
-  items: any[]
+  items: DashboardItem[]
   globalFilters: FilterType[]
-  dimensions: { width: number, height: number }
+  dimensions: { width: number; height: number }
 }
 
 export default function DashboardEditPage() {
-  console.log("[DashboardEditPage] Component rendering");
+  console.log("[DashboardEditPage] Component rendering")
   const router = useRouter()
   const params = useParams()
   const { toast } = useToast()
@@ -44,74 +45,92 @@ export default function DashboardEditPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     items: [],
     globalFilters: [],
-    dimensions: { width: 1200, height: 800 }
+    dimensions: { width: 1200, height: 800 },
   })
 
   // Check if user is admin
   const isAdmin = authState.user?.realm_access?.roles?.includes("admin") || process.env.NEXT_PUBLIC_DEV_MODE === "true"
-  console.log("[DashboardEditPage] isAdmin:", isAdmin);
+  console.log("[DashboardEditPage] isAdmin:", isAdmin)
 
   const offlineMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
-  console.log("[DashboardEditPage] offlineMode:", offlineMode);
+  console.log("[DashboardEditPage] offlineMode:", offlineMode)
 
   // Get dashboard ID from params
   const dashboardId = params?.id as string
-  console.log("[DashboardEditPage] dashboardId from params:", dashboardId);
+  console.log("[DashboardEditPage] dashboardId from params:", dashboardId)
+
 
   // Auth redirect effect
   useEffect(() => {
-    console.log("[DashboardEditPage] Auth effect running");
+    console.log("[DashboardEditPage] Auth effect running")
     if (!authState.isAuthenticated && !offlineMode) {
-      console.log("[DashboardEditPage] Not authenticated, redirecting to login");
-      router.push("/login")
+      console.log("[DashboardEditPage] Not authenticated, redirecting to login")
+      router.replace("/login")
     }
   }, [authState.isAuthenticated, offlineMode, router])
 
   // Fetch dashboard data
   useEffect(() => {
-    console.log("[DashboardEditPage] Fetch effect running");
+    console.log("[DashboardEditPage] Fetch effect running")
     const fetchDashboard = async () => {
       if (!dashboardId || (!authState.isAuthenticated && !offlineMode)) {
-        console.log("[DashboardEditPage] Missing required conditions for fetch");
+        console.log("[DashboardEditPage] Missing required conditions for fetch")
         return
       }
 
-      console.log("[DashboardEditPage] Starting dashboard fetch");
+      console.log("[DashboardEditPage] Starting dashboard fetch")
       setIsLoading(true)
       try {
-        const data = await getDashboardById(dashboardId);
-        console.log("[DashboardEditPage] API response data:", data);
-        
+        const data = await getDashboardById(dashboardId)
+        console.log("[DashboardEditPage] API response data:", data)
+
         // Convert globalFilters from Record to FilterType[] if needed
-        let globalFilters: FilterType[] = [];
+        let globalFilters: FilterType[] = []
         if (data.data?.globalFilters) {
-          if (Array.isArray(data.data.globalFilters)) {
-            globalFilters = data.data.globalFilters;
-          } else {
-            // Convert Record<string, any> to FilterType[]
-            globalFilters = Object.entries(data.data.globalFilters).map(([key, value]) => ({
+          globalFilters = Array.isArray(data.data.globalFilters)
+            ? data.data.globalFilters
+            : Object.entries(data.data.globalFilters).map(([key, value]) => ({
               id: key,
               name: key,
-              type: 'text' as const,
+              type: "text",
               field: key,
-              operator: 'equals' as const,
-              value: value,
+              operator: "equals",
+              value,
               isActive: true,
               createdAt: new Date(),
-              updatedAt: new Date()
-            }));
-          }
+              updatedAt: new Date(),
+            }))
         }
-        
-        const initialData = {
-          items: Array.isArray(data.data?.items) ? data.data.items : [],
+
+        // Ensure items is always an array and properly typed
+        const items: DashboardItem[] = Array.isArray(data.data?.items)
+          ? data.data.items.map((item: any) => ({
+            id: item.id || uuidv4(),
+            type: item.type || "chart",
+            x: typeof item.x === "number" ? item.x : 0,
+            y: typeof item.y === "number" ? item.y : 0,
+            width: typeof item.width === "number" ? item.width : 300,
+            height: typeof item.height === "number" ? item.height : 200,
+            content: item.content || [],
+            config: item.config || {},
+            title: item.title || "",
+            pageId: item.pageId || "main",
+            zIndex: typeof item.zIndex === "number" ? item.zIndex : 1,
+            chart_id: item.chart_id || null,
+          }))
+          : []
+
+        const initialData: DashboardData = {
+          items,
           globalFilters,
-          dimensions: data.data?.dimensions || { width: 1200, height: 800 }
-        };
-        console.log("[DashboardEditPage] Initial dashboard data:", initialData);
-        
+          //globalFilters: data.data?.globalFilters || {},
+          dimensions: data.data?.dimensions || { width: 1200, height: 800 },
+        }
+
+        console.log("[DashboardEditPage] Initial dashboard data:", initialData)
+
         setDashboard(data)
-        setDashboardData(initialData);
+        setDashboardData(initialData)
       } catch (error) {
         console.error("[DashboardEditPage] Error fetching dashboard:", error)
         toast({
@@ -120,7 +139,7 @@ export default function DashboardEditPage() {
           variant: "destructive",
         })
       } finally {
-        console.log("[DashboardEditPage] Fetch completed");
+        console.log("[DashboardEditPage] Fetch completed")
         setIsLoading(false)
       }
     }
@@ -128,132 +147,91 @@ export default function DashboardEditPage() {
     fetchDashboard()
   }, [dashboardId, toast, authState.isAuthenticated, offlineMode])
 
-  // Handle dashboard data change with comprehensive logging
-  const handleDashboardChange = useCallback((data: any) => {
-    console.log("[DashboardEditPage] Dashboard change received - RAW DATA:", data);
-    console.log("[DashboardEditPage] Data type:", typeof data);
-    console.log("[DashboardEditPage] Data keys:", Object.keys(data || {}));
-    console.log("[DashboardEditPage] Data.items:", {
-      exists: !!data?.items,
-      isArray: Array.isArray(data?.items),
-      length: data?.items?.length,
-      type: typeof data?.items
-    });
-    console.log("[DashboardEditPage] Data.globalFilters:", {
-      exists: !!data?.globalFilters,
-      isArray: Array.isArray(data?.globalFilters),
-      type: typeof data?.globalFilters,
-      keys: data?.globalFilters ? Object.keys(data.globalFilters) : []
-    });
-
-    try {
-      setDashboardData((prev: DashboardData) => {
-        const newData = {
-          ...prev,
-          items: Array.isArray(data?.items) ? data.items.map((item: any) => {
-            // Ensure each item has all required properties
-            const validatedItem = {
-              id: item.id || nanoid(),
-              type: item.type || 'unknown',
-              x: typeof item.x === 'number' ? item.x : 0,
-              y: typeof item.y === 'number' ? item.y : 0,
-              width: typeof item.width === 'number' ? item.width : 200,
-              height: typeof item.height === 'number' ? item.height : 200,
-              content: item.content || [],
-              config: item.config || {},
-              title: item.title || '',
-              pageId: item.pageId || 'main',
-              zIndex: typeof item.zIndex === 'number' ? item.zIndex : 1,
-              chart_id: item.chart_id || null
-            };
-            console.log("[DashboardEditPage] Validated item:", validatedItem);
-            return validatedItem;
-          }) : prev.items,
-          globalFilters: Array.isArray(data?.globalFilters) ? data.globalFilters : prev.globalFilters,
-          dimensions: data?.dimensions || prev.dimensions
-        };
-        console.log("[DashboardEditPage] New dashboard data:", {
-          itemsCount: newData.items.length,
-          globalFiltersCount: newData.globalFilters.length,
-          dimensions: newData.dimensions
-        });
-        return newData;
-      });
-    } catch (error) {
-      console.error("[DashboardEditPage] Error in handleDashboardChange:", error);
-      console.error("[DashboardEditPage] Problematic data:", JSON.stringify(data, null, 2));
-    }
-  }, [])
-
+  // Handle dashboard data change
+  const handleDashboardChange = useCallback(
+    (newData: DashboardData) => {
+      if (!isEqual(newData, dashboardData)) {
+        setDashboardData(newData)
+      }
+    },
+    [dashboardData],
+  )
+  
   // Handle save
   const handleSave = async () => {
-    console.log("[DashboardEditPage] Save initiated");
+    console.log("[DashboardEditPage] Save initiated")
     if (!dashboard) {
-      console.log("[DashboardEditPage] No dashboard to save");
-      return;
+      console.log("[DashboardEditPage] No dashboard to save")
+      return
     }
-  
-    setIsSaving(true);
-    console.log("[DashboardEditPage] Saving dashboard with data:", dashboardData);
-  
+
+    setIsSaving(true)
+    console.log("[DashboardEditPage] Saving dashboard with data:", dashboardData)
+
     try {
-      const items = Array.isArray(dashboardData?.items) ? dashboardData.items.map((item: any) => ({
-        id: item.id || uuidv4(),
-        type: item.type || 'chart',
-        x: item.x || 0,
-        y: item.y || 0,
-        width: item.width || 300,
-        height: item.height || 200,
-        config: item.config || {},
-        content: item.content || [],
-        title: item.title || '',
-        pageId: item.pageId || 'main',
-        zIndex: item.zIndex || 0,
-        chart_id: item.chart_id || null,
-      })) : [];
+      //const items = dashboardData?.items?.map((item: any) => ({
+      const items = dashboardData.items.map((item: DashboardItem) => ({
+        id: item.id,
+        type: item.type,
+        x: item.x,
+        y: item.y,
+        width: item.width,
+        height: item.height,
+        config: item.config,
+        content: item.content,
+        title: item.title,
+        pageId: item.pageId,
+        zIndex: item.zIndex,
+        chart_id: item.chart_id,
+      }))
 
       // Convert FilterType[] back to Record<string, any> for API
-      const globalFiltersRecord = dashboardData.globalFilters.reduce((acc, filter) => {
-        acc[filter.field || filter.id] = filter.value;
-        return acc;
-      }, {} as Record<string, any>);
-  
+      const globalFiltersRecord = dashboardData.globalFilters.reduce(
+        (acc, filter) => {
+          acc[filter.field || filter.id] = filter.value
+          return acc
+        },
+        {} as Record<string, any>,
+      )
+
       const payload = {
         name: dashboard.name,
         description: dashboard.description,
+        //global_filters: dashboardData?.globalFilters || {},
         global_filters: globalFiltersRecord,
         layout: {
-          dimensions: dashboardData?.dimensions || { width: 1200, height: 800 },
+          dimensions: dashboardData.dimensions,
         },
         data: {
           items,
-          globalFilters: globalFiltersRecord,
-          dimensions: dashboardData?.dimensions || { width: 1200, height: 800 },
+          //globalFilters: dashboardData?.globalFilters || {},
+          global_filters: globalFiltersRecord,
+          dimensions: dashboardData.dimensions,
         },
-      };
-  
-      console.log("[DashboardEditPage] Saving payload:", payload);
-      await updateDashboard(dashboardId, payload);
-      toast({ title: "Dashboard Saved", description: "Your changes have been saved successfully." });
+      }
+
+      console.log("[DashboardEditPage] Saving payload:", payload)
+      await updateDashboard(dashboardId, payload)
+      toast({ title: "Dashboard Saved", description: "Your changes have been saved successfully." })
     } catch (error) {
-      console.error("[DashboardEditPage] Error saving dashboard:", error);
+      console.error("[DashboardEditPage] Error saving dashboard:", error)
       toast({
         title: "Error",
         description: "Failed to save dashboard. Please try again.",
         variant: "destructive",
-      });
+      })
     } finally {
-      console.log("[DashboardEditPage] Save completed");
-      setIsSaving(false);
+      console.log("[DashboardEditPage] Save completed")
+      setIsSaving(false)
     }
   }
 
   // Handle delete
   const handleDelete = async () => {
-    console.log("[DashboardEditPage] Delete initiated");
+    console.log("[DashboardEditPage] Delete initiated")
     setIsDeleting(true)
     try {
-      console.log("[DashboardEditPage] Deleting dashboard:", dashboardId);
+      console.log("[DashboardEditPage] Deleting dashboard:", dashboardId)
       await deleteDashboard(dashboardId)
 
       toast({
@@ -275,19 +253,19 @@ export default function DashboardEditPage() {
 
   // Handle back button click
   const handleBack = () => {
-    console.log("[DashboardEditPage] Navigating back to view mode");
+    console.log("[DashboardEditPage] Navigating back to view mode")
     router.push(`/dashboard/${dashboardId}/view`)
   }
 
   // If not authenticated and not in offline mode, don't render anything
   if (!authState.isAuthenticated && !offlineMode) {
-    console.log("[DashboardEditPage] Not authenticated, not rendering");
+    console.log("[DashboardEditPage] Not authenticated, not rendering")
     return null
   }
 
-  // Loading state - use authLoading instead of authState.isLoading
+  // Loading state
   if (authLoading || isLoading) {
-    console.log("[DashboardEditPage] Loading state");
+    console.log("[DashboardEditPage] Loading state")
     return (
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -296,21 +274,25 @@ export default function DashboardEditPage() {
     )
   }
 
+  // Check if dev mode is enabled with auth bypass
+  const devMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
+  const bypassAuth = process.env.NEXT_PUBLIC_BYPASS_AUTH === "true"
+
   // If not admin, show unauthorized message
   if (!isAdmin) {
-    console.log("[DashboardEditPage] User not admin");
+    console.log("[DashboardEditPage] User not admin")
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <h1 className="text-2xl font-bold mb-4">Unauthorized</h1>
         <p className="mb-4">You do not have permission to edit this dashboard.</p>
-        <Button onClick={() => router.push(`/dashboard/${dashboardId}/view`)}>View Dashboard</Button>
+        <Button onClick={handleBack}>View Dashboard</Button>
       </div>
     )
   }
 
   // If dashboard not found, show message
   if (!dashboard) {
-    console.log("[DashboardEditPage] Dashboard not found");
+    console.log("[DashboardEditPage] Dashboard not found")
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <h1 className="text-2xl font-bold mb-4">Dashboard Not Found</h1>
@@ -324,8 +306,8 @@ export default function DashboardEditPage() {
     dashboard,
     dashboardData,
     isLoading,
-    isSaving
-  });
+    isSaving,
+  })
 
   return (
     <div className="container mx-auto py-4 px-4">
@@ -355,19 +337,22 @@ export default function DashboardEditPage() {
 
       <p className="text-muted-foreground mb-6">{dashboard.description}</p>
 
-      {dashboard && dashboardData && (
+      {dashboard && dashboardData && dashboardData.items && (
         <DashboardApp
+          //key={`dashboard-${dashboardId}-${dashboardData.items.length}`} // Force re-render when items change
           dashboard={dashboard}
           readOnly={false}
           onChange={handleDashboardChange}
-          items={dashboardData.items || []}
-          globalFilters={dashboardData.globalFilters || []}
-          dashboardWidth={dashboardData.dimensions?.width || 1200}
-          dashboardHeight={dashboardData.dimensions?.height || 800}
+          items={dashboardData.items}
+          globalFilters={dashboardData.globalFilters}
+          //globalFilters={dashboardData.globalFilters || {}}
+          dashboardWidth={dashboardData.dimensions.width}
+          dashboardHeight={dashboardData.dimensions.height}
           initialData={dashboardData}
         />
       )}
 
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
