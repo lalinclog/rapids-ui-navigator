@@ -25,6 +25,8 @@ import { useTheme } from "next-themes"
 import { useAuth } from "@/components/auth/auth-context"
 import type { FilterType } from "@/components/types/filter"
 import { useDashboardStore } from "@/components/store/dashboard-store"
+import debounce from "lodash.debounce"
+import isEqual from "lodash.isequal"
 
 const ResponsiveGrid = WidthProvider(ResponsiveGridLayout)
 
@@ -43,15 +45,15 @@ interface DashboardAppProps {
   initialData?: any
 }
 
-export default function DashboardApp({ 
-  items = [], 
-  dashboard, 
-  onChange, 
+export default function DashboardApp({
+  items = [],
+  dashboard,
+  onChange,
   readOnly = true,
   globalFilters: initialGlobalFilters = [],
   dashboardWidth: initialDashboardWidth = 1200,
   dashboardHeight: initialDashboardHeight = 800,
-  initialData 
+  initialData
 }: DashboardAppProps) {
   const [activeTab, setActiveTab] = useState("overview")
   const { toast } = useToast()
@@ -68,6 +70,21 @@ export default function DashboardApp({
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [showSettingsSidebar, setShowSettingsSidebar] = useState(false)
   const [commandMenuOpen, setCommandMenuOpen] = useState(false)
+  // Track the last sent payload to avoid duplicate syncs
+  const [lastSyncedData, setLastSyncedData] = useState<any>(null)
+
+  // Debounced sync function
+  const debouncedSyncToParent = useCallback(
+    debounce((newData: any) => {
+      if (!onChange) return
+      if (!isEqual(newData, lastSyncedData)) {
+        setLastSyncedData(newData)
+        onChange(newData)
+      }
+    }, 300),
+    [onChange, lastSyncedData]
+  )
+
 
   // Add dashboard dimensions state
   //const [dashboardWidth, setDashboardWidth] = useState(2000)
@@ -106,16 +123,21 @@ export default function DashboardApp({
   }, [initialDashboardHeight])
 
   useEffect(() => {
-    // Automatically sync dashboard items with parent component when they change
-    if (onChange && !readOnly) {
-      console.log("Syncing dashboard items to parent:", dashboardItems) // Debug log
-      onChange({        
+    if (!readOnly && onChange) {
+      const payload = {
         items: dashboardItems,
         globalFilters: activeFilters,
         dimensions: { width: dashboardWidth, height: dashboardHeight },
-      })
+      }
+      debouncedSyncToParent(payload)
     }
   }, [dashboardItems, activeFilters, dashboardWidth, dashboardHeight, onChange, readOnly])
+
+  useEffect(() => {
+    return () => {
+      debouncedSyncToParent.cancel()
+    }
+  }, [debouncedSyncToParent])
 
   const handleLayoutChange = (newLayouts: Layouts) => {
     setLayouts(newLayouts)
@@ -292,14 +314,32 @@ export default function DashboardApp({
 
   // Handle filter application
   const handleFilterApply = useCallback((filterId: string, filterValue: any) => {
-    setActiveFilters(prev => {
-      const newFilters = prev.filter(f => f.id !== filterId);
+    setActiveFilters((prev) => {
+      const newFilters = prev.filter(f => f.id !== filterId)
       if (filterValue !== undefined && filterValue !== null && filterValue !== '') {
-        return [...newFilters, { id: filterId, value: filterValue }];
+        const original = prev.find(f => f.id === filterId)
+
+        // Reconstruct or fallback
+        const updated: FilterType = {
+          ...(original || {
+            id: filterId,
+            name: filterId,
+            type: "text",
+            field: filterId,
+            operator: "equals",
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+          value: filterValue,
+          updatedAt: new Date(),
+        }
+
+        return [...newFilters, updated]
       }
-      return newFilters;
-    });
-  }, []);
+      return newFilters
+    })
+  }, [])
 
   // Get filtered data for a chart based on active filters
   const getFilteredData = useCallback(
@@ -327,36 +367,49 @@ export default function DashboardApp({
 
       // Apply all relevant filters
       return item.content.filter((dataPoint) => {
-        return Object.entries(activeFilters).every(([filterId, filterValue]) => {
-          const filterItem = dashboardItems.find((item) => item.id === filterId)
+        activeFilters.every((filter) => {
+          const filterItem = dashboardItems.find((item) => item.id === filter.id)
           if (!filterItem || !filterItem.config) return true
 
           const { filterField, filterType } = filterItem.config
+          const filterValue = filter.value
 
           // Skip if this filter doesn't target this chart
-          if (filterItem.config.targetCharts !== "all" && !filterItem.config.targetCharts.includes(item.id)) {
+          if (
+            filterItem.config.targetCharts !== "all" &&
+            !filterItem.config.targetCharts?.includes(item.id)
+          ) {
             return true
           }
+
+          const dataValue = dataPoint[filterField]
 
           // Skip if the data point doesn't have the field
-          if (dataPoint[filterField] === undefined) {
+          if (dataValue === undefined) {
             return true
           }
 
-          // Apply filter based on filter type
           switch (filterType) {
             case "select":
-              return Array.isArray(filterValue) && filterValue.includes(String(dataPoint[filterField]))
+              return Array.isArray(filterValue) && filterValue.includes(String(dataValue))
+
             case "range":
-              return Number.parseFloat(dataPoint[filterField]) <= filterValue
+              return typeof filterValue === "number" && Number.parseFloat(dataValue) <= filterValue
+
             case "search":
-              return String(dataPoint[filterField]).toLowerCase().includes(filterValue.toLowerCase())
+              return (
+                typeof filterValue === "string" &&
+                String(dataValue).toLowerCase().includes(filterValue.toLowerCase())
+              )
+
             case "toggle":
-              return filterValue === Boolean(dataPoint[filterField])
+              return Boolean(dataValue) === Boolean(filterValue)
+
             default:
               return true
           }
         })
+
       })
     },
     [activeFilters, dashboardItems],
@@ -374,10 +427,10 @@ export default function DashboardApp({
   // In getCurrentPageItems()
   const getCurrentPageItems = useCallback(() => {
     return dashboardItems.filter(
-      (item) => 
-      // Show items that belong to the current page or don't have a pageId (for backward compatibility)
-      item.pageId === currentPageId || 
-      (!item.pageId && currentPageId === 'main') // default to 'main' if no pageId
+      (item) =>
+        // Show items that belong to the current page or don't have a pageId (for backward compatibility)
+        item.pageId === currentPageId ||
+        (!item.pageId && currentPageId === 'main') // default to 'main' if no pageId
     )
   }, [dashboardItems, currentPageId]);
 
@@ -490,9 +543,8 @@ export default function DashboardApp({
             <div className="px-6 bg-transparent">
               <Tabs value={currentPageId} onValueChange={handlePageChange}>
                 <TabsList
-                  className={`h-10 bg-transparent border-0 p-0 ${
-                    tabsSize === "small" ? "gap-2" : tabsSize === "large" ? "gap-6" : "gap-4"
-                  }`}
+                  className={`h-10 bg-transparent border-0 p-0 ${tabsSize === "small" ? "gap-2" : tabsSize === "large" ? "gap-6" : "gap-4"
+                    }`}
                 >
                   {dashboardPages.map((page) => (
                     <TabsTrigger
@@ -550,9 +602,8 @@ export default function DashboardApp({
               <div className="px-6 bg-transparent mt-4">
                 <Tabs value={currentPageId} onValueChange={handlePageChange}>
                   <TabsList
-                    className={`h-10 bg-transparent border-0 p-0 ${
-                      tabsSize === "small" ? "gap-2" : tabsSize === "large" ? "gap-6" : "gap-4"
-                    }`}
+                    className={`h-10 bg-transparent border-0 p-0 ${tabsSize === "small" ? "gap-2" : tabsSize === "large" ? "gap-6" : "gap-4"
+                      }`}
                   >
                     {dashboardPages.map((page) => (
                       <TabsTrigger
@@ -590,7 +641,7 @@ export default function DashboardApp({
             itemCount={getCurrentPageItems().length}
             selectedItemId={selectedItemId}
             onDeleteSelected={handleDeleteSelected}
-            onDuplicate={handleDuplicateSelected}
+            onDuplicateSelected={handleDuplicateSelected}
           />
         )}
 
