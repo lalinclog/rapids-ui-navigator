@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { Info, Trash, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -14,7 +14,7 @@ interface DashboardInfoProps {
   onDuplicateSelected?: () => void
 }
 
-export default function DashboardInfo({
+const DashboardInfo = memo(function DashboardInfo({
   width,
   height,
   itemCount,
@@ -24,30 +24,61 @@ export default function DashboardInfo({
 }: DashboardInfoProps) {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [showCoordinates, setShowCoordinates] = useState(false)
+  const canvasRectRef = useRef<DOMRect | null>(null)
+  const rafRef = useRef<number>()
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      // Get the canvas element
-      const canvas = document.querySelector(".dashboard-canvas") as HTMLElement
+  // Throttled mouse move handler using requestAnimationFrame
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+    }
+
+    rafRef.current = requestAnimationFrame(() => {
+        const canvas = document.querySelector(".dashboard-canvas") as HTMLElement
       if (!canvas) return
 
-      const rect = canvas.getBoundingClientRect()
+      if (!canvasRectRef.current) {
+        canvasRectRef.current = canvas.getBoundingClientRect()
+      }
 
-      // Calculate position relative to the canvas
-      if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
-        setMousePosition({
-          x: Math.round(e.clientX - rect.left),
-          y: Math.round(e.clientY - rect.top),
+      const rect = canvasRectRef.current
+      const isInside =
+        e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
+
+      if (isInside) {
+        const newX = Math.round(e.clientX - rect.left)
+        const newY = Math.round(e.clientY - rect.top)
+
+        setMousePosition((prev) => {
+          if (prev.x !== newX || prev.y !== newY) {
+            return { x: newX, y: newY }
+          }
+          return prev
         })
+
         setShowCoordinates(true)
       } else {
         setShowCoordinates(false)
       }
-    }
-
-    window.addEventListener("mousemove", handleMouseMove)
-    return () => window.removeEventListener("mousemove", handleMouseMove)
+    })
   }, [])
+
+  const handleResize = useCallback(() => {
+    canvasRectRef.current = null
+  }, [])
+
+    useEffect(() => {
+    window.addEventListener("mousemove", handleMouseMove, { passive: true })
+    window.addEventListener("resize", handleResize, { passive: true })
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("resize", handleResize)
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+      }
+    }
+  }, [handleMouseMove, handleResize])
 
   return (
     <div className="fixed bottom-4 right-4 bg-white border rounded-md shadow-md p-2 text-xs text-gray-600 flex flex-col gap-1">
@@ -116,4 +147,6 @@ export default function DashboardInfo({
       </div>
     </div>
   )
-}
+})
+
+export default DashboardInfo
