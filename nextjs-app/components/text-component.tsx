@@ -8,14 +8,23 @@ interface TextComponentProps {
   onContentChange: (content: string) => void
   editable?: boolean
   config?: {
-    fontSize?: string
+    fontSize?: number
     fontFamily?: string
     textAlign?: string
     textColor?: string
     fontWeight?: string
     fontStyle?: string
     textDecoration?: string
-    lineHeight?: string
+    lineHeight?: number
+    backgroundColor?: string
+    textShadow?: boolean
+    textOverflow?: boolean
+    textWrap?: boolean
+    bold?: boolean
+    italic?: boolean
+    underline?: boolean
+    textTransform?: string
+    letterSpacing?: number
   }
 }
 
@@ -25,15 +34,28 @@ const TextComponent: React.FC<TextComponentProps> = ({ content, onContentChange,
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const {
-    fontSize = "16px",
+    fontSize = 16,
     fontFamily = "sans-serif",
     textAlign = "left",
     textColor = "#000000",
     fontWeight = "normal",
     fontStyle = "normal",
     textDecoration = "none",
-    lineHeight = "1.5",
+    lineHeight = 1.5,
+    backgroundColor = "transparent",
+    textShadow = false,
+    textOverflow = false,
+    textWrap = true,
+    bold = false,
+    italic = false,
+    underline = false,
+    textTransform = "none",
+    letterSpacing = 0,
   } = config
+
+  useEffect(() => {
+    setText(content)
+  }, [content])
 
   useEffect(() => {
     if (isEditing && textareaRef.current) {
@@ -61,15 +83,22 @@ const TextComponent: React.FC<TextComponentProps> = ({ content, onContentChange,
     }
   }
 
-  const textStyle = {
-    fontSize,
+  const textStyle: React.CSSProperties = {
+    fontSize: typeof fontSize === "number" ? `${fontSize}px` : fontSize,
     fontFamily,
-    textAlign: textAlign as "left" | "center" | "right",
+    textAlign: textAlign as "left" | "center" | "right" | "justify",
     color: textColor,
-    fontWeight,
-    fontStyle,
-    textDecoration,
-    lineHeight,
+    fontWeight: bold ? "bold" : fontWeight,
+    fontStyle: italic ? "italic" : fontStyle,
+    textDecoration: underline ? "underline" : textDecoration,
+    lineHeight: typeof lineHeight === "number" ? lineHeight : Number.parseFloat(lineHeight as string) || 1.5,
+    backgroundColor: backgroundColor === "transparent" ? "transparent" : backgroundColor,
+    textShadow: textShadow ? "1px 1px 2px rgba(0,0,0,0.3)" : "none",
+    textTransform: textTransform as "none" | "uppercase" | "lowercase" | "capitalize",
+    letterSpacing: typeof letterSpacing === "number" ? `${letterSpacing}px` : letterSpacing,
+    whiteSpace: textWrap ? "pre-wrap" : "nowrap",
+    overflow: textOverflow ? "hidden" : "visible",
+    textOverflow: textOverflow ? "ellipsis" : "clip",
   }
 
   if (isEditing && editable) {
@@ -88,7 +117,7 @@ const TextComponent: React.FC<TextComponentProps> = ({ content, onContentChange,
 
   return (
     <div
-      className="w-full h-full overflow-hidden p-2 cursor-text whitespace-pre-wrap break-words"
+      className="w-full h-full overflow-hidden p-2 cursor-text break-words"
       onDoubleClick={handleDoubleClick}
       style={textStyle}
     >
