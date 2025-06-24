@@ -18,9 +18,16 @@ interface ItemSettingsProps {
   onConfigChange: (config: any) => void
   onContentChange: (content: any) => void
   onClose: () => void
+  dashboardItems?: DashboardItem[] 
 }
 
-export default function ItemSettings({ item, onConfigChange, onContentChange, onClose }: ItemSettingsProps) {
+export default function ItemSettings({ 
+  item, 
+  onConfigChange, 
+  onContentChange, 
+  onClose,
+  dashboardItems = [],
+}: ItemSettingsProps) {
   const [activeTab, setActiveTab] = useState("general")
   const [selectedColor, setSelectedColor] = useState<string | null>(null)
   const [colorIndex, setColorIndex] = useState<number | null>(null)
@@ -68,8 +75,8 @@ export default function ItemSettings({ item, onConfigChange, onContentChange, on
   }
 
   const renderFilterSettings = () => {
-    const chartItems = dashboardItems.filter((item) =>
-      ["bar-chart", "line-chart", "pie-chart", "area-chart"].includes(item.type),
+    const chartItems = dashboardItems.filter((chartItem) =>
+      ["bar-chart", "line-chart", "pie-chart", "area-chart"].includes(chartItem.type),
     )
 
     return (
