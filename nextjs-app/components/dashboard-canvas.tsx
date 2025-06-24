@@ -1,16 +1,13 @@
-
 "use client"
 
-import type React from "react"
-import { useState, useCallback, useEffect, useRef } from "react"
+import React, { useState, useCallback, useEffect, useRef } from "react"
 import type { DashboardItem as DashboardItemType } from "@/lib/types"
 import DashboardItem from "@/components/dashboard-item"
 import { generateMockData } from "@/utils/mock-data"
 import { useToast } from "@/components/ui/use-toast"
 import { nanoid } from "nanoid"
 import { motion, AnimatePresence } from "framer-motion"
-
-
+import { debounce } from "lodash"
 
 interface DashboardCanvasProps {
   items: DashboardItemType[]
@@ -45,17 +42,18 @@ const DashboardCanvas = ({
     y: 0,
     visible: false,
   })
-  const nextChartId = useRef<number>(1) 
+  const nextChartId = useRef<number>(1)
 
   // Update nextZIndex when items change
   useEffect(() => {
-    if (items.length > 0) {
-      const maxZIndex = Math.max(...items.map((item) => item.zIndex || 0))
-      if (maxZIndex + 1 !== nextZIndex) {
-        setNextZIndex(maxZIndex + 1)
-      }
-    }
-  }, [items, nextZIndex])
+    if (items.length === 0) return
+
+    setNextZIndex((prev) => {
+      const maxZ = Math.max(...items.map((i) => i.zIndex ?? 0))
+      const desired = maxZ + 1
+      return prev === desired ? prev : desired
+    })
+  }, [items]) // Remove nextZIndex from dependency array
 
   // Handle pending item removal
   useEffect(() => {
@@ -199,6 +197,24 @@ const DashboardCanvas = ({
           width = 200
           height = 100
           content = "Double click to edit this text"
+          config = {
+            fontSize: 16,
+            fontFamily: "sans-serif",
+            textAlign: "left",
+            textColor: "#000000",
+            fontWeight: "normal",
+            fontStyle: "normal",
+            textDecoration: "none",
+            lineHeight: 1.5,
+            backgroundColor: "transparent",
+            textShadow: false,
+            textOverflow: false,
+            textWrap: true,
+            bold: false,
+            italic: false,
+            underline: false,
+            textTransform: "none",
+          }
           break
         case "image":
           width = 200
@@ -321,8 +337,8 @@ const DashboardCanvas = ({
           break
       }
 
-      // Create new item with comprehensive logging
-      const newItem = {
+      // Create new item
+      const newItem: DashboardItemType = {
         id: nanoid(),
         chart_id: nextChartId.current++,
         type: itemType,
@@ -333,11 +349,9 @@ const DashboardCanvas = ({
         content,
         config: config || {},
         zIndex: nextZIndex,
-        title: config?.title || itemType,
-        pageId: 'main'
+        title: config?.title || `${itemType.charAt(0).toUpperCase() + itemType.slice(1).replace("-", " ")}`,
+        pageId: "main", // Add default pageId
       }
-
-      console.log("CANVAS - Created new item:", JSON.stringify(newItem, null, 2))
 
       // Check for collisions before adding
       if (checkCollision(newItem)) {
@@ -353,56 +367,62 @@ const DashboardCanvas = ({
         })
       }
 
-      const updatedItems = [...items, newItem]
-      console.log("CANVAS - Updated items array:", {
-        length: updatedItems.length,
-        items: updatedItems.map(item => ({
-          id: item.id,
-          type: item.type,
-          hasContent: !!item.content,
-          hasConfig: !!item.config,
-          contentType: typeof item.content,
-          configType: typeof item.config
-        }))
+      // Batch the state updates
+      requestAnimationFrame(() => {
+        onItemsChange([...items, newItem])
+
+        requestAnimationFrame(() => {
+          onSelectItem(newItem.id)
+          setNextZIndex((prevZIndex) => prevZIndex + 1)
+        })
       })
-
-      // First update items
-      onItemsChange(updatedItems)
-
-      // Then schedule selection for the next tick
-      setTimeout(() => {
-        onSelectItem(newItem.id)
-      }, 0)
-
-      setNextZIndex((prevZIndex) => prevZIndex + 1)
     },
     [items, nextZIndex, toast, onItemsChange, onSelectItem, checkCollision, findNextAvailablePosition],
   )
 
+    // Add debounced versions of the update functions
+  const debouncedUpdateItemPosition = useCallback(
+    debounce((id: string, x: number, y: number) => {
+      onItemsChange(items.map((item) => (item.id === id ? { ...item, x, y } : item)))
+    }, 16), // 60fps
+    [items, onItemsChange],
+  )
+
+  const debouncedUpdateItemSize = useCallback(
+    debounce((id: string, width: number, height: number) => {
+      onItemsChange(items.map((item) => (item.id === id ? { ...item, width, height } : item)))
+    }, 16), // 60fps
+    [items, onItemsChange],
+  )
+
   const updateItemPosition = useCallback(
     (id: string, x: number, y: number) => {
-      onItemsChange(items.map((item) => (item.id === id ? { ...item, x, y } : item)))
+      debouncedUpdateItemPosition(id, x, y)
     },
-    [items, onItemsChange],
+    [debouncedUpdateItemPosition],
   )
 
   const updateItemSize = useCallback(
     (id: string, width: number, height: number) => {
-      onItemsChange(items.map((item) => (item.id === id ? { ...item, width, height } : item)))
+      debouncedUpdateItemSize(id, width, height)
     },
-    [items, onItemsChange],
+    [debouncedUpdateItemSize],
   )
 
   const updateItemContent = useCallback(
     (id: string, content: any) => {
-      onItemsChange(items.map((item) => (item.id === id ? { ...item, content } : item)))
+      const updatedItems = items.map((item) => (item.id === id ? { ...item, content } : item))
+      onItemsChange(updatedItems)
     },
     [items, onItemsChange],
   )
 
   const updateItemConfig = useCallback(
     (id: string, config: any) => {
-      onItemsChange(items.map((item) => (item.id === id ? { ...item, config: { ...item.config, ...config } } : item)))
+      const updatedItems = items.map((item) =>
+        item.id === id ? { ...item, config: { ...item.config, ...config } } : item,
+      )
+      onItemsChange(updatedItems)
     },
     [items, onItemsChange],
   )
@@ -429,12 +449,14 @@ const DashboardCanvas = ({
       const itemToDuplicate = items.find((item) => item.id === id)
       if (!itemToDuplicate) return
 
-      const newItem = {
+      const newItem: DashboardItemType = {
         ...JSON.parse(JSON.stringify(itemToDuplicate)), // Deep clone
         id: nanoid(),
         x: itemToDuplicate.x + 20, // Offset slightly
         y: itemToDuplicate.y + 20,
         zIndex: nextZIndex,
+        title: itemToDuplicate.title || "Duplicated Item",
+        pageId: itemToDuplicate.pageId || "main",
       }
 
       // Check for collisions before adding
@@ -455,15 +477,15 @@ const DashboardCanvas = ({
         })
       }
 
-      // First update items
-      onItemsChange([...items, newItem])
+      // Batch the state updates
+      requestAnimationFrame(() => {
+        onItemsChange([...items, newItem])
 
-      // Then schedule selection for the next tick
-      setTimeout(() => {
-        onSelectItem(newItem.id)
-      }, 0)
-
-      setNextZIndex((prevZIndex) => prevZIndex + 1)
+        requestAnimationFrame(() => {
+          onSelectItem(newItem.id)
+          setNextZIndex((prevZIndex) => prevZIndex + 1)
+        })
+      })
     },
     [items, nextZIndex, onItemsChange, onSelectItem, checkCollision, findNextAvailablePosition, toast],
   )
@@ -511,6 +533,14 @@ const DashboardCanvas = ({
 
   const handleItemResize = useCallback(
     (id: string, width: number, height: number) => {
+      // Validate width and height first
+      const minSize = 50 // Minimum size for any item
+      const maxSize = 2000 // Maximum size for any item
+
+      // Ensure values are valid numbers and within bounds
+      const validatedWidth = Math.max(minSize, Math.min(maxSize, Number(width) || minSize))
+      const validatedHeight = Math.max(minSize, Math.min(maxSize, Number(height) || minSize))
+
       const currentItemIndex = items.findIndex((item) => item.id === id)
       if (currentItemIndex === -1) return
 
@@ -519,18 +549,27 @@ const DashboardCanvas = ({
       // Create a temporary item with new dimensions to check for collisions
       const tempItem = {
         ...currentItem,
-        width,
-        height,
+        width: validatedWidth,
+        height: validatedHeight,
       }
 
       if (checkCollision(tempItem, id)) {
         // Find the next available position for the resized item
         const newPosition = findNextAvailablePosition(tempItem, id)
 
-        // Update both size and position
-        onItemsChange(
-          items.map((item) => (item.id === id ? { ...item, width, height, x: newPosition.x, y: newPosition.y } : item)),
+        //  Use functional update to avoid stale closure
+        const updatedItems = items.map((item) =>
+            item.id === id
+              ? {
+                ...item,
+                width: validatedWidth,
+                height: validatedHeight,
+                x: newPosition.x,
+                y: newPosition.y,
+              }
+              : item,
         )
+        onItemsChange(updatedItems)
 
         toast({
           title: "Item repositioned",
@@ -541,7 +580,8 @@ const DashboardCanvas = ({
         return
       }
 
-      updateItemSize(id, width, height)
+      // If no collision, just update the size with validated values
+      updateItemSize(id, validatedWidth, validatedHeight)
     },
     [items, updateItemSize, checkCollision, findNextAvailablePosition, onItemsChange, toast],
   )
@@ -562,10 +602,10 @@ const DashboardCanvas = ({
     (e: React.MouseEvent) => {
       // Only deselect if clicking directly on the canvas, not on an item
       if (e.target === e.currentTarget && selectedItemId) {
-        // Use setTimeout to defer the state update to the next tick
-        setTimeout(() => {
-          onSelectItem("")
-        }, 0)
+        // Use React.startTransition to batch the state update
+        requestAnimationFrame(() => {
+            onSelectItem("")
+        })
       }
     },
     [selectedItemId, onSelectItem],
@@ -573,20 +613,20 @@ const DashboardCanvas = ({
 
   const handleSelectItem = useCallback(
     (id: string) => {
-      // Use setTimeout to defer the state update to the next tick
-      setTimeout(() => {
-        onSelectItem(id)
-      }, 0)
+      // Use React.startTransition to batch the state update
+      requestAnimationFrame(() => {
+          onSelectItem(id)
+      })
     },
     [onSelectItem],
   )
 
   const handleOpenItemSettings = useCallback(
     (id: string) => {
-      // Use setTimeout to defer the state update to the next tick
-      setTimeout(() => {
-        onOpenItemSettings(id)
-      }, 0)
+      // Use React.startTransition to batch the state update
+      requestAnimationFrame(() => {
+          onOpenItemSettings(id)
+      })
     },
     [onOpenItemSettings],
   )
@@ -599,6 +639,13 @@ const DashboardCanvas = ({
     },
     [onFilterApply],
   )
+
+  useEffect(() => {
+    return () => {
+      debouncedUpdateItemPosition.cancel()
+      debouncedUpdateItemSize.cancel()
+    }
+  }, [debouncedUpdateItemPosition, debouncedUpdateItemSize])
 
   return (
     <div className="mb-6">
@@ -664,7 +711,9 @@ const DashboardCanvas = ({
                   onFilterApply={handleFilterApply}
                   dashboardItems={items}
                   getFilteredData={getFilteredData}
-                  onClose={() => { console.log("Item closed") }}
+                  onClose={() => {
+                    console.log("Item closed")
+                  }}
                 />
               </motion.div>
             ))}
