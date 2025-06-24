@@ -1,7 +1,7 @@
 export interface FilterType {
     id: string
     name: string
-    type: 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'boolean'
+    type: 'text' | 'number' | 'date' | 'select' | 'multiselect' | 'boolean' | 'string'
     field: string
     operator: 'equals' | 'contains' | 'greater_than' | 'less_than' | 'between' | 'in' | 'not_in'
     value: any
