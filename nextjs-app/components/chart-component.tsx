@@ -31,7 +31,7 @@ import {
   LabelList,
   ZAxis,
 } from "recharts"
-import { useCallback, useState } from "react"
+import { useState, useMemo } from "react"
 
 // Add legend position control to the config interface
 // Find the ChartComponentProps interface and add legendPosition to the config
@@ -120,6 +120,10 @@ interface ChartComponentProps {
 }
 
 export default function ChartComponent({ type, data, config = {} }: ChartComponentProps) {
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [isEditing, setIsEditing] = useState(false)
+  const [showTooltip, setShowTooltip] = useState(true)
+
   console.log("CHART COMPONENT - Received props:", { type, hasData: !!data, data, config })
 
   // Update the destructuring of config to include legendPosition with a default value
@@ -188,16 +192,8 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
   const dataMetadata = data && data.length > 0 && data[0]._metadata ? data[0]._metadata : {}
   const dataScaleType = dataMetadata.scaleType || scaleType
 
-  // Clean data by removing metadata
-  const cleanData = data
-    ? data.map((item) => {
-        const { _metadata, ...rest } = item
-        return rest
-      })
-    : []
-
   // Generate theme-specific styles
-  const getThemeStyles = () => {
+  const themeStyles = useMemo(() => {
     switch (theme) {
       case "dark":
         return {
@@ -241,9 +237,7 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
           tooltipBorder: "#e2e8f0",
         }
     }
-  }
-
-  const themeStyles = getThemeStyles()
+  }, [theme])
 
   if (!data || data.length === 0) {
     return (
@@ -346,11 +340,11 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
 
     return (
       <text x={x} y={y} fill="white" textAnchor={x > cx ? "start" : "end"} dominantBaseline="central" fontSize={12}>
-        {showLabels && showPercentages
+        {config.showLabels && config.showPercentages
           ? `${name}: ${(percent * 100).toFixed(0)}%`
-          : showLabels
+          : config.showLabels
             ? name
-            : showPercentages
+            : config.showPercentages
               ? `${(percent * 100).toFixed(0)}%`
               : ""}
       </text>
@@ -358,13 +352,6 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
   }
 
   // Update the renderActiveShape function for PieChart to support Donut Active and Donut with Text
-  const [activeIndex, setActiveIndex] = useState(0)
-  const [isEditing, setIsEditing] = useState(false)
-  const [chartData, setChartData] = useState(cleanData)
-  const [xAxisKey, setXAxisKey] = useState(labelKey)
-  const [dataKey, setDataKey] = useState(valueKey)
-  const [showTooltip, setShowTooltip] = useState(true)
-
   const renderActiveShape = (props: any) => {
     const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props
 
@@ -403,30 +390,27 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
     )
   }
 
-  const onPieEnter = useCallback(
-    (data: any, index: number) => {
-      if (config.pieChartType === "interactive" || config.pieChartType === "donutActive") {
-        setActiveIndex(index)
-      }
-    },
-    [config.pieChartType, setActiveIndex],
-  )
-
   const getAnimationProps = () => {
-    return enableAnimation ? { animationDuration, animationEasing } : { animation: false }
+    return config.enableAnimation
+      ? { animationDuration: config.animationDuration, animationEasing: config.animationEasing }
+      : { animation: false }
   }
 
   // Get all data keys except the label key for multi-series charts
-  const getDataKeys = () => {
-    if (!chartData || chartData.length === 0) return [valueKey]
-    return Object.keys(chartData[0]).filter((key) => key !== xAxisKey && typeof chartData[0][key] === "number")
-  }
-
-  const dataKeys = getDataKeys()
+  const dataKeys = useMemo(() => {
+    if (!data || data.length === 0) return [valueKey]
+    return Object.keys(data[0]).filter((key) => key !== labelKey && typeof data[0][key] === "number")
+  }, [data, valueKey, labelKey])
 
   // Configure scale type for axes
   const getScaleType = () => {
     return dataScaleType === "log" ? "log" : "auto"
+  }
+
+  const onPieEnter = (data: any, index: number) => {
+    if (config.pieChartType === "interactive" || config.pieChartType === "donutActive") {
+      setActiveIndex(index)
+    }
   }
 
   return (
@@ -437,26 +421,32 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
       {type === "bar-chart" && (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
-            data={chartData}
+            data={data}
             layout={barChartType === "horizontal" ? "vertical" : "horizontal"}
-            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            margin={{ top: 10, right: 30, left: 30, bottom: 10 }}
             {...getAnimationProps()}
           >
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={themeStyles.gridColor} />}
             {showXAxis && (
               <XAxis
-                dataKey={barChartType === "horizontal" ? undefined : xAxisKey}
+                dataKey={barChartType === "horizontal" ? undefined : labelKey}
                 type={barChartType === "horizontal" ? "number" : "category"}
                 tick={{ fill: themeStyles.textColor }}
                 scale={barChartType === "horizontal" ? getScaleType() : undefined}
+                axisLine={config.showAxisLine}
+                tickLine={config.showTickLine}
+                tickMargin={tickMargin}
               />
             )}
             {showYAxis && (
               <YAxis
-                dataKey={barChartType === "horizontal" ? xAxisKey : undefined}
+                dataKey={barChartType === "horizontal" ? labelKey : undefined}
                 type={barChartType === "horizontal" ? "category" : "number"}
                 tick={{ fill: themeStyles.textColor }}
                 scale={barChartType === "horizontal" ? undefined : getScaleType()}
+                axisLine={config.showAxisLine}
+                tickLine={config.showTickLine}
+                tickMargin={tickMargin}
               />
             )}
             {showTooltip && <Tooltip content={<CustomTooltip />} />}
@@ -479,7 +469,7 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
                   radius={[barRadius, barRadius, barRadius, barRadius]}
                   stackId={barChartType === "stacked" ? "a" : undefined}
                 >
-                  {showDataLabels && (
+                  {config.showDataLabels && (
                     <LabelList
                       dataKey={key}
                       position={barChartType === "stacked" ? "inside" : "top"}
@@ -499,7 +489,7 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
                 name={valueKey}
                 radius={[barRadius, barRadius, barRadius, barRadius]}
               >
-                {showDataLabels && (
+                {config.showDataLabels && (
                   <LabelList
                     dataKey={valueKey}
                     position={barChartType === "horizontal" ? "right" : "top"}
@@ -510,12 +500,16 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
             )}
             {showReferenceLine && (
               <ReferenceLine
-                y={barChartType === "horizontal" ? undefined : referenceLineValue}
-                x={barChartType === "horizontal" ? referenceLineValue : undefined}
-                label={referenceLineLabel || undefined}
-                stroke={referenceLineColor}
+                y={barChartType === "horizontal" ? undefined : config.referenceLineValue}
+                x={barChartType === "horizontal" ? config.referenceLineValue : undefined}
+                label={config.referenceLineLabel || undefined}
+                stroke={config.referenceLineColor}
                 strokeDasharray={
-                  referenceLineStroke === "dashed" ? "3 3" : referenceLineStroke === "dotted" ? "1 3" : undefined
+                  config.referenceLineStroke === "dashed"
+                    ? "3 3"
+                    : config.referenceLineStroke === "dotted"
+                      ? "1 3"
+                      : undefined
                 }
               />
             )}
@@ -525,9 +519,9 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
 
       {type === "line-chart" && (
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }} {...getAnimationProps()}>
+          <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }} {...getAnimationProps()}>
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={themeStyles.gridColor} />}
-            {showXAxis && <XAxis dataKey={xAxisKey} tick={{ fill: themeStyles.textColor }} />}
+            {showXAxis && <XAxis dataKey={labelKey} tick={{ fill: themeStyles.textColor }} />}
             {showYAxis && <YAxis tick={{ fill: themeStyles.textColor }} scale={getScaleType()} />}
             {showTooltip && <Tooltip content={<CustomTooltip />} />}
             {showLegend && (
@@ -549,16 +543,22 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
                 dot={showDots ? { r: 4 } : false}
                 activeDot={{ r: 6 }}
               >
-                {showDataLabels && <LabelList dataKey={key} position="top" style={{ fill: "#333", fontSize: 10 }} />}
+                {config.showDataLabels && (
+                  <LabelList dataKey={key} position="top" style={{ fill: "#333", fontSize: 10 }} />
+                )}
               </Line>
             ))}
             {showReferenceLine && (
               <ReferenceLine
-                y={referenceLineValue}
-                label={referenceLineLabel || undefined}
-                stroke={referenceLineColor}
+                y={config.referenceLineValue}
+                label={config.referenceLineLabel || undefined}
+                stroke={config.referenceLineColor}
                 strokeDasharray={
-                  referenceLineStroke === "dashed" ? "3 3" : referenceLineStroke === "dotted" ? "1 3" : undefined
+                  config.referenceLineStroke === "dashed"
+                    ? "3 3"
+                    : config.referenceLineStroke === "dotted"
+                      ? "1 3"
+                      : undefined
                 }
               />
             )}
@@ -570,11 +570,11 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
         <ResponsiveContainer width="100%" height="100%">
           <PieChart {...getAnimationProps()}>
             <Pie
-              data={chartData}
+              data={data}
               cx="50%"
               cy="50%"
-              labelLine={showLabels}
-              label={showLabels ? renderCustomizedLabel : undefined}
+              labelLine={config.showLabels}
+              label={config.showLabels ? renderCustomizedLabel : undefined}
               outerRadius={80}
               innerRadius={
                 pieChartType === "donut" || pieChartType === "donutActive" || pieChartType === "donutWithText"
@@ -582,10 +582,10 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
                   : 0
               }
               fill="#8884d8"
-              dataKey={dataKey}
-              nameKey={xAxisKey}
-              startAngle={pieChartType === "semi" ? 180 : radialStartAngle}
-              endAngle={pieChartType === "semi" ? 0 : radialEndAngle}
+              dataKey={valueKey}
+              nameKey={labelKey}
+              startAngle={pieChartType === "semi" ? 180 : config.radialStartAngle}
+              endAngle={pieChartType === "semi" ? 0 : config.radialEndAngle}
               activeIndex={pieChartType === "interactive" || pieChartType === "donutActive" ? activeIndex : undefined}
               activeShape={
                 pieChartType === "interactive" || pieChartType === "donutActive" || pieChartType === "donutWithText"
@@ -594,11 +594,11 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
               }
               onMouseEnter={onPieEnter}
             >
-              {chartData.map((entry: any, index: number) => (
+              {data.map((entry: any, index: number) => (
                 <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
               ))}
-              {showDataLabels && !showLabels && (
-                <LabelList dataKey={dataKey} position="outside" style={{ fill: "#333", fontSize: 10 }} />
+              {config.showDataLabels && !config.showLabels && (
+                <LabelList dataKey={valueKey} position="outside" style={{ fill: "#333", fontSize: 10 }} />
               )}
             </Pie>
             {showTooltip && <Tooltip content={<CustomTooltip />} />}
@@ -616,9 +616,9 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
 
       {type === "area-chart" && (
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }} {...getAnimationProps()}>
+          <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }} {...getAnimationProps()}>
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke={themeStyles.gridColor} />}
-            {showXAxis && <XAxis dataKey={xAxisKey} tick={{ fill: themeStyles.textColor }} />}
+            {showXAxis && <XAxis dataKey={labelKey} tick={{ fill: themeStyles.textColor }} />}
             {showYAxis && <YAxis tick={{ fill: themeStyles.textColor }} scale={getScaleType()} />}
             {showTooltip && <Tooltip content={<CustomTooltip />} />}
             {showLegend && (
@@ -636,21 +636,27 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
                 dataKey={key}
                 stackId={areaChartType === "stacked" || areaChartType === "percent" ? "1" : undefined}
                 stroke={colors[index % colors.length]}
-                fill={`${colors[index % colors.length]}${Math.round(fillOpacity * 255)
+                fill={`${colors[index % colors.length]}${Math.round(config.fillOpacity * 255)
                   .toString(16)
                   .padStart(2, "0")}`}
                 name={key}
               >
-                {showDataLabels && <LabelList dataKey={key} position="top" style={{ fill: "#333", fontSize: 10 }} />}
+                {config.showDataLabels && (
+                  <LabelList dataKey={key} position="top" style={{ fill: "#333", fontSize: 10 }} />
+                )}
               </Area>
             ))}
             {showReferenceLine && (
               <ReferenceLine
-                y={referenceLineValue}
-                label={referenceLineLabel || undefined}
-                stroke={referenceLineColor}
+                y={config.referenceLineValue}
+                label={config.referenceLineLabel || undefined}
+                stroke={config.referenceLineColor}
                 strokeDasharray={
-                  referenceLineStroke === "dashed" ? "3 3" : referenceLineStroke === "dotted" ? "1 3" : undefined
+                  config.referenceLineStroke === "dashed"
+                    ? "3 3"
+                    : config.referenceLineStroke === "dotted"
+                      ? "1 3"
+                      : undefined
                 }
               />
             )}
@@ -678,10 +684,12 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
                 verticalAlign={legendPosition === "bottom" ? "bottom" : legendPosition === "top" ? "top" : "middle"}
               />
             )}
-            <Scatter name="Values" data={chartData} fill={colors[0]}>
-              {showDataLabels && <LabelList dataKey="name" position="top" style={{ fill: "#333", fontSize: 10 }} />}
+            <Scatter name="Values" data={data} fill={colors[0]}>
+              {config.showDataLabels && (
+                <LabelList dataKey="name" position="top" style={{ fill: "#333", fontSize: 10 }} />
+              )}
             </Scatter>
-            {showTrendline && (
+            {config.showTrendline && (
               <Line
                 type="monotone"
                 dataKey="y"
@@ -697,9 +705,9 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
 
       {type === "radar-chart" && (
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart cx="50%" cy="50%" outerRadius="80%" data={chartData} {...getAnimationProps()}>
-            <PolarGrid gridCount={radarGridCount} />
-            <PolarAngleAxis dataKey={xAxisKey} tick={{ fill: themeStyles.textColor }} />
+          <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data} {...getAnimationProps()}>
+            <PolarGrid />
+            <PolarAngleAxis dataKey={labelKey} tick={{ fill: themeStyles.textColor }} />
             <PolarRadiusAxis angle={90} domain={[0, "auto"]} />
             {dataKeys.map((key, index) => (
               <Radar
@@ -707,10 +715,12 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
                 name={key}
                 dataKey={key}
                 stroke={colors[index % colors.length]}
-                fill={radarFill ? colors[index % colors.length] : "none"}
-                fillOpacity={radarOpacity}
+                fill={config.radarFill ? colors[index % colors.length] : "none"}
+                fillOpacity={config.radarOpacity}
               >
-                {showDataLabels && <LabelList dataKey={key} position="top" style={{ fill: "#333", fontSize: 10 }} />}
+                {config.showDataLabels && (
+                  <LabelList dataKey={key} position="top" style={{ fill: "#333", fontSize: 10 }} />
+                )}
               </Radar>
             ))}
             {showLegend && (
@@ -728,24 +738,24 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
 
       {type === "radial-bar-chart" && (
         <ResponsiveContainer width="100%" height="100%">
-          <RadialBarChart
+         <RadialBarChart
             cx="50%"
             cy="50%"
             innerRadius="10%"
             outerRadius="80%"
-            barSize={radialBarSize}
-            data={chartData}
-            startAngle={radialStartAngle}
-            endAngle={radialEndAngle}
+            barSize={config.radialBarSize}
+            data={data}
+            startAngle={config.radialStartAngle}
+            endAngle={config.radialEndAngle}
             {...getAnimationProps()}
           >
-            {radialBarBackground && <RadialBar background />}
-            <RadialBar minAngle={15} label={{ position: "insideStart", fill: "#fff" }} background dataKey={valueKey}>
-              {chartData.map((entry: any, index: number) => (
+            {config.radialBarBackground && <RadialBar background dataKey={valueKey} />}
+            <RadialBar label={{ position: "insideStart", fill: "#fff" }} background dataKey={valueKey}>
+              {data.map((entry: any, index: number) => (
                 <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
               ))}
-              {showDataLabels && (
-                <LabelList dataKey={xAxisKey} position="inside" style={{ fill: "#fff", fontSize: 10 }} />
+              {config.showDataLabels && (
+                <LabelList dataKey={labelKey} position="inside" style={{ fill: "#fff", fontSize: 10 }} />
               )}
             </RadialBar>
             {showLegend && (
@@ -755,7 +765,7 @@ export default function ChartComponent({ type, data, config = {} }: ChartCompone
                 align={legendPosition === "right" ? "right" : legendPosition === "left" ? "left" : "center"}
                 verticalAlign={legendPosition === "bottom" ? "bottom" : legendPosition === "top" ? "top" : "middle"}
                 formatter={(value, entry, index) => (
-                  <span style={{ color: themeStyles.textColor }}>{entry.payload[xAxisKey]}</span>
+                  <span style={{ color: themeStyles.textColor }}>{entry.payload[labelKey]}</span>
                 )}
               />
             )}
