@@ -17,7 +17,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import DatasetSelector from "./data-source/dataset-selector"
 
 interface ChartDataEditorProps {
-  data: any[]
+  data: any[] | Record<string, any>
   chartType: string
   onDataChange: (data: any[]) => void
   onClose: () => void
@@ -45,7 +45,7 @@ export default function ChartDataEditor({ data, chartType, onDataChange, onClose
 
   // Initialize the editable data and columns
   useEffect(() => {
-    if (data && data.length > 0) {
+    if (Array.isArray(data) && data.length > 0) {
       setEditableData([...data])
 
       // Extract column names from the first data item
