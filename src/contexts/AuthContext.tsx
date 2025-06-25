@@ -14,6 +14,7 @@ interface AuthState {
 
 interface AuthContextType {
   authState: AuthState
+  user: UserProfile | null
   login: (username: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
   isLoading: boolean
@@ -139,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value: AuthContextType = {
     authState,
+    user: authState.user,
     login,
     logout,
     isLoading,

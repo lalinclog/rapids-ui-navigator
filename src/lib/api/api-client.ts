@@ -11,6 +11,27 @@ const apiClient = axios.create({
   },
 })
 
+// HTTP method functions
+export const get = async <T>(url: string, config?: any): Promise<T> => {
+  const response = await apiClient.get<T>(url, config)
+  return response.data
+}
+
+export const post = async <T>(url: string, data?: any, config?: any): Promise<T> => {
+  const response = await apiClient.post<T>(url, data, config)
+  return response.data
+}
+
+export const put = async <T>(url: string, data?: any, config?: any): Promise<T> => {
+  const response = await apiClient.put<T>(url, data, config)
+  return response.data
+}
+
+export const del = async <T>(url: string, config?: any): Promise<T> => {
+  const response = await apiClient.delete<T>(url, config)
+  return response.data
+}
+
 export interface Dashboard {
   id: string
   name: string
