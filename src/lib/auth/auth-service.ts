@@ -26,6 +26,7 @@ export interface UserProfile {
   email?: string
   realm_access?: { roles: string[] }
   resource_access?: Record<string, { roles: string[] }>
+  roles?: string[]
 }
 
 // Local storage keys
