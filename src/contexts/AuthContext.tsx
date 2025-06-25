@@ -1,150 +1,159 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AuthState, KeycloakUserInfo } from '@/lib/types';
-import AuthService from '@/services/AuthService';
-// import jwt_decode from 'jwt-decode';
-import { jwtDecode } from 'jwt-decode';
+"use client"
 
-interface AuthContextType {
-  authState: AuthState;
-  login: (username: string, password: string) => Promise<boolean>;
-  logout: () => Promise<void>;
-  isLoading: boolean;
-  user: KeycloakUserInfo | undefined;
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react"
+import { useNavigate } from "react-router-dom"
+import authService from "@/lib/auth/auth-service"
+import type { UserProfile } from "@/lib/auth/auth-service"
+
+interface AuthState {
+  isAuthenticated: boolean
+  user: UserProfile | null
+  error: string | null
 }
 
-const AuthContext = createContext<AuthContextType>({
-  authState: { isAuthenticated: false },
-  login: async () => false,
-  logout: async () => {},
-  isLoading: true,
-  user: undefined,
-});
+interface AuthContextType {
+  authState: AuthState
+  login: (username: string, password: string) => Promise<boolean>
+  logout: () => Promise<void>
+  isLoading: boolean
+  devMode: boolean
+  bypassAuth: boolean
+  keycloakAvailable: boolean
+}
 
-export const useAuth = () => useContext(AuthContext);
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [authState, setAuthState] = useState<AuthState>({ isAuthenticated: false });
-  const [isLoading, setIsLoading] = useState(true);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [authState, setAuthState] = useState<AuthState>({
+    isAuthenticated: false,
+    user: null,
+    error: null,
+  })
+  const [isLoading, setIsLoading] = useState(true)
+  const [keycloakAvailable, setKeycloakAvailable] = useState(false)
 
+  const devMode = import.meta.env.VITE_DEV_MODE === "true"
+  const bypassAuth = import.meta.env.VITE_BYPASS_AUTH === "true"
+
+  console.log("[AuthProvider] Environment variables:", {
+    devMode,
+    bypassAuth,
+  })
+
+  // Check authentication status on mount
   useEffect(() => {
-    // Check if the user is already authenticated
-    const checkAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          // Decode the token to extract roles and other info
-          const decodedToken: any = jwtDecode(token);
-          
-          // Fetch user info from Keycloak
-          const user = await AuthService.getUserInfo(token);
-          
-          // Merge the decoded token data with user info
-          const enhancedUser = {
-            ...user,
-            // Include realm_access with roles from the token
-            realm_access: decodedToken.realm_access || { roles: [] },
-            // Include resource_access with client-specific roles from the token
-            resource_access: decodedToken.resource_access || {},
-            // Add any other JWT claims we want to expose
-            exp: decodedToken.exp,
-            iat: decodedToken.iat,
-            auth_time: decodedToken.auth_time,
-            jti: decodedToken.jti,
-            iss: decodedToken.iss,
-            sub: decodedToken.sub,
-          };
-          
+    const checkAuthStatus = async () => {
+      console.log("[AuthProvider] Checking auth status")
+      setIsLoading(true)
+
+      try {
+        if (authService.isAuthenticated()) {
+          console.log("[AuthProvider] User appears to be authenticated")
+          const token = await authService.getValidToken()
+          if (token) {
+            const userInfo = await authService.getUserInfo(token)
+            setAuthState({
+              isAuthenticated: true,
+              user: userInfo,
+              error: null,
+            })
+            console.log("[AuthProvider] User authenticated successfully")
+          } else {
+            throw new Error("No valid token available")
+          }
+        } else {
+          console.log("[AuthProvider] User not authenticated")
           setAuthState({
-            isAuthenticated: true,
-            token,
-            refreshToken: localStorage.getItem('refreshToken'),
-            user: enhancedUser,
-          });
-        } catch (error) {
-          // Token is invalid, clear localStorage
-          localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
+            isAuthenticated: false,
+            user: null,
+            error: null,
+          })
         }
-      }
-      setIsLoading(false);
-    };
-
-    checkAuth();
-  }, []);
-
-  const login = async (username: string, password: string): Promise<boolean> => {
-    try {
-      setIsLoading(true);
-      const tokenData = await AuthService.login(username, password);
-      
-      if (!tokenData.access_token) {
+      } catch (error) {
+        console.error("[AuthProvider] Error checking auth status:", error)
         setAuthState({
           isAuthenticated: false,
-          error: 'Login failed. No access token received.'
-        });
-        return false;
+          user: null,
+          error: "Authentication check failed",
+        })
+      } finally {
+        setIsLoading(false)
       }
+    }
+
+    checkAuthStatus()
+  }, [])
+
+  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
+    console.log("[AuthProvider] Login attempt for:", username)
+    setIsLoading(true)
+    setAuthState(prev => ({ ...prev, error: null }))
+
+    try {
+      const response = await authService.login(username, password)
       
-      // Decode the token to extract roles and other info
-      const decodedToken: any = jwtDecode(tokenData.access_token);
-      
-      // Get user info
-      const user = await AuthService.getUserInfo(tokenData.access_token);
-      
-      // Merge the decoded token data with user info
-      const enhancedUser = {
-        ...user,
-        // Include realm_access with roles from the token
-        realm_access: decodedToken.realm_access || { roles: [] },
-        // Include resource_access with client-specific roles from the token
-        resource_access: decodedToken.resource_access || {},
-        // Add any other JWT claims we want to expose
-        exp: decodedToken.exp,
-        iat: decodedToken.iat,
-        auth_time: decodedToken.auth_time,
-        jti: decodedToken.jti,
-        iss: decodedToken.iss,
-        sub: decodedToken.sub,
-      };
-      
-      setAuthState({
-        isAuthenticated: true,
-        token: tokenData.access_token,
-        refreshToken: tokenData.refresh_token,
-        user: enhancedUser,
-      });
-      
-      return true;
-    } catch (error) {
-      console.error('Login error:', error);
+      if (response.access_token) {
+        const userInfo = await authService.getUserInfo(response.access_token)
+        setAuthState({
+          isAuthenticated: true,
+          user: userInfo,
+          error: null,
+        })
+        console.log("[AuthProvider] Login successful")
+        return true
+      } else {
+        throw new Error(response.error_description || "Login failed")
+      }
+    } catch (error: any) {
+      console.error("[AuthProvider] Login error:", error)
       setAuthState({
         isAuthenticated: false,
-        error: 'Login failed. Please check your credentials and try again.'
-      });
-      return false;
+        user: null,
+        error: error.message || "Login failed",
+      })
+      return false
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }, [])
 
-  const logout = async (): Promise<void> => {
+  const logout = useCallback(async () => {
+    console.log("[AuthProvider] Logout initiated")
+    setIsLoading(true)
+
     try {
-      await AuthService.logout();
+      await authService.logout()
+    } catch (error) {
+      console.error("[AuthProvider] Logout error:", error)
     } finally {
-      setAuthState({ isAuthenticated: false });
+      setAuthState({
+        isAuthenticated: false,
+        user: null,
+        error: null,
+      })
+      setIsLoading(false)
+      console.log("[AuthProvider] Logout completed")
     }
-  };
+  }, [])
 
-  return (
-    <AuthContext.Provider value={{ 
-      authState, 
-      login, 
-      logout, 
-      isLoading, 
-      user: authState.user 
-    }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  const value: AuthContextType = {
+    authState,
+    login,
+    logout,
+    isLoading,
+    devMode,
+    bypassAuth,
+    keycloakAvailable,
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider")
+  }
+  return context
+}

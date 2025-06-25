@@ -3,64 +3,62 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AppLayout } from "@/components/layout/AppLayout";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
-import Index from "./pages/Index";
-import Login from "./pages/Login";
-import SignUp from "./pages/SignUp";
-import Qualification from "./pages/Qualification";
-import Profiling from "./pages/Profiling";
-import JobHistory from "./pages/JobHistory";
-import Settings from "./pages/Settings";
-import NotFound from "./pages/NotFound";
-import JobDetails from "./pages/JobDetails";
-import Analytics from "./pages/Analytics";
-import Profile from "./pages/Profile";
-import Admin from "./pages/Admin";
+import DashboardEditPage from "./pages/DashboardEditPage";
+import DashboardViewPage from "./pages/DashboardViewPage";
+import LoginPage from "./pages/LoginPage";
+import AnalyticsHub from "./pages/AnalyticsHub";
 
 const queryClient = new QueryClient();
 
 function App() {
   return (
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <TooltipProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TooltipProvider>
+          <BrowserRouter>
             <Toaster />
             <Sonner />
             <Routes>
-              {/* Public routes - no layout */}
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<SignUp />} />
+              {/* Public routes */}
+              <Route path="/login" element={<LoginPage />} />
               
-              {/* Protected routes with shared layout */}
+              {/* Protected routes */}
               <Route 
-                path="/" 
+                path="/dashboard/:id/edit" 
                 element={
                   <ProtectedRoute>
-                    <AppLayout />
+                    <DashboardEditPage />
                   </ProtectedRoute>
                 }
-              >
-                <Route index element={<Index />} />
-                <Route path="qualification" element={<Qualification />} />
-                <Route path="profiling" element={<Profiling />} />
-                <Route path="job-history" element={<JobHistory />} />
-                <Route path="job/:id" element={<JobDetails />} />
-                <Route path="analytics" element={<Analytics />} />
-                <Route path="profile" element={<Profile />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="admin" element={<Admin />} />
-              </Route>
+              />
+              <Route 
+                path="/dashboard/:id/view" 
+                element={
+                  <ProtectedRoute>
+                    <DashboardViewPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route 
+                path="/analytics-hub" 
+                element={
+                  <ProtectedRoute>
+                    <AnalyticsHub />
+                  </ProtectedRoute>
+                }
+              />
               
-              <Route path="*" element={<NotFound />} />
+              {/* Default redirect */}
+              <Route path="/" element={<Navigate to="/analytics-hub" replace />} />
+              <Route path="*" element={<Navigate to="/analytics-hub" replace />} />
             </Routes>
-          </TooltipProvider>
-        </AuthProvider>
-      </QueryClientProvider>
-    </BrowserRouter>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

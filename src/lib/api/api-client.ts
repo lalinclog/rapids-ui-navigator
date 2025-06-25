@@ -1,94 +1,56 @@
 
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios from "axios"
 
-// API base URL from environment variable, defaulting to the backend API
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080"
 
-// API client implementation
-class ApiClient {
-  private axiosInstance: AxiosInstance;
-  
-  constructor() {
-    this.axiosInstance = axios.create({
-      baseURL: API_BASE_URL,
-      timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+// API client configuration
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+})
 
-    // Add request interceptors for debugging
-    this.axiosInstance.interceptors.request.use(
-      (config) => {
-        console.log(`Making API request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
-        return config;
-      },
-      (error) => {
-        console.error('API request interceptor error:', error);
-        return Promise.reject(error);
-      }
-    );
+export interface Dashboard {
+  id: string
+  name: string
+  description: string
+  data?: any
+  global_filters?: Record<string, any>
+  layout?: any
+}
 
-    this.axiosInstance.interceptors.response.use(
-      (response) => {
-        console.log(`API response: ${response.status} ${response.config.url}`);
-        return response;
-      },
-      (error) => {
-        console.error('API response error:', error.response?.status, error.response?.data || error.message);
-        return Promise.reject(error);
-      }
-    );
-  }
+export const getDashboardById = async (id: string): Promise<Dashboard> => {
+  console.log("[API] Fetching dashboard:", id)
   
-  private async executeRequest<T>(
-    method: string, 
-    url: string, 
-    data?: any, 
-    config?: AxiosRequestConfig
-  ): Promise<T> {
-    try {
-      let response: AxiosResponse<T>;
-      
-      switch (method) {
-        case 'get':
-          response = await this.axiosInstance.get<T>(url, config);
-          break;
-        case 'post':
-          response = await this.axiosInstance.post<T>(url, data, config);
-          break;
-        case 'put':
-          response = await this.axiosInstance.put<T>(url, data, config);
-          break;
-        case 'delete':
-          response = await this.axiosInstance.delete<T>(url, config);
-          break;
-        default:
-          throw new Error(`Unsupported method: ${method}`);
-      }
-      
-      return response.data;
-    } catch (error: any) {
-      console.error(`API ${method} request failed:`, error);
-      throw error;
+  // For development, return mock data
+  return {
+    id,
+    name: "Sample Dashboard",
+    description: "A sample dashboard for testing",
+    data: {
+      items: [],
+      globalFilters: [],
+      dimensions: { width: 1200, height: 800 }
     }
   }
 }
 
-// Create and export singleton instance
-const apiClient = new ApiClient();
+export const updateDashboard = async (id: string, data: any): Promise<Dashboard> => {
+  console.log("[API] Updating dashboard:", id, data)
+  
+  // For development, return mock success
+  return {
+    id,
+    name: data.name || "Updated Dashboard",
+    description: data.description || "Updated dashboard",
+    data: data.data
+  }
+}
 
-// Export HTTP methods for backend API (including proxied Iceberg requests to external iceberg-rest)
-export const get = <T>(url: string, config?: AxiosRequestConfig): Promise<T> => 
-  apiClient['executeRequest']<T>('get', url, undefined, config);
+export const deleteDashboard = async (id: string): Promise<void> => {
+  console.log("[API] Deleting dashboard:", id)
+  // For development, just log
+}
 
-export const post = <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => 
-  apiClient['executeRequest']<T>('post', url, data, config);
-
-export const put = <T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> => 
-  apiClient['executeRequest']<T>('put', url, data, config);
-
-export const del = <T>(url: string, config?: AxiosRequestConfig): Promise<T> => 
-  apiClient['executeRequest']<T>('delete', url, undefined, config);
-
-export default apiClient;
+export default apiClient
